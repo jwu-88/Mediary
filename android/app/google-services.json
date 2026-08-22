@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "958809412045",
+    "project_id": "cacapp-3a771",
+    "storage_bucket": "cacapp-3a771.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:958809412045:android:08c08350befaac04c57484",
+        "android_client_info": {
+          "package_name": "com.example.flutter_application"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBS-e95lWlY1nlwf4yK9Rzl710WFow0sls"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
