@@ -8,8 +8,15 @@ Future<void> main() async {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  bool _darkModeEnabled = false;
 
   @override
   Widget build(BuildContext context) {
@@ -17,21 +24,57 @@ class MyApp extends StatelessWidget {
       title: 'Account',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         inputDecorationTheme: const InputDecorationTheme(
           border: OutlineInputBorder(),
         ),
         useMaterial3: true,
       ),
-      home: AuthGate(auth: FirebaseAuth.instance),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.blue,
+          brightness: Brightness.dark,
+        ),
+        inputDecorationTheme: const InputDecorationTheme(
+          border: OutlineInputBorder(),
+        ),
+        useMaterial3: true,
+      ),
+      themeMode: _darkModeEnabled ? ThemeMode.dark : ThemeMode.light,
+      home: AuthGate(
+        auth: FirebaseAuth.instance,
+        darkModeEnabled: _darkModeEnabled,
+        onDarkModeChanged: (enabled) {
+          setState(() => _darkModeEnabled = enabled);
+        },
+      ),
     );
   }
 }
 
 class AuthGate extends StatelessWidget {
-  const AuthGate({super.key, required this.auth});
+  const AuthGate({
+    super.key,
+    required this.auth,
+    required this.darkModeEnabled,
+    required this.onDarkModeChanged,
+  });
 
   final FirebaseAuth auth;
+  final bool darkModeEnabled;
+  final ValueChanged<bool> onDarkModeChanged;
+
+  void _openSettings(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => SettingsScreen(
+          darkModeEnabled: darkModeEnabled,
+          onDarkModeChanged: onDarkModeChanged,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,10 +92,12 @@ class AuthGate extends StatelessWidget {
           return AuthenticatedHome(
             email: user.email ?? 'Signed-in user',
             onSignOut: auth.signOut,
+            onOpenSettings: () => _openSettings(context),
           );
         }
 
         return AuthForm(
+          onOpenSettings: () => _openSettings(context),
           onSubmit:
               ({required email, required password, required createAccount}) {
                 if (createAccount) {
@@ -80,9 +125,10 @@ typedef AuthSubmitter = Future<void> Function({
 });
 
 class AuthForm extends StatefulWidget {
-  const AuthForm({super.key, required this.onSubmit});
+  const AuthForm({super.key, required this.onSubmit, this.onOpenSettings});
 
   final AuthSubmitter onSubmit;
+  final VoidCallback? onOpenSettings;
 
   @override
   State<AuthForm> createState() => _AuthFormState();
@@ -193,6 +239,16 @@ class _AuthFormState extends State<AuthForm> {
     final action = _createAccount ? 'Create account' : 'Sign in';
 
     return Scaffold(
+      appBar: AppBar(
+        actions: [
+          IconButton(
+            key: const Key('settingsButton'),
+            tooltip: 'Settings',
+            onPressed: widget.onOpenSettings,
+            icon: const Icon(Icons.settings_outlined),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -316,15 +372,27 @@ class AuthenticatedHome extends StatelessWidget {
     super.key,
     required this.email,
     required this.onSignOut,
+    this.onOpenSettings,
   });
 
   final String email;
   final Future<void> Function() onSignOut;
+  final VoidCallback? onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Account')),
+      appBar: AppBar(
+        title: const Text('Account'),
+        actions: [
+          IconButton(
+            key: const Key('settingsButton'),
+            tooltip: 'Settings',
+            onPressed: onOpenSettings,
+            icon: const Icon(Icons.settings_outlined),
+          ),
+        ],
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -354,6 +422,48 @@ class AuthenticatedHome extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class SettingsScreen extends StatefulWidget {
+  const SettingsScreen({
+    super.key,
+    required this.darkModeEnabled,
+    required this.onDarkModeChanged,
+  });
+
+  final bool darkModeEnabled;
+  final ValueChanged<bool> onDarkModeChanged;
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  late bool _darkModeEnabled = widget.darkModeEnabled;
+
+  void _setDarkMode(bool enabled) {
+    setState(() => _darkModeEnabled = enabled);
+    widget.onDarkModeChanged(enabled);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Settings')),
+      body: ListView(
+        children: [
+          SwitchListTile(
+            key: const Key('darkModeSwitch'),
+            title: const Text('Dark mode'),
+            subtitle: const Text('Use a darker appearance throughout the app.'),
+            secondary: const Icon(Icons.dark_mode_outlined),
+            value: _darkModeEnabled,
+            onChanged: _setDarkMode,
+          ),
+        ],
       ),
     );
   }
