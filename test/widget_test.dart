@@ -157,5 +157,70 @@ void main() {
     expect(find.text('You are signed in'), findsOneWidget);
     expect(find.text('person@example.com'), findsOneWidget);
     expect(find.text('Sign out'), findsOneWidget);
+    expect(find.byTooltip('Settings'), findsOneWidget);
+  });
+
+  testWidgets('opens settings and enables dark mode', (tester) async {
+    final darkMode = ValueNotifier(false);
+    addTearDown(darkMode.dispose);
+
+    await tester.pumpWidget(
+      ValueListenableBuilder<bool>(
+        valueListenable: darkMode,
+        builder: (context, enabled, child) {
+          return MaterialApp(
+            theme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+            ),
+            darkTheme: ThemeData(
+              brightness: Brightness.dark,
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: Colors.blue,
+                brightness: Brightness.dark,
+              ),
+            ),
+            themeMode: enabled ? ThemeMode.dark : ThemeMode.light,
+            home: Builder(
+              builder: (context) => AuthForm(
+                onSubmit: ({
+                  required email,
+                  required password,
+                  required createAccount,
+                }) async {},
+                onOpenSettings: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (context) => SettingsScreen(
+                        darkModeEnabled: darkMode.value,
+                        onDarkModeChanged: (value) => darkMode.value = value,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('Dark mode'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('darkModeSwitch')));
+    await tester.pumpAndSettle();
+    expect(darkMode.value, isTrue);
+    expect(
+      tester
+          .widget<SwitchListTile>(find.byKey(const Key('darkModeSwitch')))
+          .value,
+      isTrue,
+    );
+    expect(
+      tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode,
+      ThemeMode.dark,
+    );
   });
 }
