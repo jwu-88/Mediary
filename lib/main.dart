@@ -1,6 +1,31 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+
+final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
+Future<void>? _googleSignInInitialization;
+
+Future<void> signInWithGoogle(FirebaseAuth auth) async {
+  if (kIsWeb) {
+    await auth.signInWithPopup(GoogleAuthProvider());
+    return;
+  }
+
+  await (_googleSignInInitialization ??= _googleSignIn.initialize());
+  final googleUser = await _googleSignIn.authenticate();
+  final googleAuth = googleUser.authentication;
+  final credential = GoogleAuthProvider.credential(idToken: googleAuth.idToken);
+  await auth.signInWithCredential(credential);
+}
+
+Future<void> signOut(FirebaseAuth auth) async {
+  await auth.signOut();
+  if (_googleSignInInitialization != null) {
+    await _googleSignIn.signOut();
+  }
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -91,13 +116,14 @@ class AuthGate extends StatelessWidget {
         if (user != null) {
           return AuthenticatedHome(
             email: user.email ?? 'Signed-in user',
-            onSignOut: auth.signOut,
+            onSignOut: () => signOut(auth),
             onOpenSettings: () => _openSettings(context),
           );
         }
 
         return AuthForm(
           onOpenSettings: () => _openSettings(context),
+          onGoogleSignIn: () => signInWithGoogle(auth),
           onSubmit:
               ({required email, required password, required createAccount}) {
                 if (createAccount) {
@@ -124,11 +150,19 @@ typedef AuthSubmitter = Future<void> Function({
   required bool createAccount,
 });
 
+typedef GoogleAuthSubmitter = Future<void> Function();
+
 class AuthForm extends StatefulWidget {
-  const AuthForm({super.key, required this.onSubmit, this.onOpenSettings});
+  const AuthForm({
+    super.key,
+    required this.onSubmit,
+    this.onOpenSettings,
+    this.onGoogleSignIn,
+  });
 
   final AuthSubmitter onSubmit;
   final VoidCallback? onOpenSettings;
+  final GoogleAuthSubmitter? onGoogleSignIn;
 
   @override
   State<AuthForm> createState() => _AuthFormState();
@@ -141,7 +175,10 @@ class _AuthFormState extends State<AuthForm> {
   bool _createAccount = false;
   bool _obscurePassword = true;
   bool _isSubmitting = false;
+  bool _isGoogleSubmitting = false;
   String? _errorMessage;
+
+  bool get _isBusy => _isSubmitting || _isGoogleSubmitting;
 
   @override
   void dispose() {
@@ -151,7 +188,7 @@ class _AuthFormState extends State<AuthForm> {
   }
 
   Future<void> _submit() async {
-    if (_isSubmitting || !(_formKey.currentState?.validate() ?? false)) {
+    if (_isBusy || !(_formKey.currentState?.validate() ?? false)) {
       return;
     }
 
@@ -184,6 +221,44 @@ class _AuthFormState extends State<AuthForm> {
     }
   }
 
+  Future<void> _signInWithGoogle() async {
+    if (_isBusy || widget.onGoogleSignIn == null) {
+      return;
+    }
+
+    setState(() {
+      _isGoogleSubmitting = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await widget.onGoogleSignIn!();
+    } on GoogleSignInException catch (error) {
+      if (mounted && error.code != GoogleSignInExceptionCode.canceled) {
+        setState(() {
+          _errorMessage =
+              error.code == GoogleSignInExceptionCode.clientConfigurationError
+              ? 'Google sign-in is not configured correctly.'
+              : 'Unable to sign in with Google. Please try again.';
+        });
+      }
+    } on FirebaseAuthException catch (error) {
+      if (mounted) {
+        setState(() => _errorMessage = _messageFor(error));
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _errorMessage = 'Unable to sign in with Google. Check your connection and try again.',
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isGoogleSubmitting = false);
+      }
+    }
+  }
+
   void _changeMode() {
     setState(() {
       _createAccount = !_createAccount;
@@ -207,6 +282,10 @@ class _AuthFormState extends State<AuthForm> {
         return 'Unable to connect. Check your internet connection and try again.';
       case 'too-many-requests':
         return 'Too many attempts. Please wait a moment and try again.';
+      case 'operation-not-allowed':
+        return 'This sign-in method is not enabled.';
+      case 'account-exists-with-different-credential':
+        return 'An account already exists with a different sign-in method.';
       default:
         return 'Unable to ${_createAccount ? 'create your account' : 'sign in'}. Please try again.';
     }
@@ -281,7 +360,7 @@ class _AuthFormState extends State<AuthForm> {
                     TextFormField(
                       key: const Key('emailField'),
                       controller: _emailController,
-                      enabled: !_isSubmitting,
+                      enabled: !_isBusy,
                       autofillHints: const [AutofillHints.email],
                       keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.next,
@@ -295,7 +374,7 @@ class _AuthFormState extends State<AuthForm> {
                     TextFormField(
                       key: const Key('passwordField'),
                       controller: _passwordController,
-                      enabled: !_isSubmitting,
+                      enabled: !_isBusy,
                       autofillHints: _createAccount
                           ? const [AutofillHints.newPassword]
                           : const [AutofillHints.password],
@@ -310,7 +389,7 @@ class _AuthFormState extends State<AuthForm> {
                           tooltip: _obscurePassword
                               ? 'Show password'
                               : 'Hide password',
-                          onPressed: _isSubmitting
+                          onPressed: _isBusy
                               ? null
                               : () => setState(
                                   () => _obscurePassword = !_obscurePassword,
@@ -338,7 +417,7 @@ class _AuthFormState extends State<AuthForm> {
                     const SizedBox(height: 24),
                     FilledButton(
                       key: const Key('submitButton'),
-                      onPressed: _isSubmitting ? null : _submit,
+                      onPressed: _isBusy ? null : _submit,
                       child: _isSubmitting
                           ? const SizedBox(
                               height: 20,
@@ -348,8 +427,26 @@ class _AuthFormState extends State<AuthForm> {
                           : Text(action),
                     ),
                     const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      key: const Key('googleSignInButton'),
+                      onPressed: _isBusy || widget.onGoogleSignIn == null
+                          ? null
+                          : _signInWithGoogle,
+                      icon: _isGoogleSubmitting
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text(
+                              'G',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                      label: const Text('Sign in with Google'),
+                    ),
+                    const SizedBox(height: 12),
                     TextButton(
-                      onPressed: _isSubmitting ? null : _changeMode,
+                      onPressed: _isBusy ? null : _changeMode,
                       child: Text(
                         _createAccount
                             ? 'Already have an account? Sign in'

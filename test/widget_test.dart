@@ -144,6 +144,41 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('starts Google sign-in and prevents duplicate submissions', (
+    tester,
+  ) async {
+    final completer = Completer<void>();
+    var calls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AuthForm(
+          onSubmit: ({
+            required email,
+            required password,
+            required createAccount,
+          }) async {},
+          onGoogleSignIn: () {
+            calls++;
+            return completer.future;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('googleSignInButton')));
+    await tester.pump();
+    expect(calls, 1);
+    expect(find.text('Sign in with Google'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('googleSignInButton')));
+    await tester.pump();
+    expect(calls, 1);
+
+    completer.complete();
+    await tester.pump();
+  });
+
   testWidgets('renders the authenticated home screen', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
