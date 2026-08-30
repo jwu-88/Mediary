@@ -81,7 +81,7 @@ class DashboardScreen extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: 520),
             child: ListView(
               key: const Key('dashboardScrollView'),
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
               children: [
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
