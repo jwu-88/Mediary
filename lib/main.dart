@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'app_theme.dart';
 import 'calendar_screen.dart';
 import 'dashboard_screen.dart';
+import 'firebase_options.dart';
 import 'library_screens.dart';
 import 'liquid_glass_tab_bar.dart';
 import 'profile_screen.dart';
@@ -61,7 +62,9 @@ Future<CameraAccessState> requestCameraAccess() async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(
+    options: kIsWeb ? DefaultFirebaseOptions.web : null,
+  );
   runApp(const MyApp());
 }
 

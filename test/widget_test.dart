@@ -6,12 +6,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_application/app_theme.dart';
+import 'package:flutter_application/firebase_options.dart';
 import 'package:flutter_application/liquid_glass_tab_bar.dart';
 import 'package:flutter_application/main.dart';
 import 'package:flutter_application/profile_screen.dart';
 import 'package:flutter_application/settings_screen.dart';
 
 void main() {
+  test('web Firebase options target the CAC project', () {
+    expect(DefaultFirebaseOptions.web.projectId, 'cacapp-3a771');
+    expect(
+      DefaultFirebaseOptions.web.appId,
+      '1:958809412045:web:226158a702998a63c57484',
+    );
+  });
+
   Widget buildForm(AuthSubmitter onSubmit) {
     return MaterialApp(home: AuthForm(onSubmit: onSubmit));
   }
