@@ -18,126 +18,183 @@ class LiquidGlassTabBar extends StatelessWidget {
     (CupertinoIcons.calendar, CupertinoIcons.calendar, 'Calendar'),
     (CupertinoIcons.camera, CupertinoIcons.camera_fill, 'Scan'),
     (CupertinoIcons.book, CupertinoIcons.book_fill, 'Library'),
-    (CupertinoIcons.person, CupertinoIcons.person_fill, 'Profile'),
+    (CupertinoIcons.gear, CupertinoIcons.gear_solid, 'Settings'),
   ];
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final active = dark ? const Color(0xFF78B7FF) : const Color(0xFF0A62D0);
-    final inactive = dark ? const Color(0xFFB8BBC4) : const Color(0xFF747985);
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final primary = theme.colorScheme.primary;
+    final mediaQuery = MediaQuery.maybeOf(context);
+    final highContrast = mediaQuery?.highContrast ?? false;
+    final reduceMotion = mediaQuery?.disableAnimations ?? false;
+    final active = highContrast
+        ? Color.lerp(primary, dark ? Colors.white : Colors.black, .22)!
+        : primary;
+    final inactive = dark
+        ? (highContrast ? const Color(0xFFF2F2F7) : const Color(0xFFC7C7CC))
+        : Colors.black;
     final selectedIndex = currentIndex < 0
         ? 0
         : currentIndex >= _items.length
         ? _items.length - 1
         : currentIndex;
+    final motionDuration = reduceMotion
+        ? Duration.zero
+        : const Duration(milliseconds: 320);
 
     return SafeArea(
       top: false,
-      minimum: const EdgeInsets.fromLTRB(12, 0, 12, 9),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(35),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-          child: Container(
-            key: const Key('liquidGlassTabBar'),
-            height: 72,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(35),
-              border: Border.all(
-                color: dark
-                    ? Colors.white.withValues(alpha: .17)
-                    : Colors.white.withValues(alpha: .82),
-                width: 1,
-              ),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: dark
-                    ? [
-                        const Color(0xFF33343A).withValues(alpha: .84),
-                        const Color(0xFF1F2025).withValues(alpha: .72),
-                      ]
-                    : [
-                        Colors.white.withValues(alpha: .88),
-                        const Color(0xFFEFF3F8).withValues(alpha: .68),
-                      ],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: dark ? .3 : .14),
-                  blurRadius: 24,
-                  offset: const Offset(0, 10),
-                ),
-                BoxShadow(
-                  color: Colors.white.withValues(alpha: dark ? .05 : .7),
-                  blurRadius: 1,
-                  offset: const Offset(0, 1),
-                ),
-              ],
+      minimum: const EdgeInsets.fromLTRB(16, 0, 16, 9),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(32),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: dark ? .26 : .13),
+              blurRadius: dark ? 30 : 26,
+              spreadRadius: -6,
+              offset: const Offset(0, 10),
             ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                const indicatorWidth = 58.0;
-                final tabWidth = constraints.maxWidth / _items.length;
-                final indicatorLeft =
-                    (tabWidth * selectedIndex) +
-                    (tabWidth - indicatorWidth) / 2;
-
-                return Stack(
-                  children: [
-                    Positioned(
-                      left: 22,
-                      right: 22,
-                      top: 1,
-                      child: Container(
-                        height: 1,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(1),
-                          gradient: LinearGradient(
-                            colors: [
-                              Colors.transparent,
-                              Colors.white.withValues(alpha: dark ? .2 : .9),
-                              Colors.transparent,
-                            ],
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(32),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 34, sigmaY: 34),
+            child: Container(
+              key: const Key('liquidGlassTabBar'),
+              height: 64,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(32),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: dark
+                      ? [
+                          Colors.white.withValues(
+                            alpha: highContrast ? .24 : .13,
                           ),
+                          const Color(0xFF3C4653).withValues(alpha: .22),
+                          const Color(0xFF111318).withValues(alpha: .33),
+                        ]
+                      : [
+                          Colors.white.withValues(
+                            alpha: highContrast ? .64 : .36,
+                          ),
+                          const Color(0xFFF2F8FF).withValues(alpha: .19),
+                          const Color(0xFFD8E8F7).withValues(alpha: .11),
+                        ],
+                ),
+                border: Border.all(
+                  color: dark
+                      ? Colors.white.withValues(alpha: highContrast ? .34 : .18)
+                      : Colors.white.withValues(
+                          alpha: highContrast ? .98 : .82,
+                        ),
+                  width: 1,
+                ),
+              ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(32),
+                        gradient: RadialGradient(
+                          center: const Alignment(-.82, -1.05),
+                          radius: 1.35,
+                          colors: [
+                            Colors.white.withValues(
+                              alpha: dark
+                                  ? (highContrast ? .22 : .15)
+                                  : (highContrast ? .58 : .38),
+                            ),
+                            Colors.white.withValues(alpha: dark ? .04 : .08),
+                            Colors.transparent,
+                          ],
+                          stops: const [0, .38, 1],
                         ),
                       ),
                     ),
-                    AnimatedPositioned(
-                      left: indicatorLeft,
-                      top: 8,
-                      width: indicatorWidth,
-                      height: 56,
-                      duration: const Duration(milliseconds: 360),
-                      curve: Curves.easeOutCubic,
-                      child: IgnorePointer(
-                        child: _SlidingGlassIndicator(
-                          activeColor: active,
-                          dark: dark,
+                  ),
+                  IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(32),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: dark ? .12 : .055),
+                          ],
+                          stops: const [0, .52, 1],
                         ),
                       ),
                     ),
-                    Row(
-                      children: [
-                        for (var index = 0; index < _items.length; index++)
-                          Expanded(
-                            child: _GlassTabItem(
-                              icon: selectedIndex == index
-                                  ? _items[index].$2
-                                  : _items[index].$1,
-                              label: _items[index].$3,
-                              selected: selectedIndex == index,
-                              activeColor: active,
-                              inactiveColor: inactive,
-                              onTap: () => onTap(index),
+                  ),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final tabWidth = constraints.maxWidth / _items.length;
+                      final indicatorWidth = (tabWidth - 10)
+                          .clamp(58.0, 66.0)
+                          .toDouble();
+                      final indicatorLeft =
+                          (tabWidth * selectedIndex) +
+                          (tabWidth - indicatorWidth) / 2;
+
+                      return Stack(
+                        children: [
+                          AnimatedPositioned(
+                            key: const Key('liquidGlassSelectionLens'),
+                            left: indicatorLeft,
+                            top: 8,
+                            width: indicatorWidth,
+                            height: 48,
+                            duration: motionDuration,
+                            curve: Curves.easeOutQuart,
+                            child: IgnorePointer(
+                              child: _SlidingGlassIndicator(
+                                activeColor: active,
+                                dark: dark,
+                                highContrast: highContrast,
+                              ),
                             ),
                           ),
-                      ],
-                    ),
-                  ],
-                );
-              },
+                          Row(
+                            children: [
+                              for (
+                                var index = 0;
+                                index < _items.length;
+                                index++
+                              )
+                                Expanded(
+                                  child: _GlassTabItem(
+                                    icon: selectedIndex == index
+                                        ? _items[index].$2
+                                        : _items[index].$1,
+                                    label: _items[index].$3,
+                                    semanticPosition:
+                                        '${index + 1} of ${_items.length}',
+                                    selected: selectedIndex == index,
+                                    activeColor: active,
+                                    inactiveColor: inactive,
+                                    reduceMotion: reduceMotion,
+                                    onTap: () => onTap(index),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -147,59 +204,114 @@ class LiquidGlassTabBar extends StatelessWidget {
 }
 
 class _SlidingGlassIndicator extends StatelessWidget {
-  const _SlidingGlassIndicator({required this.activeColor, required this.dark});
+  const _SlidingGlassIndicator({
+    required this.activeColor,
+    required this.dark,
+    required this.highContrast,
+  });
 
   final Color activeColor;
   final bool dark;
+  final bool highContrast;
 
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: dark ? .16 : .82),
-        ),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: dark
-              ? [
-                  Colors.white.withValues(alpha: .15),
-                  activeColor.withValues(alpha: .18),
-                ]
-              : [
-                  Colors.white.withValues(alpha: .96),
-                  activeColor.withValues(alpha: .14),
-                ],
-        ),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: activeColor.withValues(alpha: dark ? .2 : .18),
-            blurRadius: 14,
-            spreadRadius: 1,
-            offset: const Offset(0, 4),
-          ),
-          BoxShadow(
-            color: Colors.white.withValues(alpha: dark ? .06 : .76),
-            blurRadius: 2,
-            offset: const Offset(0, -1),
+            color: activeColor.withValues(alpha: dark ? .17 : .12),
+            blurRadius: 18,
+            spreadRadius: -6,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
-      child: Align(
-        alignment: const Alignment(0, -1),
-        child: Container(
-          width: 32,
-          height: 1,
-          margin: const EdgeInsets.only(top: 2),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(1),
-            gradient: LinearGradient(
-              colors: [
-                Colors.transparent,
-                Colors.white.withValues(alpha: dark ? .32 : .95),
-                Colors.transparent,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+          child: DecoratedBox(
+            key: const Key('liquidGlassSelectedGradient'),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: dark
+                    ? [
+                        Colors.white.withValues(
+                          alpha: highContrast ? .16 : .08,
+                        ),
+                        Color.lerp(
+                          activeColor,
+                          Colors.white,
+                          .18,
+                        )!.withValues(alpha: highContrast ? .30 : .20),
+                        Color.lerp(
+                          activeColor,
+                          Colors.black,
+                          .12,
+                        )!.withValues(alpha: highContrast ? .26 : .17),
+                      ]
+                    : [
+                        Color.lerp(
+                          activeColor,
+                          Colors.white,
+                          .72,
+                        )!.withValues(alpha: highContrast ? .88 : .66),
+                        Color.lerp(
+                          activeColor,
+                          Colors.white,
+                          .25,
+                        )!.withValues(alpha: highContrast ? .66 : .48),
+                        Color.lerp(
+                          activeColor,
+                          Colors.black,
+                          .08,
+                        )!.withValues(alpha: highContrast ? .58 : .38),
+                      ],
+              ),
+              border: Border.all(
+                color: dark
+                    ? Colors.white.withValues(alpha: .14)
+                    : Colors.white.withValues(alpha: highContrast ? .92 : .68),
+                width: .8,
+              ),
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: const Alignment(-.78, -1),
+                      radius: 1.15,
+                      colors: [
+                        Colors.white.withValues(
+                          alpha: dark
+                              ? (highContrast ? .22 : .13)
+                              : (highContrast ? .62 : .42),
+                        ),
+                        Colors.transparent,
+                      ],
+                      stops: const [0, 1],
+                    ),
+                  ),
+                ),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: const Alignment(.9, .9),
+                      radius: 1.1,
+                      colors: [
+                        activeColor.withValues(alpha: dark ? .13 : .16),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -213,80 +325,102 @@ class _GlassTabItem extends StatelessWidget {
   const _GlassTabItem({
     required this.icon,
     required this.label,
+    required this.semanticPosition,
     required this.selected,
     required this.activeColor,
     required this.inactiveColor,
+    required this.reduceMotion,
     required this.onTap,
   });
 
   final IconData icon;
   final String label;
+  final String semanticPosition;
   final bool selected;
   final Color activeColor;
   final Color inactiveColor;
+  final bool reduceMotion;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final color = selected ? activeColor : inactiveColor;
     return Semantics(
+      container: true,
       button: true,
       selected: selected,
       label: label,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: SizedBox.expand(
-          child: Center(
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(end: selected ? 1 : 0),
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeOutCubic,
-              builder: (context, selection, child) => Transform.translate(
-                offset: Offset(0, -selection),
-                child: Transform.scale(
-                  scale: .96 + (.04 * selection),
-                  child: Opacity(
-                    opacity: .84 + (.16 * selection),
+      value: semanticPosition,
+      inMutuallyExclusiveGroup: true,
+      onTap: onTap,
+      child: ExcludeSemantics(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          excludeFromSemantics: true,
+          onTap: onTap,
+          child: SizedBox.expand(
+            child: Center(
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(end: selected ? 1 : 0),
+                duration: reduceMotion
+                    ? Duration.zero
+                    : const Duration(milliseconds: 240),
+                curve: Curves.easeOutCubic,
+                builder: (context, selection, child) => Transform.translate(
+                  offset: Offset(0, -selection),
+                  child: Transform.scale(
+                    scale: .97 + (.03 * selection),
                     child: child,
                   ),
                 ),
-              ),
-              child: SizedBox(
-                width: 58,
-                height: 56,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 180),
-                      transitionBuilder: (child, animation) => FadeTransition(
-                        opacity: animation,
-                        child: ScaleTransition(scale: animation, child: child),
+                child: SizedBox(
+                  width: 58,
+                  height: 48,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      AnimatedSwitcher(
+                        key: Key('liquidGlassTabIcon-$label'),
+                        duration: reduceMotion
+                            ? Duration.zero
+                            : const Duration(milliseconds: 170),
+                        transitionBuilder: (child, animation) => FadeTransition(
+                          opacity: animation,
+                          child: ScaleTransition(
+                            scale: Tween(
+                              begin: .92,
+                              end: 1.0,
+                            ).animate(animation),
+                            child: child,
+                          ),
+                        ),
+                        child: Icon(
+                          icon,
+                          key: ValueKey(icon),
+                          size: selected ? 20.5 : 20,
+                          color: color,
+                        ),
                       ),
-                      child: Icon(
-                        icon,
-                        key: ValueKey(icon),
-                        size: 20,
-                        color: color,
+                      const SizedBox(height: 3),
+                      AnimatedDefaultTextStyle(
+                        key: Key('liquidGlassTabLabelStyle-$label'),
+                        duration: reduceMotion
+                            ? Duration.zero
+                            : const Duration(milliseconds: 200),
+                        curve: Curves.easeOut,
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 9.5,
+                          height: 1,
+                          fontWeight: selected
+                              ? FontWeight.w700
+                              : FontWeight.w600,
+                          letterSpacing: -.1,
+                        ),
+                        child: Text(label, key: ValueKey(label), maxLines: 1),
                       ),
-                    ),
-                    const SizedBox(height: 3),
-                    AnimatedDefaultTextStyle(
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOut,
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 9.5,
-                        height: 1,
-                        fontWeight: selected
-                            ? FontWeight.w700
-                            : FontWeight.w600,
-                        letterSpacing: -.1,
-                      ),
-                      child: Text(label, maxLines: 1),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'add_medication_screen.dart';
 import 'app_theme.dart';
 import 'calendar_screen.dart';
 import 'dashboard_screen.dart';
@@ -14,6 +15,8 @@ import 'liquid_glass_tab_bar.dart';
 import 'profile_screen.dart';
 import 'scanner_screens.dart';
 import 'settings_screen.dart';
+import 'web_navigation_sidebar.dart';
+import 'weekly_report_screen.dart';
 
 final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 Future<void>? _googleSignInInitialization;
@@ -75,48 +78,114 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
-  bool _darkModeEnabled = false;
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  late final FirebaseAuth _auth = FirebaseAuth.instance;
+  ThemeMode _appearanceMode = ThemeMode.system;
+  AppAccentColor _accentColor = AppAccentColor.blue;
+
+  bool get _reduceMotion => WidgetsBinding
+      .instance
+      .platformDispatcher
+      .accessibilityFeatures
+      .disableAnimations;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAccessibilityFeatures() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Account',
+      title: 'Mediary',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
-      themeMode: _darkModeEnabled ? ThemeMode.dark : ThemeMode.light,
+      theme: AppTheme.lightFor(_accentColor),
+      darkTheme: AppTheme.darkFor(_accentColor),
+      themeMode: _appearanceMode,
+      themeAnimationDuration: _reduceMotion
+          ? Duration.zero
+          : AppTheme.transitionDuration,
+      themeAnimationCurve: AppTheme.transitionCurve,
+      builder: (context, child) =>
+          AppThemeTransitionSurface(child: child ?? const SizedBox.shrink()),
       home: AuthGate(
-        auth: FirebaseAuth.instance,
-        darkModeEnabled: _darkModeEnabled,
-        onDarkModeChanged: (enabled) {
-          setState(() => _darkModeEnabled = enabled);
+        auth: _auth,
+        appearanceMode: _appearanceMode,
+        onAppearanceModeChanged: (mode) {
+          setState(() => _appearanceMode = mode);
+        },
+        accentColor: _accentColor,
+        onAccentColorChanged: (accent) {
+          setState(() => _accentColor = accent);
         },
       ),
     );
   }
 }
 
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({
     super.key,
     required this.auth,
-    required this.darkModeEnabled,
-    required this.onDarkModeChanged,
+    required this.appearanceMode,
+    required this.onAppearanceModeChanged,
+    required this.accentColor,
+    required this.onAccentColorChanged,
   });
 
   final FirebaseAuth auth;
-  final bool darkModeEnabled;
-  final ValueChanged<bool> onDarkModeChanged;
+  final ThemeMode appearanceMode;
+  final ValueChanged<ThemeMode> onAppearanceModeChanged;
+  final AppAccentColor accentColor;
+  final ValueChanged<AppAccentColor> onAccentColorChanged;
 
-  void _openSettings(BuildContext context, {User? user}) {
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  late Stream<User?> _authStateChanges;
+  User? _initialUser;
+
+  @override
+  void initState() {
+    super.initState();
+    _subscribeToAuth(widget.auth);
+  }
+
+  @override
+  void didUpdateWidget(covariant AuthGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.auth, widget.auth)) {
+      _subscribeToAuth(widget.auth);
+    }
+  }
+
+  void _subscribeToAuth(FirebaseAuth auth) {
+    _initialUser = auth.currentUser;
+    _authStateChanges = auth.authStateChanges();
+  }
+
+  void _openSettings(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => SettingsScreen(
-          darkModeEnabled: darkModeEnabled,
-          onDarkModeChanged: onDarkModeChanged,
-          accountEmail: user?.email,
-          onSignOut: user == null ? null : () => signOut(auth),
+          appearanceMode: widget.appearanceMode,
+          onAppearanceModeChanged: widget.onAppearanceModeChanged,
+          accentColor: widget.accentColor,
+          onAccentColorChanged: widget.onAccentColorChanged,
         ),
       ),
     );
@@ -125,9 +194,11 @@ class AuthGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
-      stream: auth.authStateChanges(),
+      stream: _authStateChanges,
+      initialData: _initialUser,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
@@ -139,7 +210,11 @@ class AuthGate extends StatelessWidget {
             email: user.email ?? 'Signed-in user',
             displayName: user.displayName,
             photoUrl: user.photoURL,
-            onOpenSettings: () => _openSettings(context, user: user),
+            appearanceMode: widget.appearanceMode,
+            onAppearanceModeChanged: widget.onAppearanceModeChanged,
+            accentColor: widget.accentColor,
+            onAccentColorChanged: widget.onAccentColorChanged,
+            onSignOut: () => signOut(widget.auth),
             cameraPermissionRequester: requestCameraAccess,
             onOpenCameraSettings: openAppSettings,
           );
@@ -147,17 +222,17 @@ class AuthGate extends StatelessWidget {
 
         return AuthForm(
           onOpenSettings: () => _openSettings(context),
-          onGoogleSignIn: () => signInWithGoogle(auth),
+          onGoogleSignIn: () => signInWithGoogle(widget.auth),
           onSubmit:
               ({required email, required password, required createAccount}) {
                 if (createAccount) {
-                  return auth.createUserWithEmailAndPassword(
+                  return widget.auth.createUserWithEmailAndPassword(
                     email: email,
                     password: password,
                   );
                 }
 
-                return auth.signInWithEmailAndPassword(
+                return widget.auth.signInWithEmailAndPassword(
                   email: email,
                   password: password,
                 );
@@ -338,7 +413,7 @@ class _AuthFormState extends State<AuthForm> {
 
   @override
   Widget build(BuildContext context) {
-    final title = _createAccount ? 'Create an account' : 'Welcome back';
+    final title = _createAccount ? 'Create an Account' : 'Welcome Back';
     final action = _createAccount ? 'Create account' : 'Sign in';
 
     return Scaffold(
@@ -376,8 +451,8 @@ class _AuthFormState extends State<AuthForm> {
                     const SizedBox(height: 8),
                     Text(
                       _createAccount
-                          ? 'Use your email address to get started.'
-                          : 'Sign in to continue to your account.',
+                          ? 'Create your Mediary account.'
+                          : 'Sign in to Mediary.',
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
                     const SizedBox(height: 32),
@@ -390,7 +465,7 @@ class _AuthFormState extends State<AuthForm> {
                       textInputAction: TextInputAction.next,
                       validator: _validateEmail,
                       decoration: const InputDecoration(
-                        labelText: 'Email address',
+                        labelText: 'Email',
                         prefixIcon: Icon(Icons.email_outlined),
                       ),
                     ),
@@ -495,18 +570,34 @@ class AuthenticatedHome extends StatefulWidget {
     this.displayName,
     this.photoUrl,
     this.onOpenSettings,
+    this.appearanceMode = ThemeMode.system,
+    this.onAppearanceModeChanged,
+    this.accentColor = AppAccentColor.blue,
+    this.onAccentColorChanged,
+    this.onSignOut,
     this.now,
     this.cameraPermissionRequester,
     this.onOpenCameraSettings,
+    this.useSidebarNavigation,
   });
 
   final String email;
   final String? displayName;
   final String? photoUrl;
+  @Deprecated('Use the embedded Settings hub and Account route.')
   final VoidCallback? onOpenSettings;
+  final ThemeMode appearanceMode;
+  final ValueChanged<ThemeMode>? onAppearanceModeChanged;
+  final AppAccentColor accentColor;
+  final ValueChanged<AppAccentColor>? onAccentColorChanged;
+  final Future<void> Function()? onSignOut;
   final DateTime? now;
   final CameraPermissionRequester? cameraPermissionRequester;
   final Future<bool> Function()? onOpenCameraSettings;
+
+  /// Overrides adaptive navigation selection for previews and tests.
+  /// Web uses the sidebar by default; native platforms use the bottom bar.
+  final bool? useSidebarNavigation;
 
   @override
   State<AuthenticatedHome> createState() => _AuthenticatedHomeState();
@@ -516,6 +607,8 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   int _selectedIndex = 0;
   bool _showScanResult = false;
   CameraAccessState _cameraAccess = CameraAccessState.notRequested;
+
+  bool get _usesSidebarNavigation => widget.useSidebarNavigation ?? kIsWeb;
 
   void _selectDestination(int index) {
     setState(() {
@@ -552,11 +645,24 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       displayName: widget.displayName,
       photoUrl: widget.photoUrl,
       now: widget.now,
+      bottomPadding: _usesSidebarNavigation ? 32 : 120,
+      onViewReport: () {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => WeeklyReportScreen(weekEnding: widget.now),
+          ),
+        );
+      },
+      onAddMedication: () async {
+        final selections = await showAddMedicationScreen(context);
+        return selections?.map((medication) => medication.name).toList();
+      },
     );
   }
 
   Widget _buildLibrary(BuildContext context) {
     return MedicationLibraryScreen(
+      bottomPadding: _usesSidebarNavigation ? 32 : 128,
       onOpenMedication: () {
         Navigator.of(context).push(
           MaterialPageRoute<void>(
@@ -567,13 +673,43 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     );
   }
 
-  Widget _buildProfile(BuildContext context) {
-    return ProfileScreen(
-      email: widget.email,
-      displayName: widget.displayName,
-      photoUrl: widget.photoUrl,
-      onOpenLibrary: () => setState(() => _selectedIndex = 3),
-      onOpenSettings: widget.onOpenSettings,
+  void _openAccount(BuildContext context) {
+    final legacyAccountAction = widget.onOpenSettings;
+    if (legacyAccountAction != null) {
+      legacyAccountAction();
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (accountContext) => ProfileScreen(
+          email: widget.email,
+          displayName: widget.displayName,
+          photoUrl: widget.photoUrl,
+          pageTitle: 'Account',
+          onBack: () => Navigator.of(accountContext).maybePop(),
+          onOpenLibrary: () {
+            Navigator.of(accountContext).pop();
+            if (mounted) setState(() => _selectedIndex = 3);
+          },
+          onSignOut: widget.onSignOut,
+          bottomPadding: 32,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettings(BuildContext context) {
+    return SettingsScreen(
+      embedded: true,
+      appearanceMode: widget.appearanceMode,
+      onAppearanceModeChanged: widget.onAppearanceModeChanged ?? (_) {},
+      accentColor: widget.accentColor,
+      onAccentColorChanged: widget.onAccentColorChanged ?? (_) {},
+      accountEmail: widget.email,
+      accountDisplayName: widget.displayName,
+      accountPhotoUrl: widget.photoUrl,
+      onOpenAccount: () => _openAccount(context),
+      bottomPadding: _usesSidebarNavigation ? 32 : 120,
     );
   }
 
@@ -582,6 +718,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       return ScanResultScreen(
         onBack: () => setState(() => _showScanResult = false),
         onScanAgain: () => setState(() => _showScanResult = false),
+        bottomNavigationInset: _usesSidebarNavigation ? 16 : 106,
       );
     }
 
@@ -602,30 +739,47 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       }),
       onCapture: () => setState(() => _showScanResult = true),
       onOpenSettings: widget.onOpenCameraSettings ?? openAppSettings,
+      bottomNavigationInset: _usesSidebarNavigation ? 16 : 112,
     );
   }
 
   Widget _buildCalendar(BuildContext context) {
-    return CalendarScreen(initialDate: widget.now);
+    return CalendarScreen(
+      initialDate: widget.now,
+      bottomPadding: _usesSidebarNavigation ? 32 : 120,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final pages = IndexedStack(
+      index: _selectedIndex,
+      children: [
+        _buildDashboard(context),
+        _buildCalendar(context),
+        TickerMode(enabled: _selectedIndex == 2, child: _buildScanner(context)),
+        _buildLibrary(context),
+        _buildSettings(context),
+      ],
+    );
+
+    if (_usesSidebarNavigation) {
+      return Scaffold(
+        body: Row(
+          children: [
+            WebNavigationSidebar(
+              currentIndex: _selectedIndex,
+              onTap: _selectDestination,
+            ),
+            Expanded(child: pages),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       extendBody: true,
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: [
-          _buildDashboard(context),
-          _buildCalendar(context),
-          TickerMode(
-            enabled: _selectedIndex == 2,
-            child: _buildScanner(context),
-          ),
-          _buildLibrary(context),
-          _buildProfile(context),
-        ],
-      ),
+      body: pages,
       bottomNavigationBar: LiquidGlassTabBar(
         currentIndex: _selectedIndex,
         onTap: _selectDestination,

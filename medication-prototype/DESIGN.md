@@ -1,4 +1,4 @@
-# Flutter Medication Companion — UX Plan
+# Mediary — UX Plan
 
 ## User Experience Analysis
 
