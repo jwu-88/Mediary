@@ -39,6 +39,8 @@
 	<string>958809412045-4pfuo3okr0gjtj50fps38sl66ffl59ss.apps.googleusercontent.com</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Mediary uses the camera to scan items.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

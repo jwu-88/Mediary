@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Profile — Flutter</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+  <link href="assets/styles.css" rel="stylesheet">
+</head>
+<body>
+  <main class="app-screen profile-screen" data-profile-screen data-mode="read" aria-label="Health profile">
+    <div class="status-bar">
+      <span>9:41</span>
+      <span class="status-icons"><i class="fa-solid fa-signal"></i><i class="fa-solid fa-wifi"></i><i class="fa-solid fa-battery-full"></i></span>
+    </div>
+
+    <header class="screen-header profile-header">
+      <span class="profile-header-spacer" id="profile-header-spacer" aria-hidden="true"></span>
+      <button class="profile-header-action profile-cancel" id="profile-cancel" type="button" hidden>Cancel</button>
+      <div class="header-copy profile-header-copy">
+        <p class="eyebrow" id="profile-mode-label">Account</p>
+        <h1>Your profile</h1>
+      </div>
+      <button class="profile-header-action" id="profile-edit" type="button" aria-label="Edit profile">Edit</button>
+      <button class="profile-header-action profile-done" id="profile-done" type="button" hidden>Done</button>
+    </header>
+
+    <div class="screen-content profile-content">
+      <section class="profile-hero" aria-label="Personal information">
+        <button class="avatar-editor" id="avatar-editor" type="button" aria-label="Change profile photo" disabled>
+          <img class="profile-photo" id="profile-photo" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=240&q=88" alt="Jayden profile">
+          <span class="camera-badge" data-edit-only hidden aria-hidden="true"><i class="fa-solid fa-camera"></i></span>
+        </button>
+        <input id="avatar-input" type="file" accept="image/*" hidden>
+
+        <div class="profile-copy">
+          <div data-read-only>
+            <h2 id="profile-name-read">Jayden Wu</h2>
+            <p id="profile-email-read">jayden@example.com</p>
+          </div>
+          <div class="profile-fields" data-edit-only hidden>
+            <label class="sr-only" for="profile-name">Name</label>
+            <input class="profile-field" id="profile-name" name="name" type="text" value="Jayden Wu" autocomplete="name" aria-describedby="profile-name-error">
+            <span class="field-error" id="profile-name-error" role="alert"></span>
+            <label class="sr-only" for="profile-email">Email</label>
+            <input class="profile-field" id="profile-email" name="email" type="text" inputmode="email" value="jayden@example.com" autocomplete="email" aria-describedby="profile-email-error">
+            <span class="field-error" id="profile-email-error" role="alert"></span>
+          </div>
+        </div>
+      </section>
+
+      <div class="section-heading profile-section-heading"><h2>Health details</h2></div>
+      <section class="health-grid" aria-label="Health information">
+        <article class="health-item">
+          <span>Blood type</span>
+          <strong id="blood-type-read" data-read-only>O+</strong>
+          <label class="sr-only" for="blood-type">Blood type</label>
+          <select class="health-picker" id="blood-type" data-edit-only hidden>
+            <option>A+</option><option>A−</option><option>B+</option><option>B−</option>
+            <option selected>O+</option><option>O−</option><option>AB+</option><option>AB−</option>
+          </select>
+        </article>
+        <article class="health-item allergies-item">
+          <span>Allergies</span>
+          <strong id="allergies-read" data-read-only>Penicillin</strong>
+          <div class="allergy-editor" id="allergy-editor" data-edit-only hidden>
+            <div class="allergy-tokens" id="allergy-tokens">
+              <button class="allergy-token" type="button" data-allergy="Penicillin" aria-label="Remove Penicillin allergy">Penicillin <i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+            </div>
+            <button class="allergy-add" id="allergy-add" type="button">Add</button>
+            <label class="sr-only" for="allergy-input">New allergy</label>
+            <input class="allergy-input" id="allergy-input" type="text" placeholder="Allergy name" hidden>
+          </div>
+        </article>
+        <article class="health-item">
+          <span>Medications</span>
+          <a class="health-link" href="library.html" aria-label="View 3 active medications in Library">3 active <i class="fa-solid fa-chevron-right" aria-hidden="true"></i></a>
+        </article>
+      </section>
+
+      <div class="section-heading profile-section-heading"><h2>Profile & care</h2></div>
+      <section class="settings-list profile-list" aria-label="Profile and care options">
+        <div class="settings-row profile-list-row care-team-row">
+          <span class="settings-copy">
+            <strong>Care team</strong>
+            <span id="care-team-read" data-read-only>Dr. Hannah Lee · City Health</span>
+            <span class="care-team-editor" data-edit-only hidden>
+              <label class="sr-only" for="care-team">Care team</label>
+              <input class="profile-field" id="care-team" type="text" value="Dr. Hannah Lee · City Health" aria-describedby="care-team-error">
+              <span class="field-error" id="care-team-error" role="alert"></span>
+            </span>
+          </span>
+          <i class="fa-solid fa-chevron-right settings-value" data-read-only aria-hidden="true"></i>
+        </div>
+
+        <button class="settings-row profile-list-row" type="button" data-lock-during-edit>
+          <span class="settings-copy"><strong>Health report</strong><span>Export your medication history</span></span>
+          <i class="fa-solid fa-chevron-right settings-value" aria-hidden="true"></i>
+        </button>
+
+        <button class="settings-row profile-list-row emergency-row" type="button" data-lock-during-edit>
+          <span class="emergency-icon"><i class="fa-solid fa-star-of-life" aria-hidden="true"></i></span>
+          <span class="settings-copy"><strong>Emergency profile</strong><span>Visible from the lock screen</span></span>
+          <i class="fa-solid fa-chevron-right settings-value" aria-hidden="true"></i>
+        </button>
+
+        <div class="settings-row profile-list-row reminder-row">
+          <span class="settings-copy"><strong>Dose reminders</strong></span>
+          <span class="toggle-with-status"><span class="toggle-status" id="reminder-status">On</span><label class="toggle" aria-label="Dose reminders"><input id="dose-reminders" type="checkbox" checked><span class="toggle-track"></span></label></span>
+        </div>
+
+        <button class="settings-row profile-list-row" type="button" data-lock-during-edit>
+          <span class="settings-copy"><strong>Privacy & data</strong></span>
+          <i class="fa-solid fa-chevron-right settings-value" aria-hidden="true"></i>
+        </button>
+
+        <button class="settings-row profile-list-row" type="button" data-lock-during-edit>
+          <span class="settings-copy"><strong>Settings</strong></span>
+          <i class="fa-solid fa-chevron-right settings-value" aria-hidden="true"></i>
+        </button>
+      </section>
+    </div>
+
+    <nav class="tab-bar" aria-label="Primary navigation">
+      <button class="tab-item" type="button"><i class="fa-solid fa-house"></i><span>Today</span></button>
+      <button class="tab-item" type="button"><i class="fa-regular fa-calendar"></i><span>Calendar</span></button>
+      <button class="tab-item" type="button"><i class="fa-solid fa-camera"></i><span>Scan</span></button>
+      <button class="tab-item" type="button"><i class="fa-solid fa-book-medical"></i><span>Library</span></button>
+      <button class="tab-item active" type="button"><i class="fa-regular fa-user"></i><span>Profile</span></button>
+    </nav>
+    <div class="home-indicator" aria-hidden="true"></div>
+
+    <p class="sr-only" id="profile-announcer" aria-live="polite"></p>
+
+    <dialog class="discard-dialog" id="discard-dialog" aria-labelledby="discard-title">
+      <div class="discard-dialog-copy">
+        <h2 id="discard-title">Discard changes?</h2>
+        <p>Your profile edits will not be saved.</p>
+      </div>
+      <div class="discard-dialog-actions">
+        <button id="keep-editing" type="button">Keep Editing</button>
+        <button class="discard-action" id="discard-changes" type="button">Discard Changes</button>
+      </div>
+    </dialog>
+  </main>
+  <script src="assets/profile.js"></script>
+</body>
+</html>
