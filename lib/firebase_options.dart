@@ -1,6 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 
-/// Firebase configuration for the CAC web application.
+/// Firebase configuration for the Mediary web application.
 ///
 /// Native platforms continue to read their configuration from their bundled
 /// Google service files.

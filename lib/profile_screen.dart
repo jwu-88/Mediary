@@ -1,5 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'liquid_glass_back_button.dart';
 
 class ProfileDraft {
   const ProfileDraft({
@@ -8,6 +11,7 @@ class ProfileDraft {
     required this.bloodType,
     required this.allergies,
     required this.careTeam,
+    this.photoUrl,
   });
 
   final String name;
@@ -15,32 +19,43 @@ class ProfileDraft {
   final String bloodType;
   final List<String> allergies;
   final String careTeam;
+  final String? photoUrl;
 }
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
     super.key,
     required this.email,
+    this.pageTitle = 'Account',
     this.displayName,
     this.photoUrl,
     this.onOpenLibrary,
     this.onOpenSettings,
+    this.onBack,
+    this.onSignOut,
     this.onSave,
+    this.bottomPadding = 120,
   });
 
   final String email;
+  final String pageTitle;
   final String? displayName;
   final String? photoUrl;
   final VoidCallback? onOpenLibrary;
+
+  /// Retained for callers that have not yet migrated to the Settings shell.
+  /// Account no longer presents a nested Settings row.
   final VoidCallback? onOpenSettings;
+  final VoidCallback? onBack;
+  final Future<void> Function()? onSignOut;
   final Future<void> Function(ProfileDraft draft)? onSave;
+  final double bottomPadding;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  static const _blue = Color(0xFF0A62D0);
   static const _red = Color(0xFFC9342C);
   static const _bloodTypes = ['A+', 'A−', 'B+', 'B−', 'O+', 'O−', 'AB+', 'AB−'];
 
@@ -53,15 +68,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   late String _savedName;
   late String _savedEmail;
+  String? _savedPhotoUrl;
   String _savedBloodType = 'O+';
   List<String> _savedAllergies = ['Penicillin'];
   String _savedCareTeam = 'Dr. Hannah Lee · City Health';
 
   String _draftBloodType = 'O+';
   List<String> _draftAllergies = ['Penicillin'];
+  String? _draftPhotoUrl;
   bool _isEditing = false;
   bool _isSaving = false;
-  bool _doseReminders = true;
+  bool _isSigningOut = false;
   String? _nameError;
   String? _emailError;
   String? _careTeamError;
@@ -86,6 +103,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ? _nameFromEmail(widget.email)
         : displayName;
     _savedEmail = widget.email;
+    _savedPhotoUrl = widget.photoUrl;
+    _draftPhotoUrl = _savedPhotoUrl;
     _nameController = TextEditingController(text: _savedName);
     _emailController = TextEditingController(text: _savedEmail);
     _careTeamController = TextEditingController(text: _savedCareTeam);
@@ -170,6 +189,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       _draftBloodType = _savedBloodType;
       _draftAllergies = [..._savedAllergies];
+      _draftPhotoUrl = _savedPhotoUrl;
       _nameError = null;
       _emailError = null;
       _careTeamError = null;
@@ -187,6 +207,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _emailController.text != _savedEmail ||
       _careTeamController.text != _savedCareTeam ||
       _draftBloodType != _savedBloodType ||
+      _draftPhotoUrl != _savedPhotoUrl ||
       !_sameItems(_draftAllergies, _savedAllergies);
 
   bool _sameItems(List<String> first, List<String> second) {
@@ -206,6 +227,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _emailError = null;
       _careTeamError = null;
       _saveError = null;
+      _draftPhotoUrl = _savedPhotoUrl;
       _announcement = 'Editing cancelled.';
     });
   }
@@ -219,7 +241,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final discard = await showCupertinoDialog<bool>(
       context: context,
       builder: (context) => CupertinoAlertDialog(
-        title: const Text('Discard changes?'),
+        title: const Text('Discard Changes?'),
         content: const Text('Your profile edits will not be saved.'),
         actions: [
           CupertinoDialogAction(
@@ -258,6 +280,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       bloodType: _draftBloodType,
       allergies: List.unmodifiable(_draftAllergies),
       careTeam: _careTeamController.text.trim(),
+      photoUrl: _draftPhotoUrl,
     );
     setState(() {
       _isSaving = true;
@@ -273,6 +296,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _savedBloodType = draft.bloodType;
         _savedAllergies = [...draft.allergies];
         _savedCareTeam = draft.careTeam;
+        _savedPhotoUrl = draft.photoUrl;
         _isSaving = false;
         _isEditing = false;
         _announcement = 'Profile saved.';
@@ -293,7 +317,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final allergy = await showCupertinoDialog<String>(
       context: context,
       builder: (context) => CupertinoAlertDialog(
-        title: const Text('Add allergy'),
+        title: const Text('Add Allergy'),
         content: Padding(
           padding: const EdgeInsets.only(top: 12),
           child: CupertinoTextField(
@@ -326,6 +350,151 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (!duplicate) setState(() => _draftAllergies.add(value));
   }
 
+  Future<void> _changeProfilePhoto() async {
+    final controller = TextEditingController(text: _draftPhotoUrl ?? '');
+    final photoUrl = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Profile Photo'),
+        content: TextField(
+          key: const Key('profilePhotoUrlField'),
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.url,
+          textInputAction: TextInputAction.done,
+          decoration: const InputDecoration(
+            labelText: 'Image URL',
+            hintText: 'https://example.com/photo.jpg',
+          ),
+          onSubmitted: (value) => Navigator.pop(context, value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, ''),
+            child: const Text('Use Initials'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (photoUrl == null || !mounted) return;
+    setState(() {
+      _draftPhotoUrl = photoUrl.isEmpty ? null : photoUrl;
+      _announcement = photoUrl.isEmpty
+          ? 'Profile photo removed.'
+          : 'Profile photo updated.';
+    });
+  }
+
+  Future<void> _showInfoDialog({
+    required String title,
+    required String body,
+    String? copyText,
+  }) async {
+    final copied = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: SelectionArea(child: Text(body)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Done'),
+          ),
+          if (copyText != null)
+            FilledButton.tonalIcon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: copyText));
+                if (context.mounted) Navigator.pop(context, true);
+              },
+              icon: const Icon(CupertinoIcons.doc_on_doc, size: 16),
+              label: const Text('Copy'),
+            ),
+        ],
+      ),
+    );
+    if (copied == true && mounted) {
+      _announce('$title copied.');
+      ScaffoldMessenger.maybeOf(context)
+          ?.showSnackBar(SnackBar(content: Text('$title copied')));
+    }
+  }
+
+  Future<void> _showCareTeam() {
+    return _showInfoDialog(
+      title: 'Care Team',
+      body: _savedCareTeam,
+      copyText: _savedCareTeam,
+    );
+  }
+
+  Future<void> _showHealthReport() {
+    final report =
+        'Mediary Health Report\n'
+        'Name: $_savedName\n'
+        'Blood Type: $_savedBloodType\n'
+        'Allergies: ${_savedAllergies.isEmpty ? 'None' : _savedAllergies.join(', ')}\n'
+        'Active Medications: 3\n'
+        'Care Team: $_savedCareTeam';
+    return _showInfoDialog(
+      title: 'Health Report',
+      body: report,
+      copyText: report,
+    );
+  }
+
+  Future<void> _showEmergencyProfile() {
+    final summary =
+        '$_savedName\n'
+        'Blood Type: $_savedBloodType\n'
+        'Allergies: ${_savedAllergies.isEmpty ? 'None' : _savedAllergies.join(', ')}\n'
+        'Care Team: $_savedCareTeam';
+    return _showInfoDialog(
+      title: 'Emergency Profile',
+      body: summary,
+      copyText: summary,
+    );
+  }
+
+  Future<void> _openActiveMedications() async {
+    if (widget.onOpenLibrary != null) {
+      widget.onOpenLibrary!();
+      return;
+    }
+    await _showInfoDialog(
+      title: 'Active Medications',
+      body: 'Amoxicillin\nVitamin D3\nCetirizine',
+    );
+  }
+
+  Future<void> _signOut() async {
+    final onSignOut = widget.onSignOut;
+    if (onSignOut == null || _isSigningOut) return;
+    setState(() => _isSigningOut = true);
+    try {
+      await onSignOut();
+      if (!mounted) return;
+      _announce('Signed out.');
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } catch (_) {
+      if (!mounted) return;
+      _announce('Could not sign out. Try again.');
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('Could not sign out. Try again.')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSigningOut = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -334,20 +503,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
         bottom: false,
         child: Column(
           children: [
-            _ProfileHeader(
-              isEditing: _isEditing,
-              isSaving: _isSaving,
-              ink: _ink,
-              muted: _muted,
-              onEdit: _startEditing,
-              onCancel: _cancelEditing,
-              onDone: _saveProfile,
-            ),
             Expanded(
               child: ListView(
                 key: const Key('profileScrollView'),
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
+                padding: EdgeInsets.fromLTRB(16, 4, 16, widget.bottomPadding),
                 children: [
+                  _ProfileHeader(
+                    pageTitle: widget.pageTitle,
+                    isEditing: _isEditing,
+                    isSaving: _isSaving,
+                    ink: _ink,
+                    muted: _muted,
+                    onBack: widget.onBack,
+                    onEdit: _startEditing,
+                    onCancel: _cancelEditing,
+                    onDone: _saveProfile,
+                  ),
                   _buildHero(),
                   if (_saveError != null)
                     Padding(
@@ -362,10 +533,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                     ),
-                  _sectionTitle('Health details'),
+                  _sectionTitle(
+                    'Health Details',
+                    key: const Key('profileHealthDetailsTitle'),
+                  ),
                   _buildHealthSummary(),
-                  _sectionTitle('Profile & care'),
+                  _sectionTitle('Care'),
                   _buildProfileList(),
+                  if (widget.onSignOut != null) ...[
+                    const SizedBox(height: 24),
+                    _buildSignOutButton(),
+                  ],
                 ],
               ),
             ),
@@ -390,10 +568,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           _ProfileAvatar(
-            photoUrl: widget.photoUrl,
+            photoUrl: _isEditing ? _draftPhotoUrl : _savedPhotoUrl,
             initials: _initials,
             isEditing: _isEditing,
             surfaceColor: _background,
+            onTap: _changeProfilePhoto,
           ),
           const SizedBox(width: 13),
           Expanded(
@@ -426,28 +605,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ],
                     )
-                  : Column(
+                  : Align(
                       key: const ValueKey('readProfileFields'),
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _savedName,
-                          key: const Key('profileName'),
-                          style: TextStyle(
-                            color: _ink,
-                            fontSize: 18,
-                            height: 1.2,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -.25,
+                      alignment: Alignment.centerLeft,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _savedName,
+                            key: const Key('profileName'),
+                            style: TextStyle(
+                              color: _ink,
+                              fontSize: 18,
+                              height: 1.2,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -.25,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _savedEmail,
-                          key: const Key('profileEmail'),
-                          style: TextStyle(color: _muted, fontSize: 12),
-                        ),
-                      ],
+                          const SizedBox(height: 4),
+                          Text(
+                            _savedEmail,
+                            key: const Key('profileEmail'),
+                            style: TextStyle(color: _muted, fontSize: 12),
+                          ),
+                        ],
+                      ),
                     ),
             ),
           ),
@@ -492,11 +675,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _sectionTitle(String title) {
+  Widget _sectionTitle(String title, {Key? key}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(2, 20, 2, 9),
       child: Text(
         title,
+        key: key,
         style: TextStyle(
           color: _ink,
           fontSize: 18,
@@ -524,7 +708,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             Expanded(
               child: _HealthItem(
-                label: 'Blood type',
+                label: 'Blood Type',
                 lineColor: _line,
                 child: _isEditing
                     ? DropdownButtonHideUnderline(
@@ -590,7 +774,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             key: const Key('addAllergyButton'),
                             style: TextButton.styleFrom(
                               minimumSize: const Size(44, 44),
-                              foregroundColor: _blue,
+                              foregroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .primary,
                               padding: EdgeInsets.zero,
                               textStyle: const TextStyle(
                                 fontSize: 12,
@@ -623,7 +809,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: TextButton(
                   key: const Key('activeMedicationsButton'),
                   style: TextButton.styleFrom(
-                    foregroundColor: _blue,
+                    foregroundColor: Theme.of(context).colorScheme.primary,
                     minimumSize: const Size(44, 44),
                     padding: EdgeInsets.zero,
                     textStyle: const TextStyle(
@@ -631,7 +817,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  onPressed: widget.onOpenLibrary,
+                  onPressed: _openActiveMedications,
                   child: const FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Row(
@@ -662,8 +848,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _ProfileRow(
               lineColor: _line,
               enabled: true,
-              title: 'Care team',
+              title: 'Care Team',
               subtitle: _isEditing ? null : _savedCareTeam,
+              onTap: _isEditing ? null : _showCareTeam,
               content: _isEditing
                   ? Padding(
                       padding: const EdgeInsets.only(top: 6),
@@ -672,7 +859,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         controller: _careTeamController,
                         focusNode: _careTeamFocus,
                         errorText: _careTeamError,
-                        label: 'Care team',
+                        label: 'Care Team',
                         keyboardType: TextInputType.text,
                         textInputAction: TextInputAction.done,
                         onSubmitted: (_) => _saveProfile(),
@@ -686,8 +873,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _ProfileRow(
               lineColor: _line,
               enabled: !_isEditing,
-              title: 'Health report',
-              subtitle: 'Export your medication history',
+              title: 'Health Report',
+              subtitle: 'View or copy your summary',
+              onTap: _showHealthReport,
               trailing: Icon(
                 CupertinoIcons.chevron_right,
                 color: _muted,
@@ -695,10 +883,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             _ProfileRow(
-              lineColor: _line,
+              lineColor: Colors.transparent,
               enabled: !_isEditing,
-              title: 'Emergency profile',
-              subtitle: 'Visible from the lock screen',
+              title: 'Emergency Profile',
+              subtitle: 'Essential health details',
+              onTap: _showEmergencyProfile,
               leading: const Icon(
                 CupertinoIcons.staroflife_fill,
                 color: _red,
@@ -710,56 +899,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 size: 15,
               ),
             ),
-            _ProfileRow(
-              lineColor: _line,
-              enabled: true,
-              title: 'Dose reminders',
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _doseReminders ? 'On' : 'Off',
-                    key: const Key('doseReminderStatus'),
-                    style: TextStyle(color: _muted, fontSize: 12),
-                  ),
-                  const SizedBox(width: 8),
-                  CupertinoSwitch(
-                    key: const Key('doseReminderSwitch'),
-                    value: _doseReminders,
-                    activeTrackColor: _blue,
-                    onChanged: (value) {
-                      setState(() {
-                        _doseReminders = value;
-                        _announcement =
-                            'Dose reminders turned ${value ? 'on' : 'off'}.';
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ),
-            _ProfileRow(
-              lineColor: _line,
-              enabled: !_isEditing,
-              title: 'Privacy & data',
-              trailing: Icon(
-                CupertinoIcons.chevron_right,
-                color: _muted,
-                size: 15,
-              ),
-            ),
-            _ProfileRow(
-              lineColor: Colors.transparent,
-              enabled: !_isEditing,
-              title: 'Settings',
-              onTap: widget.onOpenSettings,
-              trailing: Icon(
-                CupertinoIcons.chevron_right,
-                color: _muted,
-                size: 15,
-              ),
-            ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSignOutButton() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: ColoredBox(
+        color: _surface,
+        child: CupertinoButton(
+          key: const Key('accountSignOutButton'),
+          minimumSize: const Size.fromHeight(52),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          onPressed: _isEditing || _isSigningOut ? null : _signOut,
+          child: _isSigningOut
+              ? const CupertinoActivityIndicator(radius: 9)
+              : const Text(
+                  'Sign Out',
+                  style: TextStyle(
+                    color: _red,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
         ),
       ),
     );
@@ -768,100 +933,107 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
 class _ProfileHeader extends StatelessWidget {
   const _ProfileHeader({
+    required this.pageTitle,
     required this.isEditing,
     required this.isSaving,
     required this.ink,
     required this.muted,
+    this.onBack,
     required this.onEdit,
     required this.onCancel,
     required this.onDone,
   });
 
+  final String pageTitle;
   final bool isEditing;
   final bool isSaving;
   final Color ink;
   final Color muted;
+  final VoidCallback? onBack;
   final VoidCallback onEdit;
   final VoidCallback onCancel;
   final VoidCallback onDone;
 
-  static const _blue = Color(0xFF0A62D0);
-
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final actionStyle = TextButton.styleFrom(
-      foregroundColor: _blue,
+      foregroundColor: colors.primary,
       minimumSize: const Size(64, 44),
       padding: const EdgeInsets.symmetric(horizontal: 4),
       textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
     );
-    return SizedBox(
-      height: 78,
+    return Padding(
+      key: const Key('profilePageHeader'),
+      padding: const EdgeInsets.fromLTRB(2, 10, 0, 10),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          SizedBox(
-            width: 72,
-            child: isEditing
-                ? TextButton(
-                    key: const Key('cancelProfileEditButton'),
-                    style: actionStyle,
-                    onPressed: isSaving ? null : onCancel,
-                    child: const Text('Cancel'),
-                  )
-                : null,
-          ),
+          if (onBack != null) ...[
+            LiquidGlassBackButton(
+              key: const Key('accountBackButton'),
+              semanticLabel: 'Back to Settings',
+              onPressed: onBack!,
+            ),
+            const SizedBox(width: 10),
+          ],
           Expanded(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  isEditing ? 'EDITING' : 'ACCOUNT',
-                  key: const Key('profileEyebrow'),
-                  style: TextStyle(
-                    color: muted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: .48,
+                if (isEditing) ...[
+                  Text(
+                    'EDITING',
+                    key: const Key('profileEyebrow'),
+                    style: TextStyle(
+                      color: muted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: .44,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
+                  const SizedBox(height: 1),
+                ],
                 Text(
-                  'Your profile',
+                  pageTitle,
+                  key: const Key('profilePageTitle'),
                   style: TextStyle(
                     color: ink,
-                    fontSize: 26,
+                    fontSize: 30,
                     height: 1.1,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: -.7,
+                    letterSpacing: -.8,
                   ),
                 ),
               ],
             ),
           ),
-          SizedBox(
-            width: 72,
-            child: TextButton(
-              key: Key(
-                isEditing ? 'doneProfileEditButton' : 'editProfileButton',
-              ),
-              style: actionStyle.copyWith(
-                textStyle: WidgetStatePropertyAll(
-                  TextStyle(
-                    fontSize: 15,
-                    fontWeight: isEditing ? FontWeight.w700 : FontWeight.w500,
-                  ),
+          if (isEditing)
+            TextButton(
+              key: const Key('cancelProfileEditButton'),
+              style: actionStyle,
+              onPressed: isSaving ? null : onCancel,
+              child: const Text('Cancel'),
+            ),
+          TextButton(
+            key: Key(isEditing ? 'doneProfileEditButton' : 'editProfileButton'),
+            style: actionStyle.copyWith(
+              textStyle: WidgetStatePropertyAll(
+                TextStyle(
+                  fontSize: 15,
+                  fontWeight: isEditing ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),
-              onPressed: isEditing ? onDone : onEdit,
-              child: isSaving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CupertinoActivityIndicator(radius: 8),
-                    )
-                  : Text(isEditing ? 'Done' : 'Edit'),
             ),
+            onPressed: isEditing ? onDone : onEdit,
+            child: isSaving
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CupertinoActivityIndicator(radius: 8),
+                  )
+                : Text(isEditing ? 'Done' : 'Edit'),
           ),
         ],
       ),
@@ -875,59 +1047,67 @@ class _ProfileAvatar extends StatelessWidget {
     required this.initials,
     required this.isEditing,
     required this.surfaceColor,
+    required this.onTap,
   });
 
   final String? photoUrl;
   final String initials;
   final bool isEditing;
   final Color surfaceColor;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final photo = photoUrl?.trim();
+    final colors = Theme.of(context).colorScheme;
     return Semantics(
       button: isEditing,
       label: isEditing ? 'Change profile photo' : 'Profile photo',
-      child: SizedBox(
-        width: 66,
-        height: 66,
-        child: Stack(
-          children: [
-            CircleAvatar(
-              radius: 32,
-              backgroundColor: const Color(0xFFDDE7FA),
-              foregroundImage: photo == null || photo.isEmpty
-                  ? null
-                  : NetworkImage(photo),
-              child: Text(
-                initials,
-                style: const TextStyle(
-                  color: Color(0xFF173B70),
-                  fontSize: 19,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            if (isEditing)
-              Positioned(
-                right: 0,
-                bottom: 0,
-                child: Container(
-                  width: 26,
-                  height: 26,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0A62D0),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: surfaceColor, width: 2),
-                  ),
-                  child: const Icon(
-                    CupertinoIcons.camera_fill,
-                    color: Colors.white,
-                    size: 12,
+      child: GestureDetector(
+        key: const Key('changeProfilePhotoButton'),
+        behavior: HitTestBehavior.opaque,
+        onTap: isEditing ? onTap : null,
+        child: SizedBox(
+          width: 66,
+          height: 66,
+          child: Stack(
+            children: [
+              CircleAvatar(
+                radius: 32,
+                backgroundColor: colors.primaryContainer,
+                foregroundImage: photo == null || photo.isEmpty
+                    ? null
+                    : NetworkImage(photo),
+                child: Text(
+                  initials,
+                  style: TextStyle(
+                    color: colors.onPrimaryContainer,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
-          ],
+              if (isEditing)
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: colors.primary,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: surfaceColor, width: 2),
+                    ),
+                    child: Icon(
+                      CupertinoIcons.camera_fill,
+                      color: colors.onPrimary,
+                      size: 12,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

@@ -1,18 +1,30 @@
-# flutter_application
+# Mediary
 
-A new Flutter project.
+## Overview
 
-## Getting Started
+Mediary is a Flutter medication companion for organizing daily medications,
+reviewing schedules, and exploring common medication information across mobile
+and web.
 
-This project is a starting point for a Flutter application.
+## Description
 
-A few resources to get you started if this is your first Flutter project:
+The app includes Firebase email/password and Google sign-in, a dose dashboard,
+calendar, medication library, scanner prototype, weekly reports, and appearance
+and account settings. Scanning, schedules, reports, profile details, and most
+preferences currently use sample or local state. Mediary is a development
+prototype, not a medical device or a substitute for professional medical advice.
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## How to Run
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
-# CAC
+Install Flutter with Dart 3.13 or newer, plus the platform tooling for your
+target (Android SDK for Android; Xcode and CocoaPods for iOS). Then run:
+
+```sh
+flutter pub get
+flutter run
+```
+
+Use `flutter run -d chrome` for web. Firebase client configuration is included;
+enable Email/Password and Google providers in the configured Firebase project
+for authentication. To use another Firebase project, install the FlutterFire
+CLI and run `flutterfire configure` before launching the app.

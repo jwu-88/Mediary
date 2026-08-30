@@ -3,6 +3,8 @@ import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'liquid_glass_back_button.dart';
+
 /// Camera permission state used by [MedicationScannerScreen].
 ///
 /// This lives outside the application shell so the scanner can be reused
@@ -16,6 +18,65 @@ enum ScannerAccessState {
   error,
 }
 
+class _ScannerPalette {
+  const _ScannerPalette({
+    required this.isDark,
+    required this.background,
+    required this.surface,
+    required this.fieldSurface,
+    required this.primaryText,
+    required this.secondaryText,
+    required this.separator,
+    required this.primary,
+    required this.success,
+    required this.onSuccess,
+    required this.actionMaterial,
+    required this.warningSurface,
+    required this.warningText,
+    required this.warningIcon,
+  });
+
+  factory _ScannerPalette.of(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    return _ScannerPalette(
+      isDark: isDark,
+      background: theme.scaffoldBackgroundColor,
+      surface: colors.surface,
+      fieldSurface: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF9F9FB),
+      primaryText: colors.onSurface,
+      secondaryText: colors.onSurfaceVariant,
+      separator: colors.outline.withValues(alpha: isDark ? .90 : .65),
+      primary: colors.primary,
+      success: isDark ? const Color(0xFF30D158) : const Color(0xFF248A3D),
+      onSuccess: isDark ? Colors.black : Colors.white,
+      actionMaterial: colors.surface.withValues(alpha: isDark ? .90 : .88),
+      warningSurface: isDark
+          ? const Color(0xFF392A19)
+          : const Color(0xFFFFF6E8),
+      warningText: isDark ? const Color(0xFFFFD19A) : const Color(0xFF8B531E),
+      warningIcon: isDark ? const Color(0xFFFF9F0A) : const Color(0xFFB06A22),
+    );
+  }
+
+  final bool isDark;
+  final Color background;
+  final Color surface;
+  final Color fieldSurface;
+  final Color primaryText;
+  final Color secondaryText;
+  final Color separator;
+  final Color primary;
+  final Color success;
+  final Color onSuccess;
+  final Color actionMaterial;
+  final Color warningSurface;
+  final Color warningText;
+  final Color warningIcon;
+}
+
 class MedicationScannerScreen extends StatefulWidget {
   const MedicationScannerScreen({
     super.key,
@@ -24,6 +85,7 @@ class MedicationScannerScreen extends StatefulWidget {
     required this.onClose,
     required this.onCapture,
     this.onOpenSettings,
+    this.bottomNavigationInset = 112,
   });
 
   final ScannerAccessState accessState;
@@ -31,6 +93,7 @@ class MedicationScannerScreen extends StatefulWidget {
   final VoidCallback onClose;
   final VoidCallback onCapture;
   final Future<bool> Function()? onOpenSettings;
+  final double bottomNavigationInset;
 
   @override
   State<MedicationScannerScreen> createState() =>
@@ -42,7 +105,7 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen>
   late final AnimationController _scanController;
   bool _isAnalyzing = false;
   bool _torchEnabled = false;
-  int _selectedMode = 0;
+  bool _barcodeMode = false;
 
   @override
   void initState() {
@@ -68,29 +131,52 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen>
     if (mounted) setState(() => _isAnalyzing = false);
   }
 
+  Future<void> _choosePhoto() async {
+    if (_isAnalyzing) return;
+    setState(() {
+      _barcodeMode = false;
+      _isAnalyzing = true;
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 550));
+    if (!mounted) return;
+    widget.onCapture();
+    if (mounted) setState(() => _isAnalyzing = false);
+  }
+
+  void _toggleBarcodeMode() {
+    if (_isAnalyzing) return;
+    setState(() => _barcodeMode = !_barcodeMode);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final palette = _ScannerPalette.of(context);
     if (widget.accessState != ScannerAccessState.granted) {
       return _PermissionView(
         accessState: widget.accessState,
         onClose: widget.onClose,
         onRequestAccess: widget.onRequestAccess,
         onOpenSettings: widget.onOpenSettings,
+        bottomNavigationInset: widget.bottomNavigationInset,
       );
     }
 
     return ColoredBox(
-      color: const Color(0xFFF2F2F7),
+      color: palette.background,
       child: SafeArea(
         bottom: false,
         child: LayoutBuilder(
           builder: (context, pageConstraints) {
-            final panelHeight = (pageConstraints.maxHeight - 120).clamp(
-              0.0,
-              660.0,
-            );
+            final panelHeight =
+                (pageConstraints.maxHeight - widget.bottomNavigationInset - 8)
+                    .clamp(0.0, 660.0);
             return Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 112),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                8,
+                16,
+                widget.bottomNavigationInset,
+              ),
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 390),
@@ -111,29 +197,9 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen>
                           return Stack(
                             fit: StackFit.expand,
                             children: [
-                              Image.network(
-                                'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=900&q=90',
-                                fit: BoxFit.cover,
-                                color: const Color(0xFFADB6C2)
-                                    .withValues(alpha: .72),
-                                colorBlendMode: BlendMode.modulate,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    const _CameraFallback(),
-                              ),
-                              const DecoratedBox(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                    colors: [
-                                      Color(0xB3070A10),
-                                      Color(0x14070A10),
-                                      Color(0x05070A10),
-                                      Color(0xE6070A10),
-                                    ],
-                                    stops: [0, .28, .58, 1],
-                                  ),
-                                ),
+                              const ColoredBox(
+                                key: Key('scannerCameraBackground'),
+                                color: Colors.black,
                               ),
                               Positioned(
                                 left: 42,
@@ -158,34 +224,27 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen>
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      _GlassIconButton(
+                                      LiquidGlassBackButton(
                                         key: const Key('closeScannerButton'),
-                                        icon: CupertinoIcons.xmark,
-                                        label: 'Close scanner',
+                                        semanticLabel: 'Back from Scanner',
+                                        overImage: true,
                                         onPressed: widget.onClose,
                                       ),
                                       const Spacer(),
-                                      const Padding(
-                                        padding: EdgeInsets.only(top: 2),
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 9),
                                         child: Column(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
                                             Text(
-                                              'Scan medication',
-                                              style: TextStyle(
+                                              _barcodeMode
+                                                  ? 'Scan Barcode'
+                                                  : 'Scan Medication',
+                                              style: const TextStyle(
                                                 color: Colors.white,
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w700,
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w600,
                                                 letterSpacing: -.2,
-                                              ),
-                                            ),
-                                            SizedBox(height: 2),
-                                            Text(
-                                              'Front label',
-                                              style: TextStyle(
-                                                color: Color(0xADFFFFFF),
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w500,
                                               ),
                                             ),
                                           ],
@@ -266,8 +325,10 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen>
                                             Flexible(
                                               child: Text(
                                                 _isAnalyzing
-                                                    ? 'Analyzing medication…'
-                                                    : 'Hold steady and keep the label inside the frame',
+                                                    ? 'Analyzing…'
+                                                    : _barcodeMode
+                                                    ? 'Center the barcode'
+                                                    : 'Center the label',
                                                 textAlign: TextAlign.center,
                                                 maxLines: 2,
                                                 style: const TextStyle(
@@ -288,101 +349,82 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen>
                               Positioned(
                                 left: 0,
                                 right: 0,
-                                bottom: 56,
+                                bottom: 22,
                                 child: Row(
                                   children: [
-                                    const Expanded(
+                                    Expanded(
                                       child: _CaptureSideControl(
+                                        key: const Key(
+                                          'openScannerPhotosButton',
+                                        ),
                                         icon: CupertinoIcons.photo,
-                                        label: 'Photos',
+                                        label: 'Choose a medication photo',
+                                        onPressed: _choosePhoto,
+                                        enabled: !_isAnalyzing,
                                       ),
                                     ),
-                                    Semantics(
-                                      button: true,
-                                      enabled: !_isAnalyzing,
-                                      label: _isAnalyzing
+                                    Tooltip(
+                                      message: _isAnalyzing
                                           ? 'Analyzing medication'
                                           : 'Capture medication',
-                                      child: GestureDetector(
-                                        key: const Key(
-                                          'captureMedicationButton',
-                                        ),
-                                        onTap: _isAnalyzing ? null : _capture,
-                                        child: AnimatedScale(
-                                          duration: const Duration(
-                                            milliseconds: 120,
+                                      child: Semantics(
+                                        button: true,
+                                        enabled: !_isAnalyzing,
+                                        label: _isAnalyzing
+                                            ? 'Analyzing medication'
+                                            : 'Capture medication',
+                                        child: GestureDetector(
+                                          key: const Key(
+                                            'captureMedicationButton',
                                           ),
-                                          scale: _isAnalyzing ? .9 : 1,
-                                          child: Container(
-                                            width: 70,
-                                            height: 70,
-                                            padding: const EdgeInsets.all(5),
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              border: Border.all(
-                                                color: Colors.white,
-                                                width: 4,
-                                              ),
-                                              color: Colors.white.withValues(
-                                                alpha: .2,
-                                              ),
+                                          onTap: _isAnalyzing ? null : _capture,
+                                          child: AnimatedScale(
+                                            duration: const Duration(
+                                              milliseconds: 120,
                                             ),
-                                            child: DecoratedBox(
+                                            scale: _isAnalyzing ? .9 : 1,
+                                            child: Container(
+                                              width: 70,
+                                              height: 70,
+                                              padding: const EdgeInsets.all(5),
                                               decoration: BoxDecoration(
                                                 shape: BoxShape.circle,
-                                                color: _isAnalyzing
-                                                    ? Colors.white.withValues(
-                                                        alpha: .65,
-                                                      )
-                                                    : Colors.white,
+                                                border: Border.all(
+                                                  color: Colors.white,
+                                                  width: 4,
+                                                ),
+                                                color: Colors.white.withValues(
+                                                  alpha: .12,
+                                                ),
+                                              ),
+                                              child: DecoratedBox(
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  color: _isAnalyzing
+                                                      ? Colors.white.withValues(
+                                                          alpha: .65,
+                                                        )
+                                                      : Colors.white,
+                                                ),
                                               ),
                                             ),
                                           ),
                                         ),
                                       ),
                                     ),
-                                    const Expanded(
+                                    Expanded(
                                       child: _CaptureSideControl(
+                                        key: const Key('scannerBarcodeButton'),
                                         icon: CupertinoIcons.barcode_viewfinder,
-                                        label: 'Barcode',
+                                        label: _barcodeMode
+                                            ? 'Scan a medication label'
+                                            : 'Scan a barcode',
+                                        isSelected: _barcodeMode,
+                                        onPressed: _toggleBarcodeMode,
+                                        enabled: !_isAnalyzing,
                                       ),
                                     ),
                                   ],
-                                ),
-                              ),
-                              Positioned(
-                                left: 64,
-                                right: 64,
-                                bottom: 6,
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: List.generate(3, (index) {
-                                    const labels = ['LABEL', 'PILL', 'BARCODE'];
-                                    return CupertinoButton(
-                                      key: Key('scanMode${labels[index]}'),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 7,
-                                      ),
-                                      minimumSize: const Size(44, 32),
-                                      onPressed: () =>
-                                          setState(() => _selectedMode = index),
-                                      child: Text(
-                                        labels[index],
-                                        style: TextStyle(
-                                          color: _selectedMode == index
-                                              ? Colors.white
-                                              : Colors.white.withValues(
-                                                  alpha: .46,
-                                                ),
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w700,
-                                          letterSpacing: .25,
-                                        ),
-                                      ),
-                                    );
-                                  }),
                                 ),
                               ),
                             ],
@@ -407,40 +449,41 @@ class _PermissionView extends StatelessWidget {
     required this.onClose,
     required this.onRequestAccess,
     this.onOpenSettings,
+    required this.bottomNavigationInset,
   });
 
   final ScannerAccessState accessState;
   final VoidCallback onClose;
   final Future<void> Function() onRequestAccess;
   final Future<bool> Function()? onOpenSettings;
-
-  static const _blue = Color(0xFF0A62D0);
+  final double bottomNavigationInset;
 
   @override
   Widget build(BuildContext context) {
+    final palette = _ScannerPalette.of(context);
     final (title, message, icon) = switch (accessState) {
       ScannerAccessState.notRequested => (
-        'Camera access required',
+        'Camera Access Required',
         'Allow camera access to scan medication labels and barcodes.',
         CupertinoIcons.camera,
       ),
       ScannerAccessState.requesting => (
-        'Requesting camera access',
+        'Requesting Camera Access',
         'Respond to the system permission prompt to continue.',
         CupertinoIcons.camera_rotate,
       ),
       ScannerAccessState.denied => (
-        'Camera access denied',
+        'Camera Access Denied',
         'The scanner needs camera access. You can try the permission request again.',
         CupertinoIcons.camera,
       ),
       ScannerAccessState.permanentlyDenied => (
-        'Enable camera access',
+        'Enable Camera Access',
         'Open Settings and allow camera access for this app, then return here.',
         CupertinoIcons.camera,
       ),
       ScannerAccessState.error => (
-        'Camera unavailable',
+        'Camera Unavailable',
         'The camera permission request could not be completed. Please try again.',
         CupertinoIcons.exclamationmark_triangle,
       ),
@@ -452,22 +495,20 @@ class _PermissionView extends StatelessWidget {
         onOpenSettings != null;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF2F2F7),
+      backgroundColor: palette.background,
       body: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.only(bottom: 112),
+          padding: EdgeInsets.only(bottom: bottomNavigationInset),
           child: Stack(
             children: [
               Positioned(
                 top: 4,
                 left: 10,
-                child: CupertinoButton(
+                child: LiquidGlassBackButton(
                   key: const Key('closeScannerButton'),
-                  padding: const EdgeInsets.all(12),
-                  minimumSize: const Size.square(44),
+                  semanticLabel: 'Back from Scanner',
                   onPressed: onClose,
-                  child: const Icon(CupertinoIcons.xmark, size: 20),
                 ),
               ),
               Center(
@@ -479,28 +520,33 @@ class _PermissionView extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (isRequesting)
-                          const SizedBox.square(
+                          SizedBox.square(
                             dimension: 50,
-                            child: CupertinoActivityIndicator(radius: 18),
+                            child: CupertinoActivityIndicator(
+                              radius: 18,
+                              color: palette.primary,
+                            ),
                           )
                         else
                           Container(
                             width: 74,
                             height: 74,
-                            decoration: const BoxDecoration(
-                              color: Color(0x190A62D0),
+                            decoration: BoxDecoration(
+                              color: palette.primary.withValues(
+                                alpha: palette.isDark ? .20 : .10,
+                              ),
                               shape: BoxShape.circle,
                             ),
-                            child: Icon(icon, size: 32, color: _blue),
+                            child: Icon(icon, size: 32, color: palette.primary),
                           ),
                         const SizedBox(height: 24),
                         Text(
                           title,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Color(0xFF1C1C1E),
+                          style: TextStyle(
+                            color: palette.primaryText,
                             fontSize: 24,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                             letterSpacing: -.5,
                           ),
                         ),
@@ -508,8 +554,8 @@ class _PermissionView extends StatelessWidget {
                         Text(
                           message,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Color(0xFF6E6E73),
+                          style: TextStyle(
+                            color: palette.secondaryText,
                             fontSize: 15,
                             height: 1.4,
                           ),
@@ -540,14 +586,16 @@ class _PermissionView extends StatelessWidget {
                                     : 'Allow Camera Access',
                               ),
                               style: FilledButton.styleFrom(
-                                backgroundColor: _blue,
-                                foregroundColor: Colors.white,
+                                backgroundColor: palette.primary,
+                                foregroundColor: Theme.of(context)
+                                    .colorScheme
+                                    .onPrimary,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(11),
                                 ),
                                 textStyle: const TextStyle(
                                   fontSize: 15,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ),
@@ -581,40 +629,30 @@ class _GlassIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipOval(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: CupertinoButton(
-          padding: EdgeInsets.zero,
-          minimumSize: const Size.square(40),
-          onPressed: onPressed,
-          color: isSelected ? const Color(0xB00A62D0) : const Color(0x7A10141D),
-          borderRadius: BorderRadius.circular(99),
-          child: Icon(icon, color: Colors.white, size: 18),
-        ),
-      ),
-    );
-  }
-}
-
-class _CameraFallback extends StatelessWidget {
-  const _CameraFallback();
-
-  @override
-  Widget build(BuildContext context) {
-    return const DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF24323C), Color(0xFF101820), Color(0xFF304A4B)],
-        ),
-      ),
-      child: Center(
-        child: Icon(
-          CupertinoIcons.capsule_fill,
-          color: Color(0x4DFFFFFF),
-          size: 108,
+    final colors = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        label: label,
+        child: ClipOval(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: CupertinoButton(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size.square(40),
+              onPressed: onPressed,
+              color: isSelected
+                  ? colors.primary.withValues(alpha: .69)
+                  : const Color(0x7A10141D),
+              borderRadius: BorderRadius.circular(99),
+              child: Icon(
+                icon,
+                color: isSelected ? colors.onPrimary : Colors.white,
+                size: 18,
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -622,38 +660,60 @@ class _CameraFallback extends StatelessWidget {
 }
 
 class _CaptureSideControl extends StatelessWidget {
-  const _CaptureSideControl({required this.icon, required this.label});
+  const _CaptureSideControl({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.isSelected = false,
+    this.enabled = true,
+  });
 
   final IconData icon;
   final String label;
+  final VoidCallback onPressed;
+  final bool isSelected;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: label,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 42,
-            height: 42,
+    final colors = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        selected: isSelected,
+        label: label,
+        child: CupertinoButton(
+          padding: const EdgeInsets.all(8),
+          minimumSize: const Size.square(48),
+          onPressed: enabled ? onPressed : null,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            width: 46,
+            height: 46,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: .16),
+              color: isSelected
+                  ? colors.primary
+                  : Colors.white.withValues(alpha: .14),
               shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white.withValues(alpha: isSelected ? .38 : .14),
+                width: .7,
+              ),
             ),
-            child: Icon(icon, color: Colors.white, size: 19),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xC2FFFFFF),
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
+            child: Icon(
+              icon,
+              color: enabled
+                  ? isSelected
+                        ? colors.onPrimary
+                        : Colors.white
+                  : Colors.white.withValues(alpha: .42),
+              size: 21,
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -741,24 +801,19 @@ class ScanResultScreen extends StatefulWidget {
     this.onBack,
     this.onScanAgain,
     this.onAdded,
+    this.bottomNavigationInset = 106,
   });
 
   final VoidCallback? onBack;
   final VoidCallback? onScanAgain;
   final VoidCallback? onAdded;
+  final double bottomNavigationInset;
 
   @override
   State<ScanResultScreen> createState() => _ScanResultScreenState();
 }
 
 class _ScanResultScreenState extends State<ScanResultScreen> {
-  static const _blue = Color(0xFF0A62D0);
-  static const _ink = Color(0xFF1C1C1E);
-  static const _muted = Color(0xFF6E6E73);
-  static const _line = Color(0xFFD9D9DE);
-  static const _surface = Colors.white;
-  static const _green = Color(0xFF34C759);
-
   String _dose = '1 capsule';
   String _frequency = 'Every 8 hours';
   String _duration = '7 days';
@@ -788,22 +843,29 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
     required List<String> options,
     required ValueChanged<String> onSelected,
   }) async {
+    final appTheme = Theme.of(context);
     final selected = await showCupertinoModalPopup<String>(
       context: context,
-      builder: (context) => CupertinoActionSheet(
-        title: Text(title),
-        actions: options
-            .map(
-              (option) => CupertinoActionSheetAction(
-                onPressed: () => Navigator.pop(context, option),
-                child: Text(option),
-              ),
-            )
-            .toList(),
-        cancelButton: CupertinoActionSheetAction(
-          isDefaultAction: true,
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+      builder: (modalContext) => CupertinoTheme(
+        data: CupertinoThemeData(
+          brightness: appTheme.brightness,
+          primaryColor: appTheme.colorScheme.primary,
+        ),
+        child: CupertinoActionSheet(
+          title: Text(title),
+          actions: options
+              .map(
+                (option) => CupertinoActionSheetAction(
+                  onPressed: () => Navigator.pop(modalContext, option),
+                  child: Text(option),
+                ),
+              )
+              .toList(),
+          cancelButton: CupertinoActionSheetAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.pop(modalContext),
+            child: const Text('Cancel'),
+          ),
         ),
       ),
     );
@@ -812,51 +874,59 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
 
   Future<void> _chooseStartDate() async {
     var draft = _startDate;
+    final appTheme = Theme.of(context);
+    final palette = _ScannerPalette.of(context);
     final selected = await showCupertinoModalPopup<DateTime>(
       context: context,
-      builder: (context) => Container(
-        height: 320,
-        color: CupertinoDynamicColor.resolve(
-          CupertinoColors.systemBackground,
-          context,
+      builder: (modalContext) => CupertinoTheme(
+        data: CupertinoThemeData(
+          brightness: appTheme.brightness,
+          primaryColor: appTheme.colorScheme.primary,
         ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            children: [
-              SizedBox(
-                height: 52,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    CupertinoButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancel'),
-                    ),
-                    const Text(
-                      'Start date',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    CupertinoButton(
-                      onPressed: () => Navigator.pop(context, draft),
-                      child: const Text(
-                        'Done',
-                        style: TextStyle(fontWeight: FontWeight.w700),
+        child: Container(
+          height: 320,
+          color: palette.surface,
+          child: SafeArea(
+            top: false,
+            child: Column(
+              children: [
+                SizedBox(
+                  height: 52,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      CupertinoButton(
+                        onPressed: () => Navigator.pop(modalContext),
+                        child: const Text('Cancel'),
                       ),
-                    ),
-                  ],
+                      Text(
+                        'Start Date',
+                        style: TextStyle(
+                          color: palette.primaryText,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      CupertinoButton(
+                        onPressed: () => Navigator.pop(modalContext, draft),
+                        child: const Text(
+                          'Done',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              Expanded(
-                child: CupertinoDatePicker(
-                  mode: CupertinoDatePickerMode.date,
-                  initialDateTime: _startDate,
-                  minimumDate: DateTime(2020),
-                  maximumDate: DateTime(2100),
-                  onDateTimeChanged: (value) => draft = value,
+                Expanded(
+                  child: CupertinoDatePicker(
+                    mode: CupertinoDatePickerMode.date,
+                    initialDateTime: _startDate,
+                    minimumDate: DateTime(2020),
+                    maximumDate: DateTime(2100),
+                    onDateTimeChanged: (value) => draft = value,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -872,8 +942,9 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = _ScannerPalette.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFFF2F2F7),
+      backgroundColor: palette.background,
       body: SafeArea(
         bottom: false,
         child: Center(
@@ -887,41 +958,44 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                     children: [
                       SizedBox(
                         width: 62,
-                        child: CupertinoButton(
-                          key: const Key('scanResultBackButton'),
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size.square(44),
-                          onPressed:
-                              widget.onBack ??
-                              () => Navigator.maybePop(context),
-                          child: const Icon(
-                            CupertinoIcons.chevron_left,
-                            size: 21,
+                        child: Center(
+                          child: LiquidGlassBackButton(
+                            key: const Key('scanResultBackButton'),
+                            semanticLabel: 'Back from Scan Result',
+                            onPressed:
+                                widget.onBack ??
+                                () => Navigator.maybePop(context),
                           ),
                         ),
                       ),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Review medication',
+                          'Review Medication',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: _ink,
+                            color: palette.primaryText,
                             fontSize: 17,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                             letterSpacing: -.2,
                           ),
                         ),
                       ),
                       SizedBox(
                         width: 62,
-                        child: CupertinoButton(
-                          key: const Key('scanAgainButton'),
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size.square(44),
-                          onPressed: widget.onScanAgain,
-                          child: const Icon(
-                            CupertinoIcons.arrow_clockwise,
-                            size: 19,
+                        child: Tooltip(
+                          message: 'Scan Again',
+                          child: CupertinoButton(
+                            key: const Key('scanAgainButton'),
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size.square(44),
+                            onPressed:
+                                widget.onScanAgain ??
+                                () => Navigator.maybePop(context),
+                            child: Icon(
+                              CupertinoIcons.arrow_clockwise,
+                              color: palette.primary,
+                              size: 19,
+                            ),
                           ),
                         ),
                       ),
@@ -942,18 +1016,18 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                       Container(
                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
                         decoration: BoxDecoration(
-                          color: _surface,
+                          color: palette.surface,
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'Set your schedule',
+                            Text(
+                              'Set Your Schedule',
                               style: TextStyle(
-                                color: _ink,
+                                color: palette.primaryText,
                                 fontSize: 18,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w600,
                                 letterSpacing: -.25,
                               ),
                             ),
@@ -1041,16 +1115,13 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                         16,
                         10,
                         16,
-                        MediaQuery.paddingOf(context).bottom + 106,
+                        MediaQuery.paddingOf(context).bottom +
+                            widget.bottomNavigationInset,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xE6F9F9F9),
+                        color: palette.actionMaterial,
                         border: Border(
-                          top: BorderSide(
-                            color: const Color(0xFF3C3C43)
-                                .withValues(alpha: .2),
-                            width: .5,
-                          ),
+                          top: BorderSide(color: palette.separator, width: .5),
                         ),
                       ),
                       child: SizedBox(
@@ -1060,14 +1131,18 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                           key: const Key('addScanResultButton'),
                           onPressed: _addToCalendar,
                           style: FilledButton.styleFrom(
-                            backgroundColor: _isAdded ? _green : _blue,
-                            foregroundColor: Colors.white,
+                            backgroundColor: _isAdded
+                                ? palette.success
+                                : palette.primary,
+                            foregroundColor: _isAdded
+                                ? palette.onSuccess
+                                : Theme.of(context).colorScheme.onPrimary,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(11),
                             ),
                             textStyle: const TextStyle(
                               fontSize: 14,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                           icon: Icon(
@@ -1077,7 +1152,7 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                             size: 18,
                           ),
                           label: Text(
-                            _isAdded ? 'Added to calendar' : 'Add to calendar',
+                            _isAdded ? 'Added to Calendar' : 'Add to Calendar',
                           ),
                         ),
                       ),
@@ -1098,10 +1173,11 @@ class _ResultHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = _ScannerPalette.of(context);
     return Container(
       padding: const EdgeInsets.fromLTRB(2, 8, 2, 18),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: _ScanResultScreenState._line)),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: palette.separator, width: .5)),
       ),
       child: Row(
         children: [
@@ -1124,7 +1200,7 @@ class _ResultHero extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 14),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1133,36 +1209,33 @@ class _ResultHero extends StatelessWidget {
                     Icon(
                       CupertinoIcons.check_mark_circled_solid,
                       size: 13,
-                      color: _ScanResultScreenState._green,
+                      color: palette.success,
                     ),
-                    SizedBox(width: 5),
+                    const SizedBox(width: 5),
                     Text(
                       '98% match',
                       style: TextStyle(
-                        color: _ScanResultScreenState._green,
+                        color: palette.success,
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                   ],
                 ),
-                SizedBox(height: 7),
+                const SizedBox(height: 7),
                 Text(
                   'Amoxicillin',
                   style: TextStyle(
-                    color: _ScanResultScreenState._ink,
+                    color: palette.primaryText,
                     fontSize: 19,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -.3,
                   ),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Text(
                   '500 mg capsule · Prescription',
-                  style: TextStyle(
-                    color: _ScanResultScreenState._muted,
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: palette.secondaryText, fontSize: 12),
                 ),
               ],
             ),
@@ -1178,11 +1251,12 @@ class _InfoGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = _ScannerPalette.of(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
-      child: const ColoredBox(
-        color: _ScanResultScreenState._surface,
-        child: Column(
+      child: ColoredBox(
+        color: palette.surface,
+        child: const Column(
           children: [
             Row(
               children: [
@@ -1239,15 +1313,16 @@ class _InfoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = _ScannerPalette.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         border: Border(
           right: rightBorder
-              ? const BorderSide(color: _ScanResultScreenState._line)
+              ? BorderSide(color: palette.separator, width: .5)
               : BorderSide.none,
           bottom: bottomBorder
-              ? const BorderSide(color: _ScanResultScreenState._line)
+              ? BorderSide(color: palette.separator, width: .5)
               : BorderSide.none,
         ),
       ),
@@ -1256,8 +1331,8 @@ class _InfoTile extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
-              color: _ScanResultScreenState._muted,
+            style: TextStyle(
+              color: palette.secondaryText,
               fontSize: 9,
               fontWeight: FontWeight.w500,
               letterSpacing: .5,
@@ -1268,8 +1343,8 @@ class _InfoTile extends StatelessWidget {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: _ScanResultScreenState._ink,
+            style: TextStyle(
+              color: palette.primaryText,
               fontSize: 13,
               fontWeight: FontWeight.w700,
             ),
@@ -1285,29 +1360,30 @@ class _SafetyNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = _ScannerPalette.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF6E8),
+        color: palette.warningSurface,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: const Row(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: EdgeInsets.only(top: 1),
+            padding: const EdgeInsets.only(top: 1),
             child: Icon(
               CupertinoIcons.exclamationmark_triangle_fill,
-              color: Color(0xFFB06A22),
+              color: palette.warningIcon,
               size: 16,
             ),
           ),
-          SizedBox(width: 10),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               'Confirm the package and prescription label before adding. AI identification does not replace advice from your pharmacist.',
               style: TextStyle(
-                color: Color(0xFF8B531E),
+                color: palette.warningText,
                 fontSize: 11,
                 height: 1.45,
                 fontWeight: FontWeight.w500,
@@ -1335,6 +1411,7 @@ class _ScheduleField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = _ScannerPalette.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1342,8 +1419,8 @@ class _ScheduleField extends StatelessWidget {
           padding: const EdgeInsets.only(left: 2),
           child: Text(
             label,
-            style: const TextStyle(
-              color: _ScanResultScreenState._muted,
+            style: TextStyle(
+              color: palette.secondaryText,
               fontSize: 9,
               fontWeight: FontWeight.w700,
               letterSpacing: .35,
@@ -1352,7 +1429,7 @@ class _ScheduleField extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Material(
-          color: Colors.white,
+          color: palette.fieldSurface,
           borderRadius: BorderRadius.circular(10),
           child: InkWell(
             onTap: onTap,
@@ -1361,13 +1438,13 @@ class _ScheduleField extends StatelessWidget {
               height: 43,
               padding: const EdgeInsets.symmetric(horizontal: 11),
               decoration: BoxDecoration(
-                border: Border.all(color: _ScanResultScreenState._line),
+                border: Border.all(color: palette.separator, width: .7),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
                 children: [
                   if (icon != null) ...[
-                    Icon(icon, size: 14, color: _ScanResultScreenState._blue),
+                    Icon(icon, size: 14, color: palette.primary),
                     const SizedBox(width: 6),
                   ],
                   Expanded(
@@ -1375,18 +1452,18 @@ class _ScheduleField extends StatelessWidget {
                       value,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: _ScanResultScreenState._ink,
+                      style: TextStyle(
+                        color: palette.primaryText,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
                   if (icon == null)
-                    const Icon(
+                    Icon(
                       CupertinoIcons.chevron_down,
                       size: 12,
-                      color: _ScanResultScreenState._muted,
+                      color: palette.secondaryText,
                     ),
                 ],
               ),
