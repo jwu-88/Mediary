@@ -1,13 +1,18 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'app_theme.dart';
+import 'calendar_screen.dart';
 import 'dashboard_screen.dart';
+import 'library_screens.dart';
+import 'liquid_glass_tab_bar.dart';
+import 'profile_screen.dart';
+import 'scanner_screens.dart';
+import 'settings_screen.dart';
 
 final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 Future<void>? _googleSignInInitialization;
@@ -506,41 +511,14 @@ class AuthenticatedHome extends StatefulWidget {
 
 class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   int _selectedIndex = 0;
+  bool _showScanResult = false;
   CameraAccessState _cameraAccess = CameraAccessState.notRequested;
-  late DateTime _selectedDate = DateUtils.dateOnly(
-    widget.now ?? DateTime.now(),
-  );
-
-  String get _name {
-    final name = widget.displayName?.trim();
-    if (name != null && name.isNotEmpty) {
-      return name;
-    }
-
-    final emailName = widget.email.split('@').first.trim();
-    return emailName.isEmpty ? 'there' : emailName;
-  }
-
-  String _formatDate(DateTime date) {
-    const months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-    return '${months[date.month - 1]} ${date.day}, ${date.year}';
-  }
 
   void _selectDestination(int index) {
-    setState(() => _selectedIndex = index);
+    setState(() {
+      _selectedIndex = index;
+      if (index == 2) _showScanResult = false;
+    });
     if (index == 2 && _cameraAccess == CameraAccessState.notRequested) {
       _requestCameraAccess();
     }
@@ -575,305 +553,79 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   }
 
   Widget _buildLibrary(BuildContext context) {
-    return const Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(CupertinoIcons.book, size: 52),
-          SizedBox(height: 16),
-          Text('Medication library'),
-        ],
-      ),
+    return MedicationLibraryScreen(
+      onOpenMedication: () {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => const MedicationDetailScreen(),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildProfile(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(CupertinoIcons.person_crop_circle, size: 58),
-          const SizedBox(height: 16),
-          Text(_name, style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 4),
-          Text(widget.email),
-          const SizedBox(height: 20),
-          TextButton(
-            onPressed: widget.onOpenSettings,
-            child: const Text('Settings'),
-          ),
-        ],
-      ),
+    return ProfileScreen(
+      email: widget.email,
+      displayName: widget.displayName,
+      photoUrl: widget.photoUrl,
+      onOpenLibrary: () => setState(() => _selectedIndex = 3),
+      onOpenSettings: widget.onOpenSettings,
     );
   }
 
   Widget _buildScanner(BuildContext context) {
-    final theme = Theme.of(context);
-    final (title, message, icon) = switch (_cameraAccess) {
-      CameraAccessState.notRequested => (
-        'Camera access required',
-        'Allow camera access to use the scanner.',
-        Icons.qr_code_scanner,
-      ),
-      CameraAccessState.requesting => (
-        'Requesting camera access',
-        'Respond to the permission request to continue.',
-        Icons.camera_alt_outlined,
-      ),
-      CameraAccessState.granted => (
-        'Scanner ready',
-        'Camera access is enabled.',
-        Icons.qr_code_scanner,
-      ),
-      CameraAccessState.denied => (
-        'Camera access denied',
-        'Camera permission is needed to scan items.',
-        Icons.no_photography_outlined,
-      ),
-      CameraAccessState.permanentlyDenied => (
-        'Enable camera access',
-        'Allow camera access from your device settings.',
-        Icons.no_photography_outlined,
-      ),
-      CameraAccessState.error => (
-        'Camera unavailable',
-        'The camera permission request could not be completed.',
-        Icons.error_outline,
-      ),
-    };
+    if (_showScanResult) {
+      return ScanResultScreen(
+        onBack: () => setState(() => _showScanResult = false),
+        onScanAgain: () => setState(() => _showScanResult = false),
+      );
+    }
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_cameraAccess == CameraAccessState.requesting)
-              const CircularProgressIndicator()
-            else
-              Icon(icon, size: 64, color: theme.colorScheme.primary),
-            const SizedBox(height: 24),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            if (_cameraAccess == CameraAccessState.notRequested ||
-                _cameraAccess == CameraAccessState.denied ||
-                _cameraAccess == CameraAccessState.error) ...[
-              const SizedBox(height: 24),
-              FilledButton.icon(
-                key: const Key('requestCameraButton'),
-                onPressed: _requestCameraAccess,
-                icon: const Icon(Icons.camera_alt_outlined),
-                label: const Text('Allow camera access'),
-              ),
-            ],
-            if (_cameraAccess == CameraAccessState.permanentlyDenied) ...[
-              const SizedBox(height: 24),
-              FilledButton.icon(
-                key: const Key('openCameraSettingsButton'),
-                onPressed: () async {
-                  final openSettings =
-                      widget.onOpenCameraSettings ?? openAppSettings;
-                  await openSettings();
-                },
-                icon: const Icon(Icons.settings_outlined),
-                label: const Text('Open settings'),
-              ),
-            ],
-          ],
-        ),
-      ),
+    return MedicationScannerScreen(
+      accessState: switch (_cameraAccess) {
+        CameraAccessState.notRequested => ScannerAccessState.notRequested,
+        CameraAccessState.requesting => ScannerAccessState.requesting,
+        CameraAccessState.granted => ScannerAccessState.granted,
+        CameraAccessState.denied => ScannerAccessState.denied,
+        CameraAccessState.permanentlyDenied =>
+          ScannerAccessState.permanentlyDenied,
+        CameraAccessState.error => ScannerAccessState.error,
+      },
+      onRequestAccess: _requestCameraAccess,
+      onClose: () => setState(() {
+        _selectedIndex = 0;
+        _showScanResult = false;
+      }),
+      onCapture: () => setState(() => _showScanResult = true),
+      onOpenSettings: widget.onOpenCameraSettings ?? openAppSettings,
     );
   }
 
   Widget _buildCalendar(BuildContext context) {
-    final today = DateUtils.dateOnly(widget.now ?? DateTime.now());
-    return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      children: [
-        CalendarDatePicker(
-          key: const Key('calendarDatePicker'),
-          initialDate: _selectedDate,
-          currentDate: today,
-          firstDate: DateTime(1900),
-          lastDate: DateTime(2100, 12, 31),
-          onDateChanged: (date) {
-            setState(() => _selectedDate = date);
-          },
-        ),
-        const SizedBox(height: 16),
-        Text(
-          _formatDate(_selectedDate),
-          key: const Key('selectedCalendarDate'),
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-      ],
-    );
+    return CalendarScreen(initialDate: widget.now);
   }
 
   @override
   Widget build(BuildContext context) {
-    const titles = ['Today', 'Calendar', 'Scan', 'Library', 'Profile'];
     return Scaffold(
-      appBar: _selectedIndex == 0
-          ? null
-          : AppBar(title: Text(titles[_selectedIndex])),
+      extendBody: true,
       body: IndexedStack(
         index: _selectedIndex,
         children: [
           _buildDashboard(context),
           _buildCalendar(context),
-          _buildScanner(context),
+          TickerMode(
+            enabled: _selectedIndex == 2,
+            child: _buildScanner(context),
+          ),
           _buildLibrary(context),
           _buildProfile(context),
         ],
       ),
-      bottomNavigationBar: CupertinoTabBar(
+      bottomNavigationBar: LiquidGlassTabBar(
         currentIndex: _selectedIndex,
         onTap: _selectDestination,
-        activeColor: const Color(0xFF0A62D0),
-        inactiveColor: const Color(0xFF8E8E93),
-        backgroundColor: const Color(0xEBF9F9F9),
-        border: const Border(
-          top: BorderSide(color: Color(0x383C3C43), width: .5),
-        ),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.house),
-            activeIcon: Icon(CupertinoIcons.house_fill),
-            label: 'Today',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.calendar),
-            label: 'Calendar',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.camera),
-            activeIcon: Icon(CupertinoIcons.camera_fill),
-            label: 'Scan',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.book),
-            activeIcon: Icon(CupertinoIcons.book_fill),
-            label: 'Library',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.person),
-            activeIcon: Icon(CupertinoIcons.person_fill),
-            label: 'Profile',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({
-    super.key,
-    required this.darkModeEnabled,
-    required this.onDarkModeChanged,
-    this.accountEmail,
-    this.onSignOut,
-  });
-
-  final bool darkModeEnabled;
-  final ValueChanged<bool> onDarkModeChanged;
-  final String? accountEmail;
-  final Future<void> Function()? onSignOut;
-
-  @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
-}
-
-class _SettingsScreenState extends State<SettingsScreen> {
-  late bool _darkModeEnabled = widget.darkModeEnabled;
-  bool _isSigningOut = false;
-
-  void _setDarkMode(bool enabled) {
-    setState(() => _darkModeEnabled = enabled);
-    widget.onDarkModeChanged(enabled);
-  }
-
-  Future<void> _signOut() async {
-    if (_isSigningOut || widget.onSignOut == null) {
-      return;
-    }
-
-    setState(() => _isSigningOut = true);
-    try {
-      await widget.onSignOut!();
-      if (mounted) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSigningOut = false);
-      }
-    }
-  }
-
-  Widget _sectionHeader(BuildContext context, String label) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-          color: Theme.of(context).colorScheme.primary,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        children: [
-          _sectionHeader(context, 'Appearance'),
-          SwitchListTile(
-            key: const Key('darkModeSwitch'),
-            title: const Text('Dark mode'),
-            subtitle: const Text('Use a darker appearance throughout the app.'),
-            secondary: const Icon(Icons.dark_mode_outlined),
-            value: _darkModeEnabled,
-            onChanged: _setDarkMode,
-          ),
-          if (widget.onSignOut != null) ...[
-            const Divider(),
-            _sectionHeader(context, 'Account'),
-            ListTile(
-              key: const Key('settingsSignOutButton'),
-              leading: const Icon(Icons.logout),
-              title: const Text('Sign out'),
-              subtitle: widget.accountEmail == null
-                  ? null
-                  : Text(widget.accountEmail!),
-              trailing: _isSigningOut
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : null,
-              enabled: !_isSigningOut,
-              onTap: _signOut,
-            ),
-          ],
-        ],
       ),
     );
   }
