@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Calendar — Flutter</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+  <link href="assets/styles.css" rel="stylesheet">
+</head>
+<body>
+  <main class="app-screen" aria-label="Medication calendar">
+    <div class="status-bar">
+      <span>9:41</span>
+      <span class="status-icons"><i class="fa-solid fa-signal"></i><i class="fa-solid fa-wifi"></i><i class="fa-solid fa-battery-full"></i></span>
+    </div>
+    <header class="screen-header">
+      <div class="header-copy"><p class="eyebrow">Your routine</p><h1>Calendar</h1></div>
+      <button class="icon-button" type="button" aria-label="Calendar options"><i class="fa-solid fa-ellipsis"></i></button>
+    </header>
+
+    <div class="screen-content">
+      <section class="card calendar-summary">
+        <div class="summary-copy"><span>August adherence</span><strong>43 of 50 doses</strong></div>
+        <div class="mini-donut" aria-label="86 percent adherence"></div>
+      </section>
+
+      <section class="card calendar-card" aria-labelledby="month-title">
+        <div class="calendar-month">
+          <h2 id="month-title">August 2026</h2>
+          <div class="month-controls"><button type="button" aria-label="Previous month"><i class="fa-solid fa-chevron-left"></i></button><button type="button" aria-label="Next month"><i class="fa-solid fa-chevron-right"></i></button></div>
+        </div>
+        <div class="calendar-grid">
+          <span class="weekday">Sun</span><span class="weekday">Mon</span><span class="weekday">Tue</span><span class="weekday">Wed</span><span class="weekday">Thu</span><span class="weekday">Fri</span><span class="weekday">Sat</span>
+          <button class="day muted" type="button">26</button><button class="day muted" type="button">27</button><button class="day muted" type="button">28</button><button class="day muted" type="button">29</button><button class="day muted" type="button">30</button><button class="day muted" type="button">31</button><button class="day done" type="button">1</button>
+          <button class="day done" type="button">2</button><button class="day done" type="button">3</button><button class="day done" type="button">4</button><button class="day done" type="button">5</button><button class="day done" type="button">6</button><button class="day done" type="button">7</button><button class="day done" type="button">8</button>
+          <button class="day done" type="button">9</button><button class="day missed" type="button">10</button><button class="day done" type="button">11</button><button class="day done" type="button">12</button><button class="day done" type="button">13</button><button class="day done" type="button">14</button><button class="day done" type="button">15</button>
+          <button class="day done" type="button">16</button><button class="day done" type="button">17</button><button class="day missed" type="button">18</button><button class="day done" type="button">19</button><button class="day done" type="button">20</button><button class="day done" type="button">21</button><button class="day done" type="button">22</button>
+          <button class="day done" type="button">23</button><button class="day done" type="button">24</button><button class="day done" type="button">25</button><button class="day done" type="button">26</button><button class="day done" type="button">27</button><button class="day done" type="button">28</button><button class="day done" type="button">29</button>
+          <button class="day selected done" type="button">30</button><button class="day" type="button">31</button><button class="day muted" type="button">1</button><button class="day muted" type="button">2</button><button class="day muted" type="button">3</button><button class="day muted" type="button">4</button><button class="day muted" type="button">5</button>
+        </div>
+      </section>
+
+      <div class="section-heading"><h2>Sunday, August 30</h2><button type="button"><i class="fa-solid fa-plus"></i> Add</button></div>
+      <section class="timeline">
+        <article class="card timeline-item"><div class="medicine-icon mint"><i class="fa-solid fa-capsules"></i></div><div class="timeline-copy"><strong>Vitamin D3</strong><span>1000 IU · 8:00 AM</span></div><span class="status-check">Taken</span></article>
+        <article class="card timeline-item"><div class="medicine-icon"><i class="fa-solid fa-capsules"></i></div><div class="timeline-copy"><strong>Amoxicillin</strong><span>500 mg · 10:30 AM</span></div><span class="status-time">Due</span></article>
+      </section>
+    </div>
+
+    <nav class="tab-bar" aria-label="Primary navigation">
+      <button class="tab-item" type="button"><i class="fa-solid fa-house"></i><span>Today</span></button>
+      <button class="tab-item active" type="button"><i class="fa-regular fa-calendar"></i><span>Calendar</span></button>
+      <button class="tab-item" type="button"><i class="fa-solid fa-camera"></i><span>Scan</span></button>
+      <button class="tab-item" type="button"><i class="fa-solid fa-book-medical"></i><span>Library</span></button>
+      <button class="tab-item" type="button"><i class="fa-regular fa-user"></i><span>Profile</span></button>
+    </nav>
+    <div class="home-indicator" aria-hidden="true"></div>
+  </main>
+  <script src="assets/prototype.js"></script>
+</body>
+</html>

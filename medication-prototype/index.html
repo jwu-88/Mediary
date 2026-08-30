@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flutter Medication Companion — Prototype</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;600;700&display=swap');
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: #fff; color: #17213b; font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif; }
+    body { padding: 42px 34px 64px; }
+    h1 { margin: 0 0 30px; font-size: 30px; letter-spacing: -.8px; }
+    .screens { display: flex; align-items: flex-start; gap: 34px; overflow-x: auto; padding: 0 4px 30px; }
+    .screen { flex: 0 0 402px; }
+    .screen h2 { margin: 0 0 12px; color: #656d83; font-size: 13px; font-weight: 600; letter-spacing: .02em; }
+    iframe { display: block; width: 402px; height: 874px; border: 0; border-radius: 50px; background: #f2f2f7; box-shadow: 0 18px 42px rgba(23, 33, 59, .14), 0 0 0 7px #141722; }
+  </style>
+</head>
+<body>
+  <h1>Flutter Medication Companion</h1>
+  <main class="screens" aria-label="High-fidelity mobile screens">
+    <section class="screen"><h2>01 · Today</h2><iframe src="home.html" title="Today screen"></iframe></section>
+    <section class="screen"><h2>02 · Scan Medication</h2><iframe src="scan.html" title="Medication scanner screen"></iframe></section>
+    <section class="screen"><h2>03 · AI Scan Result</h2><iframe src="scan-result.html" title="AI scan result screen"></iframe></section>
+    <section class="screen"><h2>04 · Calendar</h2><iframe src="calendar.html" title="Medication calendar screen"></iframe></section>
+    <section class="screen"><h2>05 · Medication Library</h2><iframe src="library.html" title="Medication library screen"></iframe></section>
+    <section class="screen"><h2>06 · Medication Detail</h2><iframe src="medication-detail.html" title="Medication detail screen"></iframe></section>
+    <section class="screen"><h2>07 · Profile</h2><iframe src="profile.html" title="Profile screen"></iframe></section>
+    <section class="screen"><h2>08 · Settings</h2><iframe src="settings.html" title="Settings screen"></iframe></section>
+  </main>
+</body>
+</html>
