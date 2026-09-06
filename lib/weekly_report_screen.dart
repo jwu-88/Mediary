@@ -1,9 +1,14 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'app_interactions.dart';
+import 'app_layout.dart';
+import 'data/mediary_repository.dart';
+import 'in_app_page.dart';
 import 'liquid_glass_back_button.dart';
 
 /// A weekly medication-adherence report that can be pushed as a standalone
@@ -12,18 +17,25 @@ import 'liquid_glass_back_button.dart';
 /// The default values are realistic preview data. Pass seven entries for each
 /// data series when connecting this screen to stored medication history.
 class WeeklyReportScreen extends StatelessWidget {
-  const WeeklyReportScreen({
+  WeeklyReportScreen({
     super.key,
     this.weekEnding,
-    this.dailyTaken = const [2, 2, 2, 1, 2, 1, 1],
-    this.dailyScheduled = const [2, 2, 2, 2, 2, 1, 1],
-    this.timingOffsetsMinutes = const [2, -1, 5, 12, 4, 8, 9],
-  });
+    List<int> dailyTaken = const [2, 2, 2, 1, 2, 1, 1],
+    List<int> dailyScheduled = const [2, 2, 2, 2, 2, 1, 1],
+    List<int> timingOffsetsMinutes = const [2, -1, 5, 12, 4, 8, 9],
+    List<int> dailySkipped = const [],
+    this.onSaveReport,
+  }) : dailyTaken = _normalizeCounts(dailyTaken),
+       dailyScheduled = _normalizeCounts(dailyScheduled),
+       timingOffsetsMinutes = _normalizeOffsets(timingOffsetsMinutes),
+       dailySkipped = _normalizeCounts(dailySkipped);
 
   final DateTime? weekEnding;
   final List<int> dailyTaken;
   final List<int> dailyScheduled;
   final List<int> timingOffsetsMinutes;
+  final List<int> dailySkipped;
+  final Future<String> Function(ReportWrite report)? onSaveReport;
 
   static const _dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   static const _accessibleDayLabels = [
@@ -37,9 +49,32 @@ class WeeklyReportScreen extends StatelessWidget {
   ];
   static const _green = Color(0xFF22A447);
 
-  int get _taken => dailyTaken.fold(0, (sum, value) => sum + value);
+  static List<int> _normalizeCounts(List<int> values) => List<int>.unmodifiable(
+    List<int>.generate(
+      7,
+      (index) => index < values.length ? math.max(0, values[index]) : 0,
+    ),
+  );
+
+  static List<int> _normalizeOffsets(List<int> values) =>
+      List<int>.unmodifiable(
+        List<int>.generate(
+          7,
+          (index) => index < values.length ? values[index] : 0,
+        ),
+      );
+
+  int get _taken => List<int>.generate(
+    7,
+    (index) => math.min(dailyTaken[index], dailyScheduled[index]),
+  ).fold(0, (sum, value) => sum + value);
 
   int get _scheduled => dailyScheduled.fold(0, (sum, value) => sum + value);
+
+  int get _skipped => List<int>.generate(
+    7,
+    (index) => math.min(dailySkipped[index], dailyScheduled[index]),
+  ).fold(0, (sum, value) => sum + value);
 
   int get _adherence {
     if (_scheduled == 0) return 0;
@@ -69,7 +104,7 @@ class WeeklyReportScreen extends StatelessWidget {
 
   String get _dailyDoseSemantics {
     final dailyDetails = List<String>.generate(7, (index) {
-      final taken = math.max(0, dailyTaken[index]);
+      final taken = math.min(dailyTaken[index], dailyScheduled[index]);
       final scheduled = math.max(0, dailyScheduled[index]);
       return '${_accessibleDayLabels[index]}: $taken of $scheduled taken';
     });
@@ -95,7 +130,7 @@ class WeeklyReportScreen extends StatelessWidget {
       '${_monthName(date.month)} ${date.day}, ${date.year}';
 
   String _summary(DateTime ending) {
-    final missed = _scheduled - _taken;
+    final missed = math.max(0, _scheduled - _taken - _skipped);
     final dosePhrase = missed <= 0
         ? 'No scheduled doses were missed.'
         : '$missed scheduled ${missed == 1 ? 'dose was' : 'doses were'} missed.';
@@ -106,34 +141,44 @@ class WeeklyReportScreen extends StatelessWidget {
   }
 
   Future<void> _prepareSummary(BuildContext context, DateTime ending) async {
-    final summary = _summary(ending);
-    await Clipboard.setData(ClipboardData(text: summary));
-    if (!context.mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      builder: (sheetContext) => _PreparedSummarySheet(summary: summary),
+    final start = ending.subtract(const Duration(days: 6));
+    await onSaveReport?.call(
+      ReportWrite(
+        id: '${_dateKey(start)}_${_dateKey(ending)}',
+        periodStart: _dateKey(start),
+        periodEnd: _dateKey(ending),
+        doseCount: _scheduled,
+        takenCount: _taken,
+        missedCount: math.max(0, _scheduled - _taken),
+        skippedCount: _skipped,
+        adherencePercent: _adherence.toDouble(),
+        sourceVersion: 'v1',
+      ),
     );
+    final summary = _summary(ending);
+    if (!context.mounted) return;
+    await pushInAppPage<void>(
+      context,
+      builder: (context) => _PreparedSummaryPage(summary: summary),
+    );
+  }
+
+  String _dateKey(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '${date.year}-$month-$day';
   }
 
   @override
   Widget build(BuildContext context) {
-    assert(dailyTaken.length == 7, 'dailyTaken must contain seven values.');
-    assert(
-      dailyScheduled.length == 7,
-      'dailyScheduled must contain seven values.',
-    );
-    assert(
-      timingOffsetsMinutes.length == 7,
-      'timingOffsetsMinutes must contain seven values.',
-    );
     final ending = DateUtils.dateOnly(weekEnding ?? DateTime.now());
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final missed = math.max(0, _scheduled - _taken);
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final contentWidth = viewportWidth >= 900
+        ? responsiveContentWidth(context, nativeMaxWidth: 760)
+        : 520.0;
 
     return Scaffold(
       appBar: AppBar(
@@ -154,7 +199,7 @@ class WeeklyReportScreen extends StatelessWidget {
         top: false,
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
+            constraints: BoxConstraints(maxWidth: contentWidth),
             child: ListView(
               key: const Key('weeklyReportScrollView'),
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
@@ -295,26 +340,62 @@ class WeeklyReportScreen extends StatelessWidget {
                       'Doses were within $_averageTiming minutes of schedule on average.',
                 ),
                 const SizedBox(height: 42),
-                FilledButton(
-                  key: const Key('prepareSummaryButton'),
+                _PrepareSummaryButton(
                   onPressed: () => _prepareSummary(context, ending),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  child: const Text('Prepare Summary'),
                 ),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PrepareSummaryButton extends StatefulWidget {
+  const _PrepareSummaryButton({required this.onPressed});
+
+  final Future<void> Function() onPressed;
+
+  @override
+  State<_PrepareSummaryButton> createState() => _PrepareSummaryButtonState();
+}
+
+class _PrepareSummaryButtonState extends State<_PrepareSummaryButton> {
+  bool _busy = false;
+
+  Future<void> _prepare() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    unawaited(AppHaptics.primaryAction());
+    try {
+      await widget.onPressed();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      key: const Key('prepareSummaryButton'),
+      onPressed: _busy ? null : _prepare,
+      style: FilledButton.styleFrom(
+        minimumSize: const Size.fromHeight(52),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+      ),
+      child: _busy
+          ? SizedBox.square(
+              key: const Key('prepareSummaryLoadingIndicator'),
+              dimension: 21,
+              child: CircularProgressIndicator(
+                value: .72,
+                strokeWidth: 2,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            )
+          : const Text('Prepare Summary'),
     );
   }
 }
@@ -433,75 +514,106 @@ class _HighlightRow extends StatelessWidget {
   }
 }
 
-class _PreparedSummarySheet extends StatelessWidget {
-  const _PreparedSummarySheet({required this.summary});
+class _PreparedSummaryPage extends StatefulWidget {
+  const _PreparedSummaryPage({required this.summary});
 
   final String summary;
 
-  Future<void> _copyAgain(BuildContext context) async {
-    await Clipboard.setData(ClipboardData(text: summary));
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('Summary Copied')));
+  @override
+  State<_PreparedSummaryPage> createState() => _PreparedSummaryPageState();
+}
+
+class _PreparedSummaryPageState extends State<_PreparedSummaryPage> {
+  var _copyStatus = 'Ready to review and copy';
+  var _hasCopied = false;
+
+  Future<void> _copySummary() async {
+    await Clipboard.setData(ClipboardData(text: widget.summary));
+    if (!mounted) return;
+    setState(() {
+      _hasCopied = true;
+      _copyStatus = 'Summary copied';
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        24,
-        4,
-        24,
-        24 + MediaQuery.viewInsetsOf(context).bottom,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Prepared Summary',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
+    return InAppPageScaffold(
+      title: 'Prepared Summary',
+      child: ListView(
+        key: const Key('preparedSummaryPage'),
+        padding: EdgeInsets.zero,
+        children: [
+          Semantics(
+            liveRegion: true,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: Row(
+                key: ValueKey(_copyStatus),
+                children: [
+                  Icon(
+                    _hasCopied
+                        ? CupertinoIcons.check_mark_circled_solid
+                        : CupertinoIcons.doc_text,
+                    size: 18,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _copyStatus,
+                      key: const Key('summaryCopyStatus'),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Copied to your clipboard',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 20),
-            SelectableText(
-              summary,
-              key: const Key('preparedSummaryText'),
-              style: theme.textTheme.bodyLarge?.copyWith(height: 1.45),
-            ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    key: const Key('copySummaryAgainButton'),
-                    onPressed: () => _copyAgain(context),
-                    child: const Text('Copy Again'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton(
-                    key: const Key('closeSummaryButton'),
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Done'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 24),
+          SelectableText(
+            widget.summary,
+            key: const Key('preparedSummaryText'),
+            style: theme.textTheme.bodyLarge?.copyWith(height: 1.45),
+          ),
+          const SizedBox(height: 28),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final stackButtons = constraints.maxWidth < 360;
+              final copyButton = OutlinedButton(
+                key: const Key('copySummaryAgainButton'),
+                onPressed: _copySummary,
+                child: Text(_hasCopied ? 'Copy Again' : 'Copy Summary'),
+              );
+              final doneButton = FilledButton(
+                key: const Key('closeSummaryButton'),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Done'),
+              );
+              if (stackButtons) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    copyButton,
+                    const SizedBox(height: 12),
+                    doneButton,
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: copyButton),
+                  const SizedBox(width: 12),
+                  Expanded(child: doneButton),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
       ),
     );
   }

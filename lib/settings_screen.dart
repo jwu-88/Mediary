@@ -1,12 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'app_theme.dart';
+import 'app_interactions.dart';
+import 'app_layout.dart';
+import 'data/mediary_models.dart';
+import 'in_app_page.dart';
 import 'liquid_glass_accent_selector.dart';
 import 'liquid_glass_appearance_selector.dart';
 import 'liquid_glass_back_button.dart';
+import 'profile_image_policy.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -23,6 +31,8 @@ class SettingsScreen extends StatefulWidget {
     this.onOpenAccount,
     this.accountDisplayName,
     this.accountPhotoUrl,
+    this.onPreferenceChanged,
+    this.initialPreferences,
   });
 
   final ThemeMode appearanceMode;
@@ -37,6 +47,8 @@ class SettingsScreen extends StatefulWidget {
   final VoidCallback? onOpenAccount;
   final String? accountDisplayName;
   final String? accountPhotoUrl;
+  final Future<void> Function(String key, Object value)? onPreferenceChanged;
+  final MediaryPreferences? initialPreferences;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -45,15 +57,16 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late ThemeMode _appearanceMode = widget.appearanceMode;
   late AppAccentColor _accentColor = widget.accentColor;
-  bool _doseNotifications = true;
-  bool _followUpAlerts = true;
-  bool _appleHealthConnected = true;
-  bool _cameraAccess = true;
-  bool _healthDataAccess = true;
-  bool _analyticsEnabled = false;
-  String _reminderSound = 'Gentle Chime';
-  String _language = 'English';
-  String _units = 'Metric';
+  late bool _doseNotifications =
+      widget.initialPreferences?.doseNotifications ?? true;
+  late bool _followUpAlerts = widget.initialPreferences?.followUpAlerts ?? true;
+  final bool _appleHealthConnected = false;
+  bool _isExportingData = false;
+  String? _exportStatusMessage;
+  late String _reminderSound =
+      widget.initialPreferences?.reminderSound ?? 'Gentle Chime';
+  late String _language = widget.initialPreferences?.language ?? 'English';
+  late String _units = widget.initialPreferences?.units ?? 'Metric';
 
   bool get _dark => Theme.of(context).brightness == Brightness.dark;
   ColorScheme get _colors => Theme.of(context).colorScheme;
@@ -75,16 +88,92 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (oldWidget.accentColor != widget.accentColor) {
       _accentColor = widget.accentColor;
     }
+    final oldPreferences = oldWidget.initialPreferences;
+    final preferences = widget.initialPreferences;
+    if (preferences != null &&
+        (oldPreferences == null ||
+            oldPreferences.doseNotifications != preferences.doseNotifications ||
+            oldPreferences.followUpAlerts != preferences.followUpAlerts ||
+            oldPreferences.reminderSound != preferences.reminderSound ||
+            oldPreferences.language != preferences.language ||
+            oldPreferences.units != preferences.units)) {
+      _doseNotifications = preferences.doseNotifications;
+      _followUpAlerts = preferences.followUpAlerts;
+      _reminderSound = preferences.reminderSound;
+      _language = preferences.language;
+      _units = preferences.units;
+    }
   }
 
   void _setAppearanceMode(ThemeMode mode) {
+    final previous = _appearanceMode;
     setState(() => _appearanceMode = mode);
     widget.onAppearanceModeChanged(mode);
+    unawaited(
+      _persistPreference(
+        'theme',
+        mode.name,
+        rollback: () {
+          setState(() => _appearanceMode = previous);
+          widget.onAppearanceModeChanged(previous);
+        },
+      ),
+    );
   }
 
   void _setAccentColor(AppAccentColor accent) {
+    final previous = _accentColor;
     setState(() => _accentColor = accent);
     widget.onAccentColorChanged(accent);
+    unawaited(
+      _persistPreference(
+        'accentColor',
+        accent.name,
+        rollback: () {
+          setState(() => _accentColor = previous);
+          widget.onAccentColorChanged(previous);
+        },
+      ),
+    );
+  }
+
+  Future<void> _persistPreference(
+    String key,
+    Object value, {
+    VoidCallback? rollback,
+  }) async {
+    try {
+      await widget.onPreferenceChanged?.call(key, value);
+    } catch (_) {
+      rollback?.call();
+      if (mounted) {
+        setState(() => _exportStatusMessage = 'Setting could not be saved.');
+      }
+    }
+  }
+
+  void _setDoseNotifications(bool value) {
+    final previous = _doseNotifications;
+    setState(() => _doseNotifications = value);
+    unawaited(
+      _persistPreference(
+        'doseNotifications',
+        value,
+        rollback: () => setState(() => _doseNotifications = previous),
+      ),
+    );
+  }
+
+  void _setFollowUpAlerts(bool value) {
+    final previous = _followUpAlerts;
+    setState(() => _followUpAlerts = value);
+    unawaited(
+      _persistPreference(
+        'followUpAlerts',
+        value,
+        rollback: () => setState(() => _followUpAlerts = previous),
+      ),
+    );
   }
 
   Future<String?> _chooseOption({
@@ -92,22 +181,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required List<String> options,
     required String selected,
   }) {
-    return showCupertinoModalPopup<String>(
-      context: context,
-      builder: (context) => CupertinoActionSheet(
-        title: Text(title),
-        actions: [
+    return pushInAppPage<String>(
+      context,
+      builder: (context) => InAppOptionPage<String>(
+        title: title,
+        options: [
           for (final option in options)
-            CupertinoActionSheetAction(
-              isDefaultAction: option == selected,
-              onPressed: () => Navigator.pop(context, option),
-              child: Text(option),
+            InAppPageOption<String>(
+              label: option,
+              value: option,
+              selected: option == selected,
             ),
         ],
-        cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
       ),
     );
   }
@@ -118,7 +203,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       options: const ['Gentle Chime', 'Bell', 'Pulse', 'Silent'],
       selected: _reminderSound,
     );
-    if (sound != null && mounted) setState(() => _reminderSound = sound);
+    if (sound != null && mounted) {
+      final previous = _reminderSound;
+      setState(() => _reminderSound = sound);
+      unawaited(
+        _persistPreference(
+          'reminderSound',
+          sound,
+          rollback: () => setState(() => _reminderSound = previous),
+        ),
+      );
+    }
   }
 
   Future<void> _chooseLanguage() async {
@@ -127,7 +222,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       options: const ['English', 'Spanish', 'French'],
       selected: _language,
     );
-    if (language != null && mounted) setState(() => _language = language);
+    if (language != null && mounted) {
+      final previous = _language;
+      setState(() => _language = language);
+      unawaited(
+        _persistPreference(
+          'language',
+          language,
+          rollback: () => setState(() => _language = previous),
+        ),
+      );
+    }
   }
 
   Future<void> _chooseUnits() async {
@@ -136,111 +241,89 @@ class _SettingsScreenState extends State<SettingsScreen> {
       options: const ['Metric', 'Imperial'],
       selected: _units,
     );
-    if (units != null && mounted) setState(() => _units = units);
-  }
-
-  Future<void> _manageAppleHealth() async {
-    final change = await showCupertinoModalPopup<bool>(
-      context: context,
-      builder: (context) => CupertinoActionSheet(
-        title: const Text('Apple Health'),
-        message: Text(
-          _appleHealthConnected
-              ? 'Mediary can read health data you approve.'
-              : 'Connect to share approved health data with Mediary.',
+    if (units != null && mounted) {
+      final previous = _units;
+      setState(() => _units = units);
+      unawaited(
+        _persistPreference(
+          'units',
+          units,
+          rollback: () => setState(() => _units = previous),
         ),
-        actions: [
-          CupertinoActionSheetAction(
-            isDestructiveAction: _appleHealthConnected,
-            onPressed: () => Navigator.pop(context, !_appleHealthConnected),
-            child: Text(_appleHealthConnected ? 'Disconnect' : 'Connect'),
-          ),
-        ],
-        cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-      ),
-    );
-    if (change != null && mounted) {
-      setState(() => _appleHealthConnected = change);
+      );
     }
   }
 
-  Future<void> _showPrivacyControls() {
-    return showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      useSafeArea: true,
-      isScrollControlled: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => Padding(
-          padding: const EdgeInsets.fromLTRB(18, 2, 18, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Privacy Controls',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                ),
+  Future<void> _manageAppleHealth() async {
+    await pushInAppPage<void>(
+      context,
+      builder: (context) => InAppPageScaffold(
+        title: 'Apple Health',
+        child: ListView(
+          key: const Key('appleHealthInformationPage'),
+          padding: EdgeInsets.zero,
+          children: [
+            Text(
+              'Apple Health is not connected.',
+              style: Theme.of(context).textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Mediary will only offer this connection after HealthKit '
+              'permissions and protected data handling are configured.',
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                height: 1.45,
               ),
-              const SizedBox(height: 8),
-              _PrivacySwitchRow(
-                title: 'Camera Access',
-                value: _cameraAccess,
-                onChanged: (value) {
-                  setState(() => _cameraAccess = value);
-                  setSheetState(() {});
-                },
-              ),
-              _PrivacyDivider(key: Key('privacyControlDivider0')),
-              _PrivacySwitchRow(
-                title: 'Health Data',
-                value: _healthDataAccess,
-                onChanged: (value) {
-                  setState(() => _healthDataAccess = value);
-                  setSheetState(() {});
-                },
-              ),
-              _PrivacyDivider(key: Key('privacyControlDivider1')),
-              _PrivacySwitchRow(
-                title: 'Anonymous Analytics',
-                value: _analyticsEnabled,
-                onChanged: (value) {
-                  setState(() => _analyticsEnabled = value);
-                  setSheetState(() {});
-                },
-              ),
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Done'),
-                ),
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 28),
+            FilledButton(
+              key: const Key('appleHealthDoneButton'),
+              onPressed: () => Navigator.of(context).maybePop(),
+              child: const Text('Done'),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _showPrivacyControls() {
+    return pushInAppPage<void>(
+      context,
+      builder: (context) => _PrivacyControlsPage(
+        cameraAccess: false,
+        onReadCameraAccess: () async =>
+            (await Permission.camera.status).isGranted,
+        onRequestCameraAccess: Permission.camera.request,
+        onOpenAppSettings: openAppSettings,
       ),
     );
   }
 
   Future<void> _exportData() async {
-    final export =
-        'Mediary Data Export\n'
-        'Account: ${widget.accountEmail ?? 'Local account'}\n'
-        'Dose Notifications: ${_doseNotifications ? 'On' : 'Off'}\n'
-        'Follow-Up Alerts: ${_followUpAlerts ? 'On' : 'Off'}\n'
-        'Units: $_units';
-    await Clipboard.setData(ClipboardData(text: export));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Data copied securely')));
+    if (_isExportingData) return;
+    setState(() {
+      _isExportingData = true;
+      _exportStatusMessage = null;
+    });
+    unawaited(AppHaptics.primaryAction());
+    try {
+      final export =
+          'Mediary Data Export\n'
+          'Account: ${widget.accountEmail ?? 'Local account'}\n'
+          'Dose Notifications: ${_doseNotifications ? 'On' : 'Off'}\n'
+          'Follow-Up Alerts: ${_followUpAlerts ? 'On' : 'Off'}\n'
+          'Units: $_units';
+      await Clipboard.setData(ClipboardData(text: export));
+      if (!mounted) return;
+      setState(() => _exportStatusMessage = 'Copied to device clipboard');
+    } catch (_) {
+      if (mounted) setState(() => _exportStatusMessage = 'Unable to copy data');
+    } finally {
+      if (mounted) setState(() => _isExportingData = false);
+    }
   }
 
   @override
@@ -279,215 +362,243 @@ class _SettingsScreenState extends State<SettingsScreen> {
         bottom: false,
         child: KeyedSubtree(
           key: const Key('settingsScrollView'),
-          child: ListView(
-            key: const PageStorageKey<String>('settingsScrollPosition'),
-            scrollCacheExtent: const ScrollCacheExtent.pixels(5000),
-            padding: EdgeInsets.fromLTRB(16, 2, 16, widget.bottomPadding),
-            children: [
-              if (widget.embedded)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(2, 8, 2, 4),
-                  child: Text(
-                    'Settings',
-                    key: const Key('settingsPageTitle'),
-                    style: TextStyle(
-                      color: _ink,
-                      fontSize: 32,
-                      height: 1.08,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -.8,
-                    ),
-                  ),
-                ),
-              if (showAccount) ...[
-                _sectionTitle(
-                  'Account',
-                  key: const Key('settingsAccountSectionTitle'),
-                ),
-                _group(key: const Key('settingsAccountGroup'), [
-                  _AccountSettingsRow(
-                    key: const Key('settingsAccountRow'),
-                    displayName: widget.accountDisplayName,
-                    email: widget.accountEmail,
-                    photoUrl: widget.accountPhotoUrl,
-                    accent: _accent,
-                    muted: _muted,
-                    onTap: widget.onOpenAccount,
-                  ),
-                ]),
-              ],
-              _sectionTitle(
-                'Reminders',
-                key: const Key('settingsRemindersSectionTitle'),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: responsiveContentWidth(context, nativeMaxWidth: 760),
               ),
-              _group(key: const Key('settingsRemindersGroup'), [
-                _SettingsRow(
-                  icon: CupertinoIcons.bell_fill,
-                  iconColor: _accent,
-                  title: 'Dose Notifications',
-                  subtitle: 'At scheduled times',
-                  onTap: () =>
-                      setState(() => _doseNotifications = !_doseNotifications),
-                  trailing: _themedSwitch(
-                    key: const Key('doseNotificationsSwitch'),
-                    value: _doseNotifications,
-                    onChanged: (value) =>
-                        setState(() => _doseNotifications = value),
-                  ),
-                ),
-                _SettingsRow(
-                  icon: CupertinoIcons.arrow_counterclockwise,
-                  iconColor: _accent,
-                  title: 'Follow-Up Alert',
-                  subtitle: 'After 15 minutes',
-                  onTap: () =>
-                      setState(() => _followUpAlerts = !_followUpAlerts),
-                  trailing: _themedSwitch(
-                    key: const Key('followUpAlertSwitch'),
-                    value: _followUpAlerts,
-                    onChanged: (value) =>
-                        setState(() => _followUpAlerts = value),
-                  ),
-                ),
-                _SettingsRow(
-                  icon: CupertinoIcons.speaker_2_fill,
-                  iconColor: _accent,
-                  title: 'Reminder Sound',
-                  subtitle: _reminderSound,
-                  trailing: _chevron(),
-                  onTap: _chooseReminderSound,
-                ),
-              ]),
-              _sectionTitle(
-                'App Preferences',
-                key: const Key('settingsAppPreferencesSectionTitle'),
-              ),
-              _group(key: const Key('settingsAppPreferencesGroup'), [
-                _SettingsRow(
-                  icon: CupertinoIcons.globe,
-                  iconColor: _accent,
-                  title: 'Language',
-                  subtitle: 'Display language',
-                  trailing: _value(_language),
-                  onTap: _chooseLanguage,
-                ),
-                _SettingsRow(
-                  icon: CupertinoIcons.gauge,
-                  iconColor: _accent,
-                  title: 'Units',
-                  subtitle: 'Measurements',
-                  trailing: _value(_units),
-                  onTap: _chooseUnits,
-                ),
-              ]),
-              _sectionTitle(
-                'Appearance',
-                key: const Key('settingsAppearanceSectionTitle'),
-              ),
-              _group(key: const Key('settingsAppearanceGroup'), [
-                Column(
-                  children: [
+              child: ListView(
+                key: const PageStorageKey<String>('settingsScrollPosition'),
+                scrollCacheExtent: const ScrollCacheExtent.pixels(5000),
+                padding: EdgeInsets.fromLTRB(16, 2, 16, widget.bottomPadding),
+                children: [
+                  if (widget.embedded)
                     Padding(
-                      key: const Key('appearanceOptionsPanel'),
-                      padding: const EdgeInsets.all(12),
-                      child: LiquidGlassAppearanceSelector(
-                        value: _appearanceMode,
-                        onChanged: _setAppearanceMode,
+                      padding: const EdgeInsets.fromLTRB(2, 8, 2, 4),
+                      child: Text(
+                        'Settings',
+                        key: const Key('settingsPageTitle'),
+                        style: TextStyle(
+                          color: _ink,
+                          fontSize: 32,
+                          height: 1.08,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -.8,
+                        ),
                       ),
                     ),
-                    Divider(height: 1, color: _line),
-                    Padding(
-                      key: const Key('accentColorOptionsPanel'),
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                      child: Column(
-                        children: [
-                          Row(
+                  if (showAccount) ...[
+                    _sectionTitle(
+                      'Account',
+                      key: const Key('settingsAccountSectionTitle'),
+                    ),
+                    _group(key: const Key('settingsAccountGroup'), [
+                      _AccountSettingsRow(
+                        key: const Key('settingsAccountRow'),
+                        displayName: widget.accountDisplayName,
+                        email: widget.accountEmail,
+                        photoUrl: widget.accountPhotoUrl,
+                        accent: _accent,
+                        muted: _muted,
+                        onTap: widget.onOpenAccount,
+                      ),
+                    ]),
+                  ],
+                  _sectionTitle(
+                    'Reminders',
+                    key: const Key('settingsRemindersSectionTitle'),
+                  ),
+                  _group(key: const Key('settingsRemindersGroup'), [
+                    _SettingsRow(
+                      icon: CupertinoIcons.bell_fill,
+                      iconColor: _accent,
+                      title: 'Dose Notifications',
+                      subtitle: 'At scheduled times',
+                      onTap: () => _setDoseNotifications(!_doseNotifications),
+                      trailing: _themedSwitch(
+                        key: const Key('doseNotificationsSwitch'),
+                        value: _doseNotifications,
+                        onChanged: _setDoseNotifications,
+                      ),
+                    ),
+                    _SettingsRow(
+                      icon: CupertinoIcons.arrow_counterclockwise,
+                      iconColor: _accent,
+                      title: 'Follow-Up Alert',
+                      subtitle: 'After 15 minutes',
+                      onTap: () => _setFollowUpAlerts(!_followUpAlerts),
+                      trailing: _themedSwitch(
+                        key: const Key('followUpAlertSwitch'),
+                        value: _followUpAlerts,
+                        onChanged: _setFollowUpAlerts,
+                      ),
+                    ),
+                    _SettingsRow(
+                      icon: CupertinoIcons.speaker_2_fill,
+                      iconColor: _accent,
+                      title: 'Reminder Sound',
+                      subtitle: _reminderSound,
+                      trailing: _chevron(),
+                      onTap: _chooseReminderSound,
+                    ),
+                  ]),
+                  _sectionTitle(
+                    'App Preferences',
+                    key: const Key('settingsAppPreferencesSectionTitle'),
+                  ),
+                  _group(key: const Key('settingsAppPreferencesGroup'), [
+                    _SettingsRow(
+                      icon: CupertinoIcons.globe,
+                      iconColor: _accent,
+                      title: 'Language',
+                      subtitle: 'Display language',
+                      trailing: _value(_language),
+                      onTap: _chooseLanguage,
+                    ),
+                    _SettingsRow(
+                      icon: CupertinoIcons.gauge,
+                      iconColor: _accent,
+                      title: 'Units',
+                      subtitle: 'Measurements',
+                      trailing: _value(_units),
+                      onTap: _chooseUnits,
+                    ),
+                  ]),
+                  _sectionTitle(
+                    'Appearance',
+                    key: const Key('settingsAppearanceSectionTitle'),
+                  ),
+                  _group(key: const Key('settingsAppearanceGroup'), [
+                    Column(
+                      children: [
+                        Padding(
+                          key: const Key('appearanceOptionsPanel'),
+                          padding: const EdgeInsets.all(12),
+                          child: LiquidGlassAppearanceSelector(
+                            value: _appearanceMode,
+                            onChanged: _setAppearanceMode,
+                          ),
+                        ),
+                        Divider(height: 1, color: _line),
+                        Padding(
+                          key: const Key('accentColorOptionsPanel'),
+                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                          child: Column(
                             children: [
-                              Expanded(
-                                child: Text(
-                                  'Accent Color',
-                                  style: TextStyle(
-                                    color: _ink,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'Accent Color',
+                                      style: TextStyle(
+                                        color: _ink,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  Text(
+                                    _accentColor.label,
+                                    key: const Key('selectedAccentColorLabel'),
+                                    style: TextStyle(
+                                      color: _muted,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              Text(
-                                _accentColor.label,
-                                key: const Key('selectedAccentColorLabel'),
-                                style: TextStyle(
-                                  color: _muted,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                ),
+                              const SizedBox(height: 12),
+                              LiquidGlassAccentSelector(
+                                value: _accentColor,
+                                onChanged: _setAccentColor,
                               ),
                             ],
                           ),
-                          const SizedBox(height: 12),
-                          LiquidGlassAccentSelector(
-                            value: _accentColor,
-                            onChanged: _setAccentColor,
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ]),
-              _sectionTitle(
-                'Connected Apps',
-                key: const Key('settingsConnectedAppsSectionTitle'),
-              ),
-              _group(key: const Key('settingsConnectedAppsGroup'), [
-                _SettingsRow(
-                  icon: CupertinoIcons.heart_fill,
-                  iconColor: _success,
-                  title: 'Apple Health',
-                  subtitle: _appleHealthConnected
-                      ? 'Connected'
-                      : 'Not connected',
-                  trailing: Text(
-                    _appleHealthConnected ? 'On' : 'Off',
-                    style: TextStyle(
-                      color: _success,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  ]),
+                  _sectionTitle(
+                    'Connected Apps',
+                    key: const Key('settingsConnectedAppsSectionTitle'),
                   ),
-                  onTap: _manageAppleHealth,
-                ),
-              ]),
-              _sectionTitle(
-                'Privacy',
-                key: const Key('settingsPrivacySectionTitle'),
+                  _group(key: const Key('settingsConnectedAppsGroup'), [
+                    _SettingsRow(
+                      icon: CupertinoIcons.heart_fill,
+                      iconColor: _success,
+                      title: 'Apple Health',
+                      subtitle: _appleHealthConnected
+                          ? 'Connected'
+                          : 'Not connected',
+                      trailing: Text(
+                        _appleHealthConnected ? 'On' : 'Off',
+                        style: TextStyle(
+                          color: _appleHealthConnected ? _success : _muted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      onTap: _manageAppleHealth,
+                    ),
+                  ]),
+                  _sectionTitle(
+                    'Privacy',
+                    key: const Key('settingsPrivacySectionTitle'),
+                  ),
+                  _group(key: const Key('settingsPrivacyGroup'), [
+                    _SettingsRow(
+                      icon: CupertinoIcons.lock_fill,
+                      iconColor: _accent,
+                      title: 'Privacy Controls',
+                      subtitle: 'Camera, health, analytics',
+                      trailing: _chevron(),
+                      onTap: _showPrivacyControls,
+                    ),
+                    _SettingsRow(
+                      key: const Key('exportDataButton'),
+                      icon: CupertinoIcons.square_arrow_up_fill,
+                      iconColor: _accent,
+                      title: 'Export My Data',
+                      subtitle:
+                          _exportStatusMessage ?? 'Copy an account summary',
+                      trailing: _isExportingData
+                          ? SizedBox.square(
+                              key: const Key('exportDataLoadingIndicator'),
+                              dimension: 17,
+                              child: CircularProgressIndicator(
+                                value: .72,
+                                strokeWidth: 1.8,
+                                color: _accent,
+                              ),
+                            )
+                          : _exportStatusMessage != null
+                          ? Icon(
+                              key: const Key('exportDataStatusIndicator'),
+                              _exportStatusMessage ==
+                                      'Copied to device clipboard'
+                                  ? CupertinoIcons.check_mark_circled_solid
+                                  : CupertinoIcons.exclamationmark_circle_fill,
+                              color:
+                                  _exportStatusMessage ==
+                                      'Copied to device clipboard'
+                                  ? _success
+                                  : _colors.error,
+                              size: 18,
+                            )
+                          : _chevron(),
+                      onTap: _isExportingData ? null : _exportData,
+                    ),
+                  ]),
+                  const SizedBox(height: 13),
+                  Text(
+                    'Mediary 1.0.0 · Reference only',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: _muted, fontSize: 10, height: 1.5),
+                  ),
+                ],
               ),
-              _group(key: const Key('settingsPrivacyGroup'), [
-                _SettingsRow(
-                  icon: CupertinoIcons.lock_fill,
-                  iconColor: _accent,
-                  title: 'Privacy Controls',
-                  subtitle: 'Camera, health, analytics',
-                  trailing: _chevron(),
-                  onTap: _showPrivacyControls,
-                ),
-                _SettingsRow(
-                  key: const Key('exportDataButton'),
-                  icon: CupertinoIcons.square_arrow_up_fill,
-                  iconColor: _accent,
-                  title: 'Export My Data',
-                  subtitle: 'Copy a secure summary',
-                  trailing: _chevron(),
-                  onTap: _exportData,
-                ),
-              ]),
-              const SizedBox(height: 13),
-              Text(
-                'Mediary 1.0.0 · Reference only',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: _muted, fontSize: 10, height: 1.5),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -557,6 +668,171 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(width: 5),
         _chevron(),
       ],
+    );
+  }
+}
+
+class _PrivacyControlsPage extends StatefulWidget {
+  const _PrivacyControlsPage({
+    required this.cameraAccess,
+    required this.onReadCameraAccess,
+    required this.onRequestCameraAccess,
+    required this.onOpenAppSettings,
+  });
+
+  final bool cameraAccess;
+  final Future<bool> Function() onReadCameraAccess;
+  final Future<PermissionStatus> Function() onRequestCameraAccess;
+  final Future<bool> Function() onOpenAppSettings;
+
+  @override
+  State<_PrivacyControlsPage> createState() => _PrivacyControlsPageState();
+}
+
+class _PrivacyControlsPageState extends State<_PrivacyControlsPage> {
+  late bool _cameraAccess = widget.cameraAccess;
+  bool _cameraBusy = false;
+  String? _cameraStatus;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_refreshCameraAccess());
+  }
+
+  Future<void> _refreshCameraAccess() async {
+    try {
+      final allowed = await widget.onReadCameraAccess();
+      if (mounted && allowed != _cameraAccess) {
+        setState(() => _cameraAccess = allowed);
+      }
+    } catch (_) {
+      // Some preview/test platforms do not provide a permission backend.
+    }
+  }
+
+  Future<void> _manageCameraAccess() async {
+    if (_cameraBusy) return;
+    setState(() {
+      _cameraBusy = true;
+      _cameraStatus = null;
+    });
+    try {
+      if (_cameraAccess) {
+        final opened = await widget.onOpenAppSettings();
+        if (!mounted) return;
+        setState(() {
+          _cameraStatus = opened
+              ? 'Use device settings to review or revoke camera access.'
+              : 'Unable to open device settings.';
+        });
+        return;
+      }
+
+      final status = await widget.onRequestCameraAccess();
+      if (!mounted) return;
+      if (status.isGranted) {
+        setState(() {
+          _cameraAccess = true;
+          _cameraStatus = 'Camera access allowed.';
+        });
+      } else if (status.isPermanentlyDenied || status.isRestricted) {
+        final opened = await widget.onOpenAppSettings();
+        if (!mounted) return;
+        setState(() {
+          _cameraStatus = opened
+              ? 'Use device settings to allow camera access.'
+              : 'Camera access remains off.';
+        });
+      } else {
+        setState(() => _cameraStatus = 'Camera access remains off.');
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _cameraStatus = 'Unable to update camera access.');
+      }
+    } finally {
+      if (mounted) setState(() => _cameraBusy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return InAppPageScaffold(
+      key: const Key('privacyControlsPage'),
+      title: 'Privacy Controls',
+      actions: [
+        TextButton(
+          key: const Key('privacyControlsDoneButton'),
+          onPressed: () => Navigator.of(context).maybePop(),
+          child: const Text('Done'),
+        ),
+        const SizedBox(width: 8),
+      ],
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          Text(
+            'Camera access is managed by your device. Integrations that are '
+            'not configured remain off.',
+            style: TextStyle(
+              color: colors.onSurfaceVariant,
+              fontSize: 14,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 18),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Material(
+              color: colors.surface,
+              child: Column(
+                children: [
+                  ListTile(
+                    key: const Key('cameraAccessControl'),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                    title: const Text('Camera Access'),
+                    subtitle: Text(
+                      _cameraStatus ??
+                          (_cameraAccess
+                              ? 'Allowed by device settings'
+                              : 'Off until you allow it'),
+                    ),
+                    trailing: _cameraBusy
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(
+                            _cameraAccess ? 'Manage' : 'Allow',
+                            style: TextStyle(
+                              color: colors.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                    onTap: _cameraBusy ? null : _manageCameraAccess,
+                  ),
+                  const _PrivacyDivider(key: Key('privacyControlDivider0')),
+                  const _PrivacySwitchRow(
+                    title: 'Health Data',
+                    subtitle: 'Not connected in this build',
+                    value: false,
+                    onChanged: null,
+                  ),
+                  const _PrivacyDivider(key: Key('privacyControlDivider1')),
+                  const _PrivacySwitchRow(
+                    title: 'Anonymous Analytics',
+                    subtitle: 'No analytics service is installed',
+                    value: false,
+                    onChanged: null,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -668,6 +944,7 @@ class _AccountAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final trimmedUrl = photoUrl?.trim();
+    final profileImage = safeProfileImageProvider(trimmedUrl, cacheWidth: 132);
     final fallback = ColoredBox(
       color: accent.withValues(alpha: .13),
       child: Center(
@@ -681,14 +958,14 @@ class _AccountAvatar extends StatelessWidget {
         ),
       ),
     );
-    if (trimmedUrl == null || trimmedUrl.isEmpty) {
+    if (profileImage == null) {
       return SizedBox.square(dimension: 44, child: ClipOval(child: fallback));
     }
     return SizedBox.square(
       dimension: 44,
       child: ClipOval(
-        child: Image.network(
-          trimmedUrl,
+        child: Image(
+          image: profileImage,
           fit: BoxFit.cover,
           errorBuilder: (context, error, stackTrace) => fallback,
         ),
@@ -786,19 +1063,22 @@ class _PrivacyDivider extends StatelessWidget {
 class _PrivacySwitchRow extends StatelessWidget {
   const _PrivacySwitchRow({
     required this.title,
+    required this.subtitle,
     required this.value,
     required this.onChanged,
   });
 
   final String title;
+  final String subtitle;
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {
     return SwitchListTile.adaptive(
       contentPadding: EdgeInsets.zero,
       title: Text(title),
+      subtitle: Text(subtitle),
       value: value,
       onChanged: onChanged,
     );

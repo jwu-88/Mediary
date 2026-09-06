@@ -34,10 +34,15 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
-  firebase_core: ^4.13.0
-  firebase_auth: ^6.1.4
+  # Pin the FlutterFire releases to one Firebase iOS/macOS SDK version.
+  firebase_core: 4.13.0
+  firebase_auth: 6.5.7
+  cloud_firestore: 6.8.0
   google_sign_in: ^7.2.0
-  permission_handler: ^13.0.1
+  web: ^1.1.1
+  # 13.x requires Android API 37, which is newer than this Flutter/AGP
+  # toolchain supports. Keep the latest compatible 12.x release for now.
+  permission_handler: ^12.0.3
 
 dev_dependencies:
   flutter_test:
@@ -62,6 +67,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/images/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
