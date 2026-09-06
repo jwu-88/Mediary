@@ -1,5 +1,7 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/app_theme.dart';
 import 'package:mediary/liquid_glass_tab_bar.dart';
@@ -110,9 +112,46 @@ void main() {
     );
     semantics.dispose();
   });
+
+  testWidgets('mobile tab selection provides one haptic and one callback', (
+    tester,
+  ) async {
+    final haptics = <MethodCall>[];
+    var selectedIndex = -1;
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'HapticFeedback.vibrate') haptics.add(call);
+        return null;
+      },
+    );
+    addTearDown(() {
+      debugDefaultTargetPlatformOverride = null;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    await _pumpTabBar(tester, onTap: (index) => selectedIndex = index);
+    haptics.clear();
+
+    await tester.tap(find.text('Calendar'));
+    await tester.pump();
+
+    debugDefaultTargetPlatformOverride = null;
+
+    expect(selectedIndex, 1);
+    expect(haptics, hasLength(1));
+    expect(haptics.single.arguments, 'HapticFeedbackType.selectionClick');
+  });
 }
 
-Future<void> _pumpTabBar(WidgetTester tester) async {
+Future<void> _pumpTabBar(
+  WidgetTester tester, {
+  ValueChanged<int>? onTap,
+}) async {
   tester.view.physicalSize = const Size(402, 874);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -123,7 +162,10 @@ Future<void> _pumpTabBar(WidgetTester tester) async {
       theme: AppTheme.lightFor(AppAccentColor.teal),
       home: Scaffold(
         backgroundColor: const Color(0xFF6BA8C8),
-        bottomNavigationBar: LiquidGlassTabBar(currentIndex: 0, onTap: (_) {}),
+        bottomNavigationBar: LiquidGlassTabBar(
+          currentIndex: 0,
+          onTap: onTap ?? (_) {},
+        ),
       ),
     ),
   );

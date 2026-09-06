@@ -80,4 +80,67 @@ void main() {
     expect(controller.text, isEmpty);
     expect(query, isEmpty);
   });
+
+  testWidgets('moves listeners when the text controller changes', (
+    tester,
+  ) async {
+    final firstController = _TrackingTextEditingController(text: 'First');
+    final secondController = _TrackingTextEditingController();
+    addTearDown(firstController.dispose);
+    addTearDown(secondController.dispose);
+
+    Widget buildSearch(TextEditingController controller) {
+      return MaterialApp(
+        home: Scaffold(
+          body: LiquidGlassSearchField(
+            key: const Key('search'),
+            controller: controller,
+            hintText: 'Search Medications',
+            useLiquidGlass: true,
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(buildSearch(firstController));
+    expect(firstController.listenerCount, greaterThan(0));
+    expect(
+      find.byKey(const Key('liquidGlassSearchClearButton')),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(buildSearch(secondController));
+    await tester.pump();
+
+    expect(firstController.listenerCount, 0);
+    expect(secondController.listenerCount, greaterThan(0));
+    expect(find.byKey(const Key('liquidGlassSearchClearButton')), findsNothing);
+
+    secondController.text = 'Second';
+    await tester.pump();
+    expect(
+      find.byKey(const Key('liquidGlassSearchClearButton')),
+      findsOneWidget,
+    );
+  });
+}
+
+class _TrackingTextEditingController extends TextEditingController {
+  _TrackingTextEditingController({super.text});
+
+  final Set<VoidCallback> _listeners = {};
+
+  int get listenerCount => _listeners.length;
+
+  @override
+  void addListener(VoidCallback listener) {
+    _listeners.add(listener);
+    super.addListener(listener);
+  }
+
+  @override
+  void removeListener(VoidCallback listener) {
+    _listeners.remove(listener);
+    super.removeListener(listener);
+  }
 }

@@ -3,6 +3,8 @@ import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'app_interactions.dart';
+
 class LiquidGlassTabBar extends StatelessWidget {
   const LiquidGlassTabBar({
     super.key,
@@ -354,10 +356,15 @@ class _GlassTabItem extends StatelessWidget {
       inMutuallyExclusiveGroup: true,
       onTap: onTap,
       child: ExcludeSemantics(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          excludeFromSemantics: true,
-          onTap: onTap,
+        child: AppPressable(
+          onPressed: onTap,
+          haptic: AppHapticKind.selection,
+          hoverScale: 1.025,
+          pressedScale: .94,
+          hoverOffset: const Offset(0, -1),
+          borderRadius: BorderRadius.circular(24),
+          hoverOverlayColor: activeColor.withValues(alpha: .06),
+          pressedOverlayColor: activeColor.withValues(alpha: .12),
           child: SizedBox.expand(
             child: Center(
               child: TweenAnimationBuilder<double>(

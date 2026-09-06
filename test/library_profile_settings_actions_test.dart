@@ -49,6 +49,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('medicationIbuprofen')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('medicationPreviewPage')), findsOneWidget);
+    expect(find.byType(BottomSheet), findsNothing);
     expect(find.text('Save Medication'), findsOneWidget);
 
     await tester.tap(find.text('Save Medication'));
@@ -81,6 +83,11 @@ void main() {
     await tester.tap(find.text('View All'));
     await tester.pumpAndSettle();
 
+    expect(
+      find.byKey(const Key('informationPageCommon Side Effects')),
+      findsOneWidget,
+    );
+    expect(find.byType(BottomSheet), findsNothing);
     expect(find.textContaining('Headache'), findsOneWidget);
     expect(find.textContaining('Seek urgent care'), findsOneWidget);
   });
@@ -159,7 +166,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('exportDataButton')));
     await tester.pump(const Duration(milliseconds: 200));
-    expect(find.text('Data copied securely'), findsOneWidget);
+    expect(find.text('Copied to device clipboard'), findsOneWidget);
     expect(copiedData, contains('Mediary Data Export'));
   });
 }

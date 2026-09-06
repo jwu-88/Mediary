@@ -4,6 +4,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'app_interactions.dart';
+import 'app_theme.dart';
+
 /// A three-way glass selector for the app's light, dark, and system themes.
 class LiquidGlassAppearanceSelector extends StatelessWidget {
   const LiquidGlassAppearanceSelector({
@@ -146,7 +149,7 @@ class _AppearanceOption extends StatelessWidget {
         ? activeColor
         : dark
         ? const Color(0xFFF2F2F7)
-        : const Color(0xE61C1C1E);
+        : AppColors.darkSurface.withValues(alpha: .90);
     final selectedColors = dark
         ? [
             Colors.white.withValues(alpha: highContrast ? .18 : .09),
@@ -232,12 +235,15 @@ class _AppearanceOption extends StatelessWidget {
                   width: selected ? .9 : .7,
                 ),
               ),
-              child: CupertinoButton(
-                padding: EdgeInsets.zero,
-                minimumSize: Size.zero,
-                pressedOpacity: .64,
-                borderRadius: BorderRadius.circular(26),
+              child: AppPressable(
                 onPressed: onPressed,
+                haptic: AppHapticKind.selection,
+                hoverScale: 1.018,
+                pressedScale: .965,
+                hoverOffset: Offset.zero,
+                borderRadius: BorderRadius.circular(26),
+                hoverOverlayColor: activeColor.withValues(alpha: .07),
+                pressedOverlayColor: activeColor.withValues(alpha: .13),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [

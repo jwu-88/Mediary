@@ -3,6 +3,8 @@ import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'app_interactions.dart';
+import 'app_layout.dart';
 import 'liquid_glass_back_button.dart';
 import 'liquid_glass_search_field.dart';
 
@@ -40,7 +42,7 @@ const defaultMedicationOptions = <MedicationOption>[
     genericName: 'Amoxicillin',
     strength: '500 mg',
     form: 'Capsule',
-    imageUrl: 'https://images.unsplash.com/photo-1471864190281-a93a3070b6de?auto=format&fit=crop&w=180&q=85',
+    imageUrl: 'assets/images/medication_auth_background.jpg',
     fallbackColor: Color(0xFFF5DDE6),
   ),
   MedicationOption(
@@ -49,7 +51,7 @@ const defaultMedicationOptions = <MedicationOption>[
     genericName: 'Ibuprofen',
     strength: '200 mg',
     form: 'Tablet',
-    imageUrl: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=180&q=85',
+    imageUrl: 'assets/images/ibuprofen.jpg',
     fallbackColor: Color(0xFFDDEBF5),
     fallbackIcon: CupertinoIcons.bandage_fill,
   ),
@@ -59,7 +61,7 @@ const defaultMedicationOptions = <MedicationOption>[
     genericName: 'Cetirizine Hydrochloride',
     strength: '10 mg',
     form: 'Tablet',
-    imageUrl: 'https://images.unsplash.com/photo-1550572017-edd951b55104?auto=format&fit=crop&w=180&q=85',
+    imageUrl: 'assets/images/cetirizine.jpg',
     fallbackColor: Color(0xFFE2E9DF),
     fallbackIcon: CupertinoIcons.drop_fill,
   ),
@@ -69,7 +71,7 @@ const defaultMedicationOptions = <MedicationOption>[
     genericName: 'Cholecalciferol',
     strength: '1000 IU',
     form: 'Softgel',
-    imageUrl: 'https://images.unsplash.com/photo-1559757175-0eb30cd8c063?auto=format&fit=crop&w=180&q=85',
+    imageUrl: 'assets/images/vitamin_d3.jpg',
     fallbackColor: Color(0xFFFFE8C2),
     fallbackIcon: CupertinoIcons.sun_max_fill,
   ),
@@ -79,7 +81,7 @@ const defaultMedicationOptions = <MedicationOption>[
     genericName: 'Atorvastatin Calcium',
     strength: '20 mg',
     form: 'Tablet',
-    imageUrl: 'https://images.unsplash.com/photo-1587854692152-cbe660dbde88?auto=format&fit=crop&w=180&q=85',
+    imageUrl: 'assets/images/atorvastatin.jpg',
     fallbackColor: Color(0xFFE1E5F4),
     fallbackIcon: CupertinoIcons.heart_fill,
   ),
@@ -89,7 +91,7 @@ const defaultMedicationOptions = <MedicationOption>[
     genericName: 'Metformin Hydrochloride',
     strength: '500 mg',
     form: 'Tablet',
-    imageUrl: 'https://images.unsplash.com/photo-1607619056574-7b8d3ee536b2?auto=format&fit=crop&w=180&q=85',
+    imageUrl: 'assets/images/metformin.jpg',
     fallbackColor: Color(0xFFDCEDEA),
     fallbackIcon: CupertinoIcons.circle_grid_hex_fill,
   ),
@@ -171,6 +173,13 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     final colors = theme.colorScheme;
     final medications = _visibleMedications;
     final selectionCount = _selectedIds.length;
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final contentWidth = viewportWidth >= 900
+        ? responsiveContentWidth(context, nativeMaxWidth: 760)
+        : 560.0;
+    final actionWidth = viewportWidth >= 900
+        ? responsiveContentWidth(context, nativeMaxWidth: 728)
+        : 528.0;
 
     return Scaffold(
       key: const Key('addMedicationScreen'),
@@ -194,7 +203,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
         top: false,
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
+            constraints: BoxConstraints(maxWidth: contentWidth),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -278,7 +287,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
         child: Center(
           heightFactor: 1,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 528),
+            constraints: BoxConstraints(maxWidth: actionWidth),
             child: _LiquidGlassAddButton(
               key: const Key('addSelectedMedicationsButton'),
               onPressed: selectionCount == 0 ? null : _completeSelection,
@@ -354,109 +363,98 @@ class _LiquidGlassAddButton extends StatelessWidget {
             colors.onSurface.withValues(alpha: .05),
           ];
 
-    return Semantics(
-      button: true,
+    return AppPressable(
+      onPressed: onPressed,
       enabled: enabled,
-      label: label,
-      onTap: onPressed,
-      child: ExcludeSemantics(
-        child: SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(25),
-              boxShadow: enabled
-                  ? [
-                      BoxShadow(
-                        color: enabledAccent.withValues(
-                          alpha: dark ? .25 : .20,
-                        ),
-                        blurRadius: 22,
-                        spreadRadius: -7,
-                        offset: const Offset(0, 8),
-                      ),
-                    ]
-                  : const [],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(25),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-                child: AnimatedContainer(
-                  duration: reduceMotion
-                      ? Duration.zero
-                      : const Duration(milliseconds: 180),
-                  curve: Curves.easeOut,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(25),
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: gradientColors,
-                      stops: const [0, .46, 1],
+      haptic: AppHapticKind.primaryAction,
+      semanticLabel: label,
+      excludeFromSemantics: true,
+      borderRadius: BorderRadius.circular(25),
+      hoverScale: 1.01,
+      hoverOffset: const Offset(0, -1),
+      pressedScale: .975,
+      disabledOpacity: 1,
+      child: SizedBox(
+        width: double.infinity,
+        height: 50,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(25),
+            boxShadow: enabled
+                ? [
+                    BoxShadow(
+                      color: enabledAccent.withValues(alpha: dark ? .25 : .20),
+                      blurRadius: 22,
+                      spreadRadius: -7,
+                      offset: const Offset(0, 8),
                     ),
+                  ]
+                : const [],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(25),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+              child: AnimatedContainer(
+                duration: reduceMotion
+                    ? Duration.zero
+                    : const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(25),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: gradientColors,
+                    stops: const [0, .46, 1],
                   ),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: RadialGradient(
-                            center: const Alignment(-.82, -1),
-                            radius: 1.25,
-                            colors: [
-                              Colors.white.withValues(
-                                alpha: enabled
-                                    ? (dark ? .14 : .22)
-                                    : (dark ? .08 : .20),
-                              ),
-                              Colors.transparent,
-                            ],
-                          ),
-                        ),
-                      ),
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.transparent,
-                              Colors.black.withValues(
-                                alpha: enabled ? .08 : .02,
-                              ),
-                            ],
-                            stops: const [0, .58, 1],
-                          ),
-                        ),
-                      ),
-                      Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: onPressed,
-                          borderRadius: BorderRadius.circular(25),
-                          splashColor: Colors.white.withValues(alpha: .14),
-                          highlightColor: Colors.white.withValues(alpha: .08),
-                          child: Center(
-                            child: Text(
-                              label,
-                              style: TextStyle(
-                                color: enabled
-                                    ? colors.onPrimary
-                                    : colors.onSurfaceVariant.withValues(
-                                        alpha: .68,
-                                      ),
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
+                ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          center: const Alignment(-.82, -1),
+                          radius: 1.25,
+                          colors: [
+                            Colors.white.withValues(
+                              alpha: enabled
+                                  ? (dark ? .14 : .22)
+                                  : (dark ? .08 : .20),
                             ),
-                          ),
+                            Colors.transparent,
+                          ],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: enabled ? .08 : .02),
+                          ],
+                          stops: const [0, .58, 1],
+                        ),
+                      ),
+                    ),
+                    Center(
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          color: enabled
+                              ? colors.onPrimary
+                              : colors.onSurfaceVariant.withValues(alpha: .68),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -482,16 +480,19 @@ class _MedicationOptionRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Semantics(
-      button: true,
       selected: selected,
-      label: '${medication.name}, ${medication.doseDescription}',
-      child: Material(
-        color: selected
-            ? colors.primary.withValues(alpha: .055)
-            : Colors.transparent,
-        child: InkWell(
-          key: Key('medicationOption_${medication.id}'),
-          onTap: onPressed,
+      child: AppPressable(
+        key: Key('medicationOption_${medication.id}'),
+        onPressed: onPressed,
+        semanticLabel: '${medication.name}, ${medication.doseDescription}',
+        borderRadius: BorderRadius.zero,
+        hoverScale: 1,
+        hoverOffset: Offset.zero,
+        pressedScale: .99,
+        child: Material(
+          color: selected
+              ? colors.primary.withValues(alpha: .055)
+              : Colors.transparent,
           child: SizedBox(
             height: 78,
             child: Padding(
@@ -586,9 +587,11 @@ class _MedicationImage extends StatelessWidget {
       borderRadius: BorderRadius.circular(9),
       child: SizedBox.square(
         dimension: 54,
-        child: Image.network(
+        child: Image.asset(
           medication.imageUrl,
           fit: BoxFit.cover,
+          cacheWidth: 216,
+          filterQuality: FilterQuality.medium,
           frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
             if (wasSynchronouslyLoaded || frame != null) return child;
             return _fallback();

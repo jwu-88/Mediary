@@ -46,17 +46,18 @@ void main() {
 
     await tester.enterText(find.byKey(const Key('emailField')), 'not-an-email');
     await tester.enterText(find.byKey(const Key('passwordField')), '123');
+    await tester.ensureVisible(find.byKey(const Key('submitButton')));
     await tester.tap(find.byKey(const Key('submitButton')));
     await tester.pump();
     expect(find.text('Enter a valid email address.'), findsOneWidget);
     expect(
-      find.text('Password must be at least 6 characters.'),
+      find.text('Use at least 8 characters for a new password.'),
       findsOneWidget,
     );
     expect(calls, 0);
   });
 
-  testWidgets('switches to account creation and submits its mode', (
+  testWidgets('defaults to account creation and submits its mode', (
     tester,
   ) async {
     String? submittedEmail;
@@ -72,10 +73,9 @@ void main() {
       }),
     );
 
-    await tester.tap(find.text('Need an account? Create one'));
-    await tester.pump();
     expect(find.text('Create an Account'), findsOneWidget);
     expect(find.text('Already have an account? Sign in'), findsOneWidget);
+    expect(find.byKey(const Key('confirmPasswordField')), findsOneWidget);
 
     await tester.enterText(
       find.byKey(const Key('emailField')),
@@ -85,6 +85,11 @@ void main() {
       find.byKey(const Key('passwordField')),
       'secure-password',
     );
+    await tester.enterText(
+      find.byKey(const Key('confirmPasswordField')),
+      'secure-password',
+    );
+    await tester.ensureVisible(find.byKey(const Key('submitButton')));
     await tester.tap(find.byKey(const Key('submitButton')));
     await tester.pump();
 
@@ -110,7 +115,6 @@ void main() {
       await tester.pump();
       expect(find.byIcon(Icons.visibility_off_outlined), findsOneWidget);
 
-      await tester.tap(find.text('Need an account? Create one'));
       await tester.enterText(
         find.byKey(const Key('emailField')),
         'person@example.com',
@@ -119,6 +123,11 @@ void main() {
         find.byKey(const Key('passwordField')),
         'secure-password',
       );
+      await tester.enterText(
+        find.byKey(const Key('confirmPasswordField')),
+        'secure-password',
+      );
+      await tester.ensureVisible(find.byKey(const Key('submitButton')));
       await tester.tap(find.byKey(const Key('submitButton')));
       await tester.pump();
       expect(
@@ -148,6 +157,11 @@ void main() {
       find.byKey(const Key('passwordField')),
       'secure-password',
     );
+    await tester.enterText(
+      find.byKey(const Key('confirmPasswordField')),
+      'secure-password',
+    );
+    await tester.ensureVisible(find.byKey(const Key('submitButton')));
     await tester.tap(find.byKey(const Key('submitButton')));
     await tester.pump();
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
@@ -181,6 +195,7 @@ void main() {
       ),
     );
 
+    await tester.ensureVisible(find.byKey(const Key('googleSignInButton')));
     await tester.tap(find.byKey(const Key('googleSignInButton')));
     await tester.pump();
     expect(calls, 1);

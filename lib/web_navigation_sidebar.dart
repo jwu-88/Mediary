@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'app_interactions.dart';
+
 /// An opaque, desktop-style navigation rail for the web app.
 ///
 /// The rail stays compact until the pointer enters it, then smoothly expands to
@@ -46,7 +48,7 @@ class _WebNavigationSidebarState extends State<WebNavigationSidebar> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final dark = theme.brightness == Brightness.dark;
-    final background = dark ? const Color(0xFF17181C) : const Color(0xFFF9FAFC);
+    final background = dark ? const Color(0xFF1A1B20) : const Color(0xFFF9FAFC);
     final divider = dark ? const Color(0xFF303238) : const Color(0xFFE1E4EA);
     final active = theme.colorScheme.primary;
     final inactive = dark ? const Color(0xFFB8BBC4) : const Color(0xFF5E6470);
@@ -213,12 +215,17 @@ class _WebNavigationItemState extends State<_WebNavigationItem> {
       label: widget.label,
       child: MouseRegion(
         key: Key('webNavItemHover-${widget.label.toLowerCase()}'),
-        cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hovered = true),
         onExit: (_) => setState(() => _hovered = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
+        child: AppPressable(
+          onPressed: widget.onTap,
+          enableHaptics: false,
+          hoverScale: 1.012,
+          pressedScale: .975,
+          hoverOffset: Offset.zero,
+          borderRadius: BorderRadius.circular(12),
+          hoverOverlayColor: Colors.transparent,
+          pressedOverlayColor: widget.activeColor.withValues(alpha: .13),
           child: AnimatedContainer(
             height: 52,
             width: 204,

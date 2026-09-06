@@ -14,8 +14,9 @@ abstract final class AppColors {
   static const lightOutline = Color(0xFFC6C6C8);
   static const lightError = Color(0xFFBA1A1A);
 
-  static const darkBackground = Color(0xFF000000);
-  static const darkSurface = Color(0xFF1C1C1E);
+  // Keep dark mode deep and calm without collapsing into a harsh pure black.
+  static const darkBackground = Color(0xFF0B0C0F);
+  static const darkSurface = Color(0xFF202126);
   static const darkText = Color(0xFFF2F2F7);
   static const darkMutedText = Color(0xFFAEAEB2);
   static const darkOutline = Color(0xFF3A3A3C);
@@ -164,8 +165,29 @@ abstract final class AppTheme {
           borderSide: BorderSide(color: colorScheme.primary, width: 2),
         ),
       ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: _buttonInteractionStyle(colorScheme, includeElevation: true),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: _buttonInteractionStyle(colorScheme, includeElevation: true),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: _buttonInteractionStyle(colorScheme),
+      ),
       outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(side: BorderSide(color: outline)),
+        style: _buttonInteractionStyle(colorScheme).copyWith(
+          side: WidgetStateProperty.resolveWith(
+            (states) => BorderSide(
+              color: states.contains(WidgetState.disabled)
+                  ? outline.withValues(alpha: .45)
+                  : outline,
+            ),
+          ),
+        ),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: _buttonInteractionStyle(colorScheme)
+            .copyWith(shape: const WidgetStatePropertyAll(CircleBorder())),
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: background,
@@ -190,6 +212,48 @@ abstract final class AppTheme {
         ),
         trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
       ),
+    );
+  }
+
+  static ButtonStyle _buttonInteractionStyle(
+    ColorScheme colorScheme, {
+    bool includeElevation = false,
+  }) {
+    return ButtonStyle(
+      animationDuration: const Duration(milliseconds: 140),
+      mouseCursor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.disabled)
+            ? SystemMouseCursors.forbidden
+            : SystemMouseCursors.click,
+      ),
+      overlayColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) return Colors.transparent;
+        if (states.contains(WidgetState.pressed)) {
+          return colorScheme.primary.withValues(alpha: .16);
+        }
+        if (states.contains(WidgetState.hovered)) {
+          return colorScheme.primary.withValues(alpha: .09);
+        }
+        if (states.contains(WidgetState.focused)) {
+          return colorScheme.primary.withValues(alpha: .11);
+        }
+        return Colors.transparent;
+      }),
+      foregroundColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.disabled)
+            ? colorScheme.onSurface.withValues(alpha: .38)
+            : null,
+      ),
+      elevation: includeElevation
+          ? WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.disabled) ||
+                  states.contains(WidgetState.pressed)) {
+                return 0;
+              }
+              if (states.contains(WidgetState.hovered)) return 2;
+              return 0;
+            })
+          : null,
     );
   }
 }
