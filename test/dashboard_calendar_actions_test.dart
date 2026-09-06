@@ -102,9 +102,26 @@ void main() {
     );
 
     expect(find.text('August 2026'), findsOneWidget);
+    expect(find.text('Vitamin D3'), findsOneWidget);
+    expect(find.text('Amoxicillin'), findsOneWidget);
+
     await tester.tap(find.byKey(const Key('nextMonthButton')));
     await tester.pump();
     expect(find.text('September 2026'), findsOneWidget);
+    expect(find.text('No medications scheduled'), findsOneWidget);
+    expect(find.text('Vitamin D3'), findsNothing);
+    expect(find.text('Amoxicillin'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('previousMonthButton')));
+    await tester.pump();
+    expect(find.text('August 2026'), findsOneWidget);
+    expect(find.text('Vitamin D3'), findsOneWidget);
+    expect(find.text('Amoxicillin'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('nextMonthButton')));
+    await tester.pump();
+    expect(find.text('September 2026'), findsOneWidget);
+    expect(find.text('No medications scheduled'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('calendarAddButton')));
     await tester.pumpAndSettle();

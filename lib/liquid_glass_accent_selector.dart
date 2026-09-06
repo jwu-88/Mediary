@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'app_interactions.dart';
 import 'app_theme.dart';
 
 /// A compact glass swatch selector for Mediary's supported accent palettes.
@@ -140,12 +141,15 @@ class _AccentOption extends StatelessWidget {
       child: ExcludeSemantics(
         child: Tooltip(
           message: accent.label,
-          child: CupertinoButton(
-            padding: EdgeInsets.zero,
-            minimumSize: Size.zero,
-            pressedOpacity: .68,
-            borderRadius: BorderRadius.circular(26),
+          child: AppPressable(
             onPressed: onPressed,
+            haptic: AppHapticKind.selection,
+            hoverScale: 1.06,
+            pressedScale: .91,
+            hoverOffset: const Offset(0, -1),
+            borderRadius: BorderRadius.circular(26),
+            hoverOverlayColor: swatch.withValues(alpha: .10),
+            pressedOverlayColor: swatch.withValues(alpha: .18),
             child: ClipOval(
               child: _NativeGlassBlur(
                 sigma: selected ? 16 : 10,

@@ -33,8 +33,12 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Local Firestore rules test dependencies
+/node_modules/
+
 # Local Firebase configuration
 /ios/Runner/GoogleService-Info.plist
+/.firebase/
 
 # Symbolication related
 app.*.symbols

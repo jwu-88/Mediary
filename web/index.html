@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <!--
     If you are serving your web app in a path other than the root, change the
@@ -18,13 +18,32 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F2F2F7">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0C0F">
   <meta name="description" content="Mediary helps people identify, organize, and track medications.">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Mediary">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <style>
+    html,
+    body {
+      background: #F2F2F7;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      html,
+      body {
+        background: #0B0C0F;
+      }
+    }
+  </style>
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>

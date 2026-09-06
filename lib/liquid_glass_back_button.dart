@@ -3,6 +3,9 @@ import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'app_interactions.dart';
+import 'app_theme.dart';
+
 /// A consistent route-level back control with an adaptive glass treatment.
 class LiquidGlassBackButton extends StatelessWidget {
   const LiquidGlassBackButton({
@@ -24,7 +27,7 @@ class LiquidGlassBackButton extends StatelessWidget {
         ? Colors.white
         : dark
         ? const Color(0xFFF2F2F7)
-        : const Color(0xE61C1C1E);
+        : AppColors.darkSurface.withValues(alpha: .90);
     final glassColors = overImage
         ? [
             Colors.white.withValues(alpha: highContrast ? .34 : .22),
@@ -103,12 +106,19 @@ class LiquidGlassBackButton extends StatelessWidget {
                             ),
                           ),
                         ),
-                        CupertinoButton(
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size.square(44),
-                          pressedOpacity: .64,
-                          borderRadius: BorderRadius.circular(22),
+                        AppPressable(
                           onPressed: onPressed,
+                          haptic: AppHapticKind.primaryAction,
+                          hoverScale: 1.045,
+                          pressedScale: .92,
+                          hoverOffset: Offset.zero,
+                          borderRadius: BorderRadius.circular(22),
+                          hoverOverlayColor: Colors.white.withValues(
+                            alpha: overImage ? .13 : .09,
+                          ),
+                          pressedOverlayColor: Colors.black.withValues(
+                            alpha: overImage ? .16 : .09,
+                          ),
                           child: Icon(
                             CupertinoIcons.chevron_left,
                             color: iconColor,
