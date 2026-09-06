@@ -13,18 +13,27 @@ class WebNavigationSidebar extends StatefulWidget {
     super.key,
     required this.currentIndex,
     required this.onTap,
+    this.overlayHoverArea = false,
   });
+
+  static const collapsedWidth = 76.0;
+  static const expandedWidth = 224.0;
 
   final int currentIndex;
   final ValueChanged<int> onTap;
+
+  /// Keeps a full-width invisible hover target while the visual rail is
+  /// collapsed. The desktop shell uses this so the pointer can travel from
+  /// the icon rail to an expanded label without collapsing the rail.
+  final bool overlayHoverArea;
 
   @override
   State<WebNavigationSidebar> createState() => _WebNavigationSidebarState();
 }
 
 class _WebNavigationSidebarState extends State<WebNavigationSidebar> {
-  static const _collapsedWidth = 76.0;
-  static const _expandedWidth = 224.0;
+  static const _collapsedWidth = WebNavigationSidebar.collapsedWidth;
+  static const _expandedWidth = WebNavigationSidebar.expandedWidth;
   static const _animationDuration = Duration(milliseconds: 280);
 
   static const _items = [
@@ -57,59 +66,68 @@ class _WebNavigationSidebarState extends State<WebNavigationSidebar> {
     final active = theme.colorScheme.primary;
     final inactive = dark ? const Color(0xFFB8BBC4) : const Color(0xFF5E6470);
 
-    return MouseRegion(
-      key: const Key('webNavigationSidebarHoverRegion'),
-      onEnter: (_) => _setExpanded(true),
-      onExit: (_) => _setExpanded(false),
-      child: AnimatedContainer(
-        key: const Key('webNavigationSidebar'),
-        width: _expanded ? _expandedWidth : _collapsedWidth,
-        duration: _animationDuration,
-        curve: Curves.easeOutCubic,
-        clipBehavior: Clip.hardEdge,
-        decoration: BoxDecoration(
-          color: background,
-          border: Border(right: BorderSide(color: divider)),
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) => OverflowBox(
-            alignment: Alignment.topLeft,
-            minWidth: _expandedWidth,
-            maxWidth: _expandedWidth,
-            minHeight: constraints.maxHeight,
-            maxHeight: constraints.maxHeight,
-            child: SafeArea(
-              right: false,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 18),
-                  _BrandHeader(expanded: _expanded, activeColor: active),
-                  const SizedBox(height: 22),
-                  for (var index = 0; index < _items.length; index++) ...[
-                    _WebNavigationItem(
-                      key: Key('webNavItem-$index'),
-                      icon: widget.currentIndex == index
-                          ? _items[index].$2
-                          : _items[index].$1,
-                      label: _items[index].$3,
-                      expanded: _expanded,
-                      selected: widget.currentIndex == index,
-                      activeColor: active,
-                      inactiveColor: inactive,
-                      dark: dark,
-                      onTap: () => widget.onTap(index),
-                    ),
-                    const SizedBox(height: 6),
-                  ],
-                  const Spacer(),
+    final sidebarVisual = AnimatedContainer(
+      key: const Key('webNavigationSidebar'),
+      width: _expanded ? _expandedWidth : _collapsedWidth,
+      duration: _animationDuration,
+      curve: Curves.easeOutCubic,
+      clipBehavior: Clip.hardEdge,
+      decoration: BoxDecoration(
+        color: background,
+        border: Border(right: BorderSide(color: divider)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) => OverflowBox(
+          alignment: Alignment.topLeft,
+          minWidth: _expandedWidth,
+          maxWidth: _expandedWidth,
+          minHeight: constraints.maxHeight,
+          maxHeight: constraints.maxHeight,
+          child: SafeArea(
+            right: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 18),
+                _BrandHeader(expanded: _expanded, activeColor: active),
+                const SizedBox(height: 22),
+                for (var index = 0; index < _items.length; index++) ...[
+                  _WebNavigationItem(
+                    key: Key('webNavItem-$index'),
+                    icon: widget.currentIndex == index
+                        ? _items[index].$2
+                        : _items[index].$1,
+                    label: _items[index].$3,
+                    expanded: _expanded,
+                    selected: widget.currentIndex == index,
+                    activeColor: active,
+                    inactiveColor: inactive,
+                    dark: dark,
+                    onTap: () => widget.onTap(index),
+                  ),
+                  const SizedBox(height: 6),
                 ],
-              ),
+                const Spacer(),
+              ],
             ),
           ),
         ),
       ),
     );
+
+    final hoverRegion = MouseRegion(
+      key: const Key('webNavigationSidebarHoverRegion'),
+      onEnter: (_) => _setExpanded(true),
+      onExit: (_) => _setExpanded(false),
+      child: widget.overlayHoverArea
+          ? SizedBox(
+              width: _expandedWidth,
+              child: Align(child: sidebarVisual),
+            )
+          : sidebarVisual,
+    );
+
+    return hoverRegion;
   }
 }
 
