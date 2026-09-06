@@ -75,7 +75,7 @@ enum AppAccentColor {
 
 abstract final class AppTheme {
   /// Keeps palette and brightness changes calm enough to read as one motion.
-  static const transitionDuration = Duration(milliseconds: 420);
+  static const transitionDuration = Duration(milliseconds: 200);
   static const transitionCurve = Curves.easeInOutCubic;
 
   static final ThemeData light = lightFor(AppAccentColor.blue);

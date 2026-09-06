@@ -186,6 +186,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   ThemeMode _appearanceMode = ThemeMode.system;
   AppAccentColor _accentColor = AppAccentColor.blue;
 
+  // Themes are expensive to build (ColorScheme.fromSeed + ~40 sub-themes).
+  // Cache them so a setState for appearance/accent does not rebuild both
+  // ThemeData trees on every frame of the theme transition.
+  late ThemeData _lightTheme = AppTheme.lightFor(_accentColor);
+  late ThemeData _darkTheme = AppTheme.darkFor(_accentColor);
+
+  void _setAccentColor(AppAccentColor accent) {
+    if (accent == _accentColor) return;
+    setState(() {
+      _accentColor = accent;
+      _lightTheme = AppTheme.lightFor(accent);
+      _darkTheme = AppTheme.darkFor(accent);
+    });
+  }
+
   bool get _reduceMotion => WidgetsBinding
       .instance
       .platformDispatcher
@@ -214,8 +229,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     return MaterialApp(
       title: 'Mediary',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightFor(_accentColor),
-      darkTheme: AppTheme.darkFor(_accentColor),
+      theme: _lightTheme,
+      darkTheme: _darkTheme,
       themeMode: _appearanceMode,
       themeAnimationDuration: _reduceMotion
           ? Duration.zero
@@ -230,9 +245,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           setState(() => _appearanceMode = mode);
         },
         accentColor: _accentColor,
-        onAccentColorChanged: (accent) {
-          setState(() => _accentColor = accent);
-        },
+        onAccentColorChanged: _setAccentColor,
       ),
     );
   }
@@ -1130,6 +1143,7 @@ class AuthenticatedHome extends StatefulWidget {
 
 class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   int _selectedIndex = 0;
+  final Set<int> _visitedDestinations = {0};
   bool _showScanResult = false;
   CameraAccessState _cameraAccess = CameraAccessState.notRequested;
   String? _appliedPreferenceSignature;
@@ -1182,6 +1196,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   void _selectDestination(int index) {
     setState(() {
       _selectedIndex = index;
+      _visitedDestinations.add(index);
       if (index == 2) _showScanResult = false;
     });
     if (index == 2 && _cameraAccess == CameraAccessState.notRequested) {
@@ -1626,14 +1641,25 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
 
   @override
   Widget build(BuildContext context) {
+    // Only build a destination once it has been visited. IndexedStack keeps
+    // every child mounted and rebuilds all of them on each frame (e.g. during
+    // the theme transition), so deferring unseen screens cuts that cost.
+    Widget lazy(int index, Widget Function(BuildContext) build) =>
+        _visitedDestinations.contains(index)
+        ? build(context)
+        : const SizedBox.shrink();
+
     final pages = IndexedStack(
       index: _selectedIndex,
       children: [
-        _buildDashboard(context),
-        _buildCalendar(context),
-        TickerMode(enabled: _selectedIndex == 2, child: _buildScanner(context)),
-        _buildLibrary(context),
-        _buildSettings(context),
+        lazy(0, _buildDashboard),
+        lazy(1, _buildCalendar),
+        TickerMode(
+          enabled: _selectedIndex == 2,
+          child: lazy(2, _buildScanner),
+        ),
+        lazy(3, _buildLibrary),
+        lazy(4, _buildSettings),
       ],
     );
 

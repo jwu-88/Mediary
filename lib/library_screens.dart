@@ -1,4 +1,3 @@
-import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -1366,8 +1365,8 @@ class _StickyAddAction extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+      child: WebAwareBlur(
+        sigma: 20,
         child: Container(
           padding: EdgeInsets.fromLTRB(16, 10, 16, bottomPadding + 10),
           decoration: BoxDecoration(
