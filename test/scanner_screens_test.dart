@@ -36,7 +36,7 @@ void main() {
     await tester.tap(find.byKey(const Key('scannerBarcodeButton')));
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.text('Scan Barcode'), findsOneWidget);
-    expect(find.text('Center the barcode'), findsOneWidget);
+    expect(find.text('Center the barcode'), findsNothing);
 
     await tester.tap(find.byKey(const Key('openScannerPhotosButton')));
     await tester.pump(const Duration(milliseconds: 600));

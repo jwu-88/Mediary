@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'app_interactions.dart';
@@ -18,6 +19,7 @@ class DashboardScreen extends StatefulWidget {
     this.bottomPadding = 120,
     this.onViewReport,
     this.onAddMedication,
+    this.onOpenAccount,
     this.initialDoses = const [],
     this.onDoseStatusChanged,
   });
@@ -29,6 +31,7 @@ class DashboardScreen extends StatefulWidget {
   final double bottomPadding;
   final VoidCallback? onViewReport;
   final Future<List<String>?> Function()? onAddMedication;
+  final VoidCallback? onOpenAccount;
   final List<DashboardDoseData> initialDoses;
   final Future<void> Function(
     String doseId,
@@ -410,7 +413,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     _ProfileAvatar(
                       photoUrl: widget.photoUrl,
                       initials: widget._initial,
-                      onPressed: _showProfile,
+                      displayName: widget._name,
+                      onPressed: widget.onOpenAccount ?? _showProfile,
                     ),
                   ],
                 ),
@@ -654,26 +658,38 @@ class _DashboardInlineStatus extends StatelessWidget {
   }
 }
 
-class _ProfileAvatar extends StatelessWidget {
+class _ProfileAvatar extends StatefulWidget {
   const _ProfileAvatar({
     required this.photoUrl,
     required this.initials,
+    required this.displayName,
     required this.onPressed,
   });
 
   final String? photoUrl;
   final String initials;
+  final String displayName;
   final VoidCallback onPressed;
+
+  @override
+  State<_ProfileAvatar> createState() => _ProfileAvatarState();
+}
+
+class _ProfileAvatarState extends State<_ProfileAvatar> {
+  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final profileImage = safeProfileImageProvider(photoUrl, cacheWidth: 126);
+    final profileImage = safeProfileImageProvider(
+      widget.photoUrl,
+      cacheWidth: 126,
+    );
     final fallback = ColoredBox(
       color: colors.primary.withValues(alpha: .14),
       child: Center(
         child: Text(
-          initials,
+          widget.initials,
           style: TextStyle(
             color: colors.primary,
             fontSize: 14,
@@ -683,23 +699,74 @@ class _ProfileAvatar extends StatelessWidget {
       ),
     );
 
+    final avatar = ClipOval(
+      child: SizedBox.square(
+        dimension: 42,
+        child: profileImage == null
+            ? fallback
+            : Image(
+                image: profileImage,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => fallback,
+              ),
+      ),
+    );
+    final showName = kIsWeb && _hovered;
+    final accountName = widget.displayName.trim().isEmpty
+        ? 'Account'
+        : widget.displayName.trim();
+
     return Semantics(
       button: true,
-      label: 'Open Profile',
-      child: CupertinoButton(
-        onPressed: onPressed,
-        minimumSize: const Size.square(44),
-        padding: const EdgeInsets.all(1),
-        child: ClipOval(
-          child: SizedBox.square(
-            dimension: 42,
-            child: profileImage == null
-                ? fallback
-                : Image(
-                    image: profileImage,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => fallback,
+      label: 'Open Account Settings',
+      child: MouseRegion(
+        key: const Key('dashboardProfileHoverRegion'),
+        onEnter: kIsWeb ? (_) => setState(() => _hovered = true) : null,
+        onExit: kIsWeb ? (_) => setState(() => _hovered = false) : null,
+        child: CupertinoButton(
+          key: const Key('dashboardProfileButton'),
+          onPressed: widget.onPressed,
+          minimumSize: const Size(44, 44),
+          padding: EdgeInsets.zero,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            width: showName ? 176 : 44,
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 1),
+            decoration: BoxDecoration(
+              color: showName
+                  ? colors.surface.withValues(alpha: .92)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(24),
+              border: showName
+                  ? Border.all(
+                      color: colors.outlineVariant.withValues(alpha: .55),
+                    )
+                  : null,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (showName)
+                  Flexible(
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 12, right: 8),
+                      child: Text(
+                        accountName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.onSurface,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
                   ),
+                avatar,
+              ],
+            ),
           ),
         ),
       ),

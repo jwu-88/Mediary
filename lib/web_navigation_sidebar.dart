@@ -28,7 +28,11 @@ class _WebNavigationSidebarState extends State<WebNavigationSidebar> {
   static const _animationDuration = Duration(milliseconds: 280);
 
   static const _items = [
-    (CupertinoIcons.house, CupertinoIcons.house_fill, 'Today'),
+    (
+      CupertinoIcons.rectangle_grid_2x2,
+      CupertinoIcons.rectangle_grid_2x2_fill,
+      'Dashboard',
+    ),
     (CupertinoIcons.calendar, CupertinoIcons.calendar, 'Calendar'),
     (CupertinoIcons.camera, CupertinoIcons.camera_fill, 'Scan'),
     (CupertinoIcons.book, CupertinoIcons.book_fill, 'Library'),
@@ -99,24 +103,6 @@ class _WebNavigationSidebarState extends State<WebNavigationSidebar> {
                     const SizedBox(height: 6),
                   ],
                   const Spacer(),
-                  AnimatedOpacity(
-                    key: const Key('webNavigationSidebarHint'),
-                    opacity: _expanded ? 1 : 0,
-                    duration: const Duration(milliseconds: 180),
-                    child: const Padding(
-                      padding: EdgeInsets.fromLTRB(22, 0, 16, 20),
-                      child: Text(
-                        'Medication Companion',
-                        maxLines: 1,
-                        overflow: TextOverflow.clip,
-                        style: TextStyle(
-                          color: Color(0xFF8A909B),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),

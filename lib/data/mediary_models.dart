@@ -72,6 +72,7 @@ class UserProfileRecord {
     required this.careTeam,
     required this.timezone,
     required this.preferences,
+    this.photoUrl,
   });
 
   final String uid;
@@ -82,6 +83,7 @@ class UserProfileRecord {
   final String careTeam;
   final String timezone;
   final MediaryPreferences preferences;
+  final String? photoUrl;
 
   factory UserProfileRecord.fromSnapshot(
     DocumentSnapshot<Map<String, dynamic>> snapshot,
@@ -98,6 +100,9 @@ class UserProfileRecord {
       preferences: MediaryPreferences.fromMap(
         data['preferences'] as Map<String, dynamic>?,
       ),
+      photoUrl: _string(data['photoUrl']).trim().isEmpty
+          ? null
+          : _string(data['photoUrl']).trim(),
     );
   }
 }

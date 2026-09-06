@@ -109,86 +109,20 @@ class MedicationScannerScreen extends StatefulWidget {
       _MedicationScannerScreenState();
 }
 
-class _MedicationScannerScreenState extends State<MedicationScannerScreen>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  late final AnimationController _scanController;
+class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
   bool _isAnalyzing = false;
   bool _torchEnabled = false;
   bool _barcodeMode = false;
-  bool _reduceMotion = false;
-  bool _tickerEnabled = true;
-  AppLifecycleState? _lifecycleState;
-
-  @override
-  void initState() {
-    super.initState();
-    _scanController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2300),
-      value: .5,
-    );
-    _lifecycleState = WidgetsBinding.instance.lifecycleState;
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    _tickerEnabled = TickerMode.valuesOf(context).enabled;
-    _syncScanAnimation();
-  }
-
-  @override
-  void didUpdateWidget(covariant MedicationScannerScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.accessState != widget.accessState) {
-      _syncScanAnimation();
-    }
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    _lifecycleState = state;
-    _syncScanAnimation();
-  }
-
-  void _syncScanAnimation() {
-    final shouldAnimate =
-        widget.accessState == ScannerAccessState.granted &&
-        !_isAnalyzing &&
-        !_reduceMotion &&
-        _tickerEnabled &&
-        (_lifecycleState == null ||
-            _lifecycleState == AppLifecycleState.resumed);
-    if (shouldAnimate) {
-      if (!_scanController.isAnimating) {
-        _scanController.repeat(reverse: true);
-      }
-      return;
-    }
-    if (_scanController.isAnimating) _scanController.stop();
-    if (_scanController.value != .5) _scanController.value = .5;
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _scanController.dispose();
-    super.dispose();
-  }
 
   Future<void> _capture() async {
     if (_isAnalyzing) return;
     setState(() => _isAnalyzing = true);
-    _syncScanAnimation();
     unawaited(AppHaptics.primaryAction());
     await Future<void>.delayed(const Duration(milliseconds: 850));
     if (!mounted) return;
     widget.onCapture();
     if (mounted) {
       setState(() => _isAnalyzing = false);
-      _syncScanAnimation();
     }
   }
 
@@ -198,13 +132,11 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen>
       _barcodeMode = false;
       _isAnalyzing = true;
     });
-    _syncScanAnimation();
     await Future<void>.delayed(const Duration(milliseconds: 550));
     if (!mounted) return;
     widget.onCapture();
     if (mounted) {
       setState(() => _isAnalyzing = false);
-      _syncScanAnimation();
     }
   }
 
@@ -232,11 +164,13 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen>
         bottom: false,
         child: LayoutBuilder(
           builder: (context, pageConstraints) {
+            // Keep the camera surface above the app navigation area. The
+            // shell uses an extended body on iOS, so a full-height camera
+            // panel would otherwise continue behind the toolbar and make its
+            // black canvas appear to interfere with the navigation surface.
             final availableHeight =
-                pageConstraints.maxHeight - widget.bottomNavigationInset - 8;
-            final panelHeight = kIsWeb
-                ? availableHeight
-                : availableHeight.clamp(0.0, 660.0);
+                (pageConstraints.maxHeight - widget.bottomNavigationInset - 8)
+                    .clamp(0.0, double.infinity);
             return Padding(
               padding: EdgeInsets.fromLTRB(
                 16,
@@ -253,7 +187,7 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen>
                     ),
                   ),
                   child: SizedBox(
-                    height: panelHeight,
+                    height: availableHeight,
                     width: double.infinity,
                     child: ClipRRect(
                       key: const Key('scannerCameraPanel'),
@@ -284,10 +218,7 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen>
                                 right: 42,
                                 top: frameTop,
                                 height: frameHeight,
-                                child: _ScanFrame(
-                                  animation: _scanController,
-                                  isAnalyzing: _isAnalyzing,
-                                ),
+                                child: const _ScanFrame(),
                               ),
                               Padding(
                                 padding: const EdgeInsets.fromLTRB(
@@ -343,84 +274,6 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen>
                                         ),
                                       ),
                                     ],
-                                  ),
-                                ),
-                              ),
-                              Positioned(
-                                left: 52,
-                                right: 52,
-                                bottom: 174,
-                                child: Center(
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(99),
-                                    child: BackdropFilter(
-                                      filter: ImageFilter.blur(
-                                        sigmaX: 10,
-                                        sigmaY: 10,
-                                      ),
-                                      child: AnimatedContainer(
-                                        duration: const Duration(
-                                          milliseconds: 180,
-                                        ),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 14,
-                                          vertical: 10,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF0C1119)
-                                              .withValues(alpha: .58),
-                                          borderRadius: BorderRadius.circular(
-                                            99,
-                                          ),
-                                          border: Border.all(
-                                            color: Colors.white.withValues(
-                                              alpha: .12,
-                                            ),
-                                            width: .5,
-                                          ),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            if (_isAnalyzing)
-                                              const SizedBox.square(
-                                                dimension: 14,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                      strokeWidth: 1.8,
-                                                      color: Colors.white,
-                                                    ),
-                                              )
-                                            else
-                                              const Icon(
-                                                CupertinoIcons.sparkles,
-                                                color: Colors.white,
-                                                size: 14,
-                                              ),
-                                            const SizedBox(width: 7),
-                                            Flexible(
-                                              child: Text(
-                                                _isAnalyzing
-                                                    ? 'Analyzing…'
-                                                    : _barcodeMode
-                                                    ? 'Center the barcode'
-                                                    : 'Center the label',
-                                                textAlign: TextAlign.center,
-                                                maxLines: 2,
-                                                style: const TextStyle(
-                                                  color: Color(0xE6FFFFFF),
-                                                  fontSize: 11,
-                                                  height: 1.25,
-                                                  fontWeight: FontWeight.w500,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
                                   ),
                                 ),
                               ),
@@ -713,24 +566,49 @@ class _GlassIconButton extends StatelessWidget {
       child: Semantics(
         button: true,
         label: label,
-        child: ClipOval(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: CupertinoButton(
-              padding: EdgeInsets.zero,
-              minimumSize: const Size.square(40),
-              onPressed: () {
-                unawaited(AppHaptics.selection());
-                onPressed();
-              },
-              color: isSelected
-                  ? colors.primary.withValues(alpha: .69)
-                  : const Color(0x7A10141D),
-              borderRadius: BorderRadius.circular(99),
-              child: Icon(
-                icon,
-                color: isSelected ? colors.onPrimary : Colors.white,
-                size: 18,
+        child: SizedBox.square(
+          dimension: 44,
+          child: ClipOval(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: isSelected
+                        ? [
+                            colors.primary.withValues(alpha: .72),
+                            colors.primary.withValues(alpha: .34),
+                            const Color(0x66101720),
+                          ]
+                        : [
+                            Colors.white.withValues(alpha: .16),
+                            const Color(0x54151A23),
+                            const Color(0x6B080B10),
+                          ],
+                  ),
+                  border: Border.all(
+                    color: Colors.white.withValues(
+                      alpha: isSelected ? .28 : .16,
+                    ),
+                    width: .7,
+                  ),
+                ),
+                child: CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size.square(44),
+                  onPressed: () {
+                    unawaited(AppHaptics.selection());
+                    onPressed();
+                  },
+                  child: Icon(
+                    icon,
+                    color: isSelected ? colors.onPrimary : Colors.white,
+                    size: 18,
+                  ),
+                ),
               ),
             ),
           ),
@@ -806,31 +684,16 @@ class _CaptureSideControl extends StatelessWidget {
 }
 
 class _ScanFrame extends StatelessWidget {
-  const _ScanFrame({required this.animation, required this.isAnalyzing});
-
-  final Animation<double> animation;
-  final bool isAnalyzing;
+  const _ScanFrame();
 
   @override
   Widget build(BuildContext context) {
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    return AnimatedBuilder(
-      animation: animation,
-      builder: (context, child) => CustomPaint(
-        painter: _ScanFramePainter(
-          progress: reduceMotion || isAnalyzing ? .5 : animation.value,
-          isAnalyzing: isAnalyzing,
-        ),
-      ),
-    );
+    return const CustomPaint(painter: _ScanFramePainter());
   }
 }
 
 class _ScanFramePainter extends CustomPainter {
-  const _ScanFramePainter({required this.progress, required this.isAnalyzing});
-
-  final double progress;
-  final bool isAnalyzing;
+  const _ScanFramePainter();
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -864,21 +727,10 @@ class _ScanFramePainter extends CustomPainter {
       ..quadraticBezierTo(0, size.height, 0, size.height - radius)
       ..lineTo(0, size.height - cornerLength);
     canvas.drawPath(path, cornerPaint);
-
-    final y = size.height * (.16 + progress * .68);
-    final linePaint = Paint()
-      ..shader = const LinearGradient(
-        colors: [Color(0x0076F0CC), Color(0xFF76F0CC), Color(0x0076F0CC)],
-      ).createShader(Rect.fromLTWH(14, y - 1, size.width - 28, 2))
-      ..strokeWidth = isAnalyzing ? 3 : 2
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7);
-    canvas.drawLine(Offset(14, y), Offset(size.width - 14, y), linePaint);
   }
 
   @override
-  bool shouldRepaint(covariant _ScanFramePainter oldDelegate) =>
-      oldDelegate.progress != progress ||
-      oldDelegate.isAnalyzing != isAnalyzing;
+  bool shouldRepaint(covariant _ScanFramePainter oldDelegate) => false;
 }
 
 class ScanResultScreen extends StatefulWidget {
@@ -1044,216 +896,230 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
         child: Center(
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: contentWidth),
-            child: Column(
+            child: Stack(
               children: [
-                SizedBox(
-                  height: 62,
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 62,
-                        child: Center(
-                          child: LiquidGlassBackButton(
-                            key: const Key('scanResultBackButton'),
-                            semanticLabel: 'Back from Scan Result',
-                            onPressed:
-                                widget.onBack ??
-                                () => Navigator.maybePop(context),
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          'Review Medication',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: palette.primaryText,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: -.2,
-                          ),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 62,
-                        child: Tooltip(
-                          message: 'Scan Again',
-                          child: CupertinoButton(
-                            key: const Key('scanAgainButton'),
-                            padding: EdgeInsets.zero,
-                            minimumSize: const Size.square(44),
-                            onPressed:
-                                widget.onScanAgain ??
-                                () => Navigator.maybePop(context),
-                            child: Icon(
-                              CupertinoIcons.arrow_clockwise,
-                              color: palette.primary,
-                              size: 19,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: ListView(
-                    key: const Key('scanResultScrollView'),
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                    children: [
-                      const _ResultHero(),
-                      const SizedBox(height: 18),
-                      const _InfoGrid(),
-                      const SizedBox(height: 16),
-                      const _SafetyNotice(),
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
-                        decoration: BoxDecoration(
-                          color: palette.surface,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Set Your Schedule',
-                              style: TextStyle(
-                                color: palette.primaryText,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: -.25,
+                Column(
+                  children: [
+                    SizedBox(
+                      height: 62,
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 62,
+                            child: Center(
+                              child: LiquidGlassBackButton(
+                                key: const Key('scanResultBackButton'),
+                                semanticLabel: 'Back from Scan Result',
+                                onPressed:
+                                    widget.onBack ??
+                                    () => Navigator.maybePop(context),
                               ),
                             ),
-                            const SizedBox(height: 14),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _ScheduleField(
-                                    label: 'DOSE',
-                                    value: _dose,
-                                    onTap: () => _chooseOption(
-                                      title: 'Dose',
-                                      options: const [
-                                        '½ capsule',
-                                        '1 capsule',
-                                        '2 capsules',
-                                      ],
-                                      onSelected: (value) =>
-                                          setState(() => _dose = value),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: _ScheduleField(
-                                    label: 'FREQUENCY',
-                                    value: _frequency,
-                                    onTap: () => _chooseOption(
-                                      title: 'Frequency',
-                                      options: const [
-                                        'Once daily',
-                                        'Every 8 hours',
-                                        'Every 12 hours',
-                                        'As needed',
-                                      ],
-                                      onSelected: (value) =>
-                                          setState(() => _frequency = value),
-                                    ),
-                                  ),
-                                ),
-                              ],
+                          ),
+                          Expanded(
+                            child: Text(
+                              'Review Medication',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: palette.primaryText,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: -.2,
+                              ),
                             ),
-                            const SizedBox(height: 13),
-                            _ScheduleField(
-                              label: 'TIME',
-                              value: _time.format(context),
-                              onTap: _chooseTime,
-                              icon: CupertinoIcons.time,
-                            ),
-                            const SizedBox(height: 13),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _ScheduleField(
-                                    label: 'START DATE',
-                                    value: _formatDate(_startDate),
-                                    onTap: _chooseStartDate,
-                                    icon: CupertinoIcons.calendar,
-                                  ),
+                          ),
+                          SizedBox(
+                            width: 62,
+                            child: Tooltip(
+                              message: 'Scan Again',
+                              child: CupertinoButton(
+                                key: const Key('scanAgainButton'),
+                                padding: EdgeInsets.zero,
+                                minimumSize: const Size.square(44),
+                                onPressed:
+                                    widget.onScanAgain ??
+                                    () => Navigator.maybePop(context),
+                                child: Icon(
+                                  CupertinoIcons.arrow_clockwise,
+                                  color: palette.primary,
+                                  size: 19,
                                 ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: _ScheduleField(
-                                    label: 'DURATION',
-                                    value: _duration,
-                                    onTap: () => _chooseOption(
-                                      title: 'Duration',
-                                      options: const [
-                                        '5 days',
-                                        '7 days',
-                                        '10 days',
-                                        '14 days',
-                                      ],
-                                      onSelected: (value) =>
-                                          setState(() => _duration = value),
-                                    ),
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                    Expanded(
+                      child: ListView(
+                        key: const Key('scanResultScrollView'),
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          4,
+                          16,
+                          96 + widget.bottomNavigationInset,
+                        ),
+                        children: [
+                          const _ResultHero(),
+                          const SizedBox(height: 18),
+                          const _InfoGrid(),
+                          const SizedBox(height: 16),
+                          const _SafetyNotice(),
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                            decoration: BoxDecoration(
+                              color: palette.surface,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Set Your Schedule',
+                                  style: TextStyle(
+                                    color: palette.primaryText,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: -.25,
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _ScheduleField(
+                                        label: 'DOSE',
+                                        value: _dose,
+                                        onTap: () => _chooseOption(
+                                          title: 'Dose',
+                                          options: const [
+                                            '½ capsule',
+                                            '1 capsule',
+                                            '2 capsules',
+                                          ],
+                                          onSelected: (value) =>
+                                              setState(() => _dose = value),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: _ScheduleField(
+                                        label: 'FREQUENCY',
+                                        value: _frequency,
+                                        onTap: () => _chooseOption(
+                                          title: 'Frequency',
+                                          options: const [
+                                            'Once daily',
+                                            'Every 8 hours',
+                                            'Every 12 hours',
+                                            'As needed',
+                                          ],
+                                          onSelected: (value) => setState(
+                                            () => _frequency = value,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 13),
+                                _ScheduleField(
+                                  label: 'TIME',
+                                  value: _time.format(context),
+                                  onTap: _chooseTime,
+                                  icon: CupertinoIcons.time,
+                                ),
+                                const SizedBox(height: 13),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _ScheduleField(
+                                        label: 'START DATE',
+                                        value: _formatDate(_startDate),
+                                        onTap: _chooseStartDate,
+                                        icon: CupertinoIcons.calendar,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: _ScheduleField(
+                                        label: 'DURATION',
+                                        value: _duration,
+                                        onTap: () => _chooseOption(
+                                          title: 'Duration',
+                                          options: const [
+                                            '5 days',
+                                            '7 days',
+                                            '10 days',
+                                            '14 days',
+                                          ],
+                                          onSelected: (value) =>
+                                              setState(() => _duration = value),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                    child: Container(
-                      padding: EdgeInsets.fromLTRB(
-                        16,
-                        10,
-                        16,
-                        MediaQuery.paddingOf(context).bottom +
-                            widget.bottomNavigationInset,
-                      ),
-                      decoration: BoxDecoration(
-                        color: palette.actionMaterial,
-                        border: Border(
-                          top: BorderSide(color: palette.separator, width: .5),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: widget.bottomNavigationInset,
+                  child: ClipRect(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                        decoration: BoxDecoration(
+                          color: palette.actionMaterial,
+                          border: Border(
+                            top: BorderSide(
+                              color: palette.separator,
+                              width: .5,
+                            ),
+                          ),
                         ),
-                      ),
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: 48,
-                        child: FilledButton.icon(
-                          key: const Key('addScanResultButton'),
-                          onPressed: _addToCalendar,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: _isAdded
-                                ? palette.success
-                                : palette.primary,
-                            foregroundColor: _isAdded
-                                ? palette.onSuccess
-                                : Theme.of(context).colorScheme.onPrimary,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(11),
+                        child: SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: FilledButton.icon(
+                            key: const Key('addScanResultButton'),
+                            onPressed: _addToCalendar,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: _isAdded
+                                  ? palette.success
+                                  : palette.primary,
+                              foregroundColor: _isAdded
+                                  ? palette.onSuccess
+                                  : Theme.of(context).colorScheme.onPrimary,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(11),
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                            textStyle: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
+                            icon: Icon(
+                              _isAdded
+                                  ? CupertinoIcons.check_mark_circled_solid
+                                  : CupertinoIcons.calendar_badge_plus,
+                              size: 18,
                             ),
-                          ),
-                          icon: Icon(
-                            _isAdded
-                                ? CupertinoIcons.check_mark_circled_solid
-                                : CupertinoIcons.calendar_badge_plus,
-                            size: 18,
-                          ),
-                          label: Text(
-                            _isAdded ? 'Added to Calendar' : 'Add to Calendar',
+                            label: Text(
+                              _isAdded
+                                  ? 'Added to Calendar'
+                                  : 'Add to Calendar',
+                            ),
                           ),
                         ),
                       ),

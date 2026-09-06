@@ -849,14 +849,21 @@ class _AuthFormState extends State<AuthForm> {
         actions: [
           IconButton(
             key: const Key('settingsButton'),
-            tooltip: 'Settings',
+            // Web tooltips render in an OverlayPortal. Removing this
+            // transient overlay before pushing Settings avoids a Flutter
+            // web overlay-size assertion while keeping the icon semantic
+            // label below available to assistive technology.
+            tooltip: kIsWeb ? null : 'Settings',
             onPressed: widget.onOpenSettings == null
                 ? null
                 : () {
                     unawaited(AppHaptics.selection());
                     widget.onOpenSettings!();
                   },
-            icon: const Icon(Icons.settings_outlined),
+            icon: const Icon(
+              Icons.settings_outlined,
+              semanticLabel: 'Settings',
+            ),
           ),
         ],
       ),
@@ -1203,10 +1210,11 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
 
   Widget _buildDashboard(BuildContext context) {
     final store = widget.dataStore;
+    final profilePhotoUrl = store?.profile?.photoUrl ?? widget.photoUrl;
     return DashboardScreen(
       email: store?.profile?.email ?? widget.email,
       displayName: store?.profile?.displayName ?? widget.displayName,
-      photoUrl: widget.photoUrl,
+      photoUrl: profilePhotoUrl,
       now: widget.now,
       bottomPadding: _usesSidebarNavigation ? 32 : 120,
       initialDoses: _dashboardDoses(store),
@@ -1252,6 +1260,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
         }
         return selections?.map((medication) => medication.name).toList();
       },
+      onOpenAccount: () => _openAccount(context),
     );
   }
 
@@ -1369,7 +1378,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
           email: widget.dataStore?.profile?.email ?? widget.email,
           displayName:
               widget.dataStore?.profile?.displayName ?? widget.displayName,
-          photoUrl: widget.photoUrl,
+          photoUrl: widget.dataStore?.profile?.photoUrl ?? widget.photoUrl,
           initialBloodType: widget.dataStore?.profile?.bloodType,
           initialAllergies: widget.dataStore?.profile?.allergies,
           initialCareTeam: widget.dataStore?.profile?.careTeam,
@@ -1389,6 +1398,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
                     bloodType: draft.bloodType,
                     allergies: draft.allergies,
                     careTeam: draft.careTeam,
+                    photoUrl: draft.photoUrl,
                   ),
                 ),
           bottomPadding: 32,
@@ -1398,15 +1408,18 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   }
 
   Widget _buildSettings(BuildContext context) {
+    final profilePhotoUrl =
+        widget.dataStore?.profile?.photoUrl ?? widget.photoUrl;
     return SettingsScreen(
       embedded: true,
       appearanceMode: widget.appearanceMode,
       onAppearanceModeChanged: widget.onAppearanceModeChanged ?? (_) {},
       accentColor: widget.accentColor,
       onAccentColorChanged: widget.onAccentColorChanged ?? (_) {},
-      accountEmail: widget.email,
-      accountDisplayName: widget.displayName,
-      accountPhotoUrl: widget.photoUrl,
+      accountEmail: widget.dataStore?.profile?.email ?? widget.email,
+      accountDisplayName:
+          widget.dataStore?.profile?.displayName ?? widget.displayName,
+      accountPhotoUrl: profilePhotoUrl,
       onPreferenceChanged: widget.dataStore?.updatePreference,
       initialPreferences: widget.dataStore?.profile?.preferences,
       onOpenAccount: () => _openAccount(context),
@@ -1625,7 +1638,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     );
 
     if (_usesSidebarNavigation) {
-      return Scaffold(
+      final shell = Scaffold(
         body: Row(
           children: [
             WebNavigationSidebar(
@@ -1635,6 +1648,15 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
             Expanded(child: pages),
           ],
         ),
+      );
+      if (!kIsWeb || MediaQuery.sizeOf(context).width < 900) return shell;
+      final mediaQuery = MediaQuery.of(context);
+      final baseTextSize = mediaQuery.textScaler.scale(1);
+      return MediaQuery(
+        data: mediaQuery.copyWith(
+          textScaler: TextScaler.linear(baseTextSize * 1.22),
+        ),
+        child: shell,
       );
     }
 

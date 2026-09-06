@@ -16,7 +16,11 @@ class LiquidGlassTabBar extends StatelessWidget {
   final ValueChanged<int> onTap;
 
   static const _items = [
-    (CupertinoIcons.house, CupertinoIcons.house_fill, 'Today'),
+    (
+      CupertinoIcons.rectangle_grid_2x2,
+      CupertinoIcons.rectangle_grid_2x2_fill,
+      'Dashboard',
+    ),
     (CupertinoIcons.calendar, CupertinoIcons.calendar, 'Calendar'),
     (CupertinoIcons.camera, CupertinoIcons.camera_fill, 'Scan'),
     (CupertinoIcons.book, CupertinoIcons.book_fill, 'Library'),
@@ -34,6 +38,13 @@ class LiquidGlassTabBar extends StatelessWidget {
     final active = highContrast
         ? Color.lerp(primary, dark ? Colors.white : Colors.black, .22)!
         : primary;
+    // Keep the navigation surface opaque. The scanner intentionally uses a
+    // black camera canvas, so a translucent base here would let that canvas
+    // bleed through and produce a noisy, dithered-looking texture. The
+    // selected destination still carries the glass treatment below.
+    final surfaceColor = dark
+        ? const Color(0xFF1B1D22)
+        : const Color(0xFFF3F5F8);
     final inactive = dark
         ? (highContrast ? const Color(0xFFF2F2F7) : const Color(0xFFC7C7CC))
         : Colors.black;
@@ -70,25 +81,7 @@ class LiquidGlassTabBar extends StatelessWidget {
               height: 64,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(32),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: dark
-                      ? [
-                          Colors.white.withValues(
-                            alpha: highContrast ? .24 : .13,
-                          ),
-                          const Color(0xFF3C4653).withValues(alpha: .22),
-                          const Color(0xFF111318).withValues(alpha: .33),
-                        ]
-                      : [
-                          Colors.white.withValues(
-                            alpha: highContrast ? .64 : .36,
-                          ),
-                          const Color(0xFFF2F8FF).withValues(alpha: .19),
-                          const Color(0xFFD8E8F7).withValues(alpha: .11),
-                        ],
-                ),
+                color: surfaceColor,
                 border: Border.all(
                   color: dark
                       ? Colors.white.withValues(alpha: highContrast ? .34 : .18)
@@ -101,44 +94,6 @@ class LiquidGlassTabBar extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(32),
-                        gradient: RadialGradient(
-                          center: const Alignment(-.82, -1.05),
-                          radius: 1.35,
-                          colors: [
-                            Colors.white.withValues(
-                              alpha: dark
-                                  ? (highContrast ? .22 : .15)
-                                  : (highContrast ? .58 : .38),
-                            ),
-                            Colors.white.withValues(alpha: dark ? .04 : .08),
-                            Colors.transparent,
-                          ],
-                          stops: const [0, .38, 1],
-                        ),
-                      ),
-                    ),
-                  ),
-                  IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(32),
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.transparent,
-                            Colors.black.withValues(alpha: dark ? .12 : .055),
-                          ],
-                          stops: const [0, .52, 1],
-                        ),
-                      ),
-                    ),
-                  ),
                   LayoutBuilder(
                     builder: (context, constraints) {
                       final tabWidth = constraints.maxWidth / _items.length;
