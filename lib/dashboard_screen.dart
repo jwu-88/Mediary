@@ -723,11 +723,12 @@ class _ProfileAvatarState extends State<_ProfileAvatar> {
         key: const Key('dashboardProfileHoverRegion'),
         onEnter: kIsWeb ? (_) => setState(() => _hovered = true) : null,
         onExit: kIsWeb ? (_) => setState(() => _hovered = false) : null,
-        child: CupertinoButton(
-          key: const Key('dashboardProfileButton'),
+        child: ResponsiveCupertinoButton(
+          buttonKey: const Key('dashboardProfileButton'),
           onPressed: widget.onPressed,
           minimumSize: const Size(44, 44),
           padding: EdgeInsets.zero,
+          semanticLabel: 'Open Account Settings',
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
@@ -1090,10 +1091,11 @@ class _DoseRow extends StatelessWidget {
     return Semantics(
       button: true,
       label: '$name, $details, $status',
-      child: CupertinoButton(
+      child: ResponsiveCupertinoButton(
         onPressed: onTap,
         minimumSize: Size.zero,
         padding: EdgeInsets.zero,
+        semanticLabel: '$name, $details, $status',
         child: SizedBox(
           height: 62,
           child: Padding(

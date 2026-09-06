@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -31,6 +32,81 @@ enum AppHapticKind { none, selection, primaryAction }
 
 /// Controls how progress is presented while an [AppPressable] is busy.
 enum AppPressableLoadingPresentation { replace, overlay }
+
+/// A Cupertino-style button with the same hover, focus, press, and loading
+/// feedback as the rest of the web shell.
+///
+/// Flutter's [CupertinoButton] provides excellent touch feedback, but its web
+/// hover state is intentionally minimal. This adapter keeps its iOS padding,
+/// colors, and typography while adding the same interaction feedback used by
+/// [AppPressable].
+class ResponsiveCupertinoButton extends StatelessWidget {
+  const ResponsiveCupertinoButton({
+    super.key,
+    required this.child,
+    required this.onPressed,
+    this.buttonKey,
+    this.minimumSize,
+    this.padding,
+    this.color,
+    this.borderRadius,
+    this.semanticLabel,
+    this.busy = false,
+  });
+
+  final Widget child;
+  final FutureOr<void> Function()? onPressed;
+  final Key? buttonKey;
+  final Size? minimumSize;
+  final EdgeInsetsGeometry? padding;
+  final Color? color;
+  final BorderRadius? borderRadius;
+  final String? semanticLabel;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final radius = borderRadius ?? BorderRadius.circular(12);
+    final minimumSize = this.minimumSize ?? Size.zero;
+    final padding = this.padding ?? EdgeInsets.zero;
+    final content = ConstrainedBox(
+      constraints: BoxConstraints(
+        minWidth: minimumSize.width,
+        minHeight: minimumSize.height,
+      ),
+      child: Padding(
+        padding: padding,
+        child: color == null
+            ? child
+            : DecoratedBox(
+                decoration: BoxDecoration(color: color, borderRadius: radius),
+                child: child,
+              ),
+      ),
+    );
+
+    return AppPressable(
+      key: buttonKey,
+      onPressed: onPressed,
+      busy: busy,
+      semanticLabel: semanticLabel,
+      borderRadius: radius,
+      haptic: AppHapticKind.selection,
+      hoverScale: 1.018,
+      pressedScale: .965,
+      hoverOverlayColor: colors.primary.withValues(alpha: .08),
+      pressedOverlayColor: colors.primary.withValues(alpha: .13),
+      busyOverlayColor: colors.surface.withValues(alpha: .68),
+      loadingIndicator: SizedBox.square(
+        key: const Key('responsiveCupertinoLoadingIndicator'),
+        dimension: 20,
+        child: CircularProgressIndicator(strokeWidth: 2, color: colors.primary),
+      ),
+      child: content,
+    );
+  }
+}
 
 /// Platform-safe haptic feedback for Mediary interactions.
 ///
@@ -322,16 +398,6 @@ class _AppPressableState extends State<AppPressable> {
       ),
     );
 
-    content = GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      excludeFromSemantics: true,
-      onTapDown: _isInteractive ? (_) => _setPressed(true) : null,
-      onTapUp: _isInteractive ? (_) => _setPressed(false) : null,
-      onTapCancel: _isInteractive ? () => _setPressed(false) : null,
-      onTap: _isInteractive ? _activate : null,
-      child: content,
-    );
-
     content = FocusableActionDetector(
       enabled: _isInteractive,
       focusNode: widget.focusNode,
@@ -356,7 +422,7 @@ class _AppPressableState extends State<AppPressable> {
       child: content,
     );
 
-    return Semantics(
+    content = Semantics(
       container: true,
       button: true,
       enabled: _isInteractive,
@@ -366,6 +432,18 @@ class _AppPressableState extends State<AppPressable> {
       value: _isBusy ? 'Loading' : null,
       onTap: _isInteractive ? _activate : null,
       excludeSemantics: widget.excludeFromSemantics,
+      child: content,
+    );
+
+    // Keep the gesture detector at the root so a keyed AppPressable resolves
+    // to the actual hit target in widget tests and browser automation.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      excludeFromSemantics: true,
+      onTapDown: _isInteractive ? (_) => _setPressed(true) : null,
+      onTapUp: _isInteractive ? (_) => _setPressed(false) : null,
+      onTapCancel: _isInteractive ? () => _setPressed(false) : null,
+      onTap: _isInteractive ? _activate : null,
       child: content,
     );
   }
