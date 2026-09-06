@@ -1,4 +1,3 @@
-import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -393,8 +392,8 @@ class _LiquidGlassAddButton extends StatelessWidget {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(25),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+            child: WebAwareBlur(
+              sigma: 22,
               child: AnimatedContainer(
                 duration: reduceMotion
                     ? Duration.zero

@@ -1,8 +1,30 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+/// A backdrop blur that is skipped on web.
+///
+/// `BackdropFilter` forces a `saveLayer` + backdrop read every frame. On the
+/// CanvasKit/Skwasm web renderer this is a major source of jank, so web falls
+/// back to the surrounding gradient/tint alone (matching the native design).
+class WebAwareBlur extends StatelessWidget {
+  const WebAwareBlur({super.key, required this.sigma, required this.child});
+
+  final double sigma;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (kIsWeb) return child;
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+      child: child,
+    );
+  }
+}
 
 /// The kind of native tactile response produced by an [AppPressable].
 enum AppHapticKind { none, selection, primaryAction }

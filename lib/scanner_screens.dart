@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
@@ -274,6 +273,81 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
                                         ),
                                       ),
                                     ],
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                left: 52,
+                                right: 52,
+                                bottom: 174,
+                                child: Center(
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(99),
+                                    child: WebAwareBlur(
+                                      sigma: 10,
+                                      child: AnimatedContainer(
+                                        duration: const Duration(
+                                          milliseconds: 180,
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 10,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF0C1119)
+                                              .withValues(alpha: .58),
+                                          borderRadius: BorderRadius.circular(
+                                            99,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.white.withValues(
+                                              alpha: .12,
+                                            ),
+                                            width: .5,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            if (_isAnalyzing)
+                                              const SizedBox.square(
+                                                dimension: 14,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 1.8,
+                                                      color: Colors.white,
+                                                    ),
+                                              )
+                                            else
+                                              const Icon(
+                                                CupertinoIcons.sparkles,
+                                                color: Colors.white,
+                                                size: 14,
+                                              ),
+                                            const SizedBox(width: 7),
+                                            Flexible(
+                                              child: Text(
+                                                _isAnalyzing
+                                                    ? 'Analyzing…'
+                                                    : _barcodeMode
+                                                    ? 'Center the barcode'
+                                                    : 'Center the label',
+                                                textAlign: TextAlign.center,
+                                                maxLines: 2,
+                                                style: const TextStyle(
+                                                  color: Color(0xE6FFFFFF),
+                                                  fontSize: 11,
+                                                  height: 1.25,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -566,49 +640,24 @@ class _GlassIconButton extends StatelessWidget {
       child: Semantics(
         button: true,
         label: label,
-        child: SizedBox.square(
-          dimension: 44,
-          child: ClipOval(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: isSelected
-                        ? [
-                            colors.primary.withValues(alpha: .72),
-                            colors.primary.withValues(alpha: .34),
-                            const Color(0x66101720),
-                          ]
-                        : [
-                            Colors.white.withValues(alpha: .16),
-                            const Color(0x54151A23),
-                            const Color(0x6B080B10),
-                          ],
-                  ),
-                  border: Border.all(
-                    color: Colors.white.withValues(
-                      alpha: isSelected ? .28 : .16,
-                    ),
-                    width: .7,
-                  ),
-                ),
-                child: CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size.square(44),
-                  onPressed: () {
-                    unawaited(AppHaptics.selection());
-                    onPressed();
-                  },
-                  child: Icon(
-                    icon,
-                    color: isSelected ? colors.onPrimary : Colors.white,
-                    size: 18,
-                  ),
-                ),
+        child: ClipOval(
+          child: WebAwareBlur(
+            sigma: 12,
+            child: CupertinoButton(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size.square(40),
+              onPressed: () {
+                unawaited(AppHaptics.selection());
+                onPressed();
+              },
+              color: isSelected
+                  ? colors.primary.withValues(alpha: .69)
+                  : const Color(0x7A10141D),
+              borderRadius: BorderRadius.circular(99),
+              child: Icon(
+                icon,
+                color: isSelected ? colors.onPrimary : Colors.white,
+                size: 18,
               ),
             ),
           ),
@@ -1070,56 +1119,52 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                     ),
                   ],
                 ),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: widget.bottomNavigationInset,
-                  child: ClipRect(
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                      child: Container(
-                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                        decoration: BoxDecoration(
-                          color: palette.actionMaterial,
-                          border: Border(
-                            top: BorderSide(
-                              color: palette.separator,
-                              width: .5,
+                ClipRect(
+                  child: WebAwareBlur(
+                    sigma: 20,
+                    child: Container(
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        10,
+                        16,
+                        MediaQuery.paddingOf(context).bottom +
+                            widget.bottomNavigationInset,
+                      ),
+                      decoration: BoxDecoration(
+                        color: palette.actionMaterial,
+                        border: Border(
+                          top: BorderSide(color: palette.separator, width: .5),
+                        ),
+                      ),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: FilledButton.icon(
+                          key: const Key('addScanResultButton'),
+                          onPressed: _addToCalendar,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _isAdded
+                                ? palette.success
+                                : palette.primary,
+                            foregroundColor: _isAdded
+                                ? palette.onSuccess
+                                : Theme.of(context).colorScheme.onPrimary,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(11),
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                        ),
-                        child: SizedBox(
-                          width: double.infinity,
-                          height: 48,
-                          child: FilledButton.icon(
-                            key: const Key('addScanResultButton'),
-                            onPressed: _addToCalendar,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: _isAdded
-                                  ? palette.success
-                                  : palette.primary,
-                              foregroundColor: _isAdded
-                                  ? palette.onSuccess
-                                  : Theme.of(context).colorScheme.onPrimary,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(11),
-                              ),
-                              textStyle: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            icon: Icon(
-                              _isAdded
-                                  ? CupertinoIcons.check_mark_circled_solid
-                                  : CupertinoIcons.calendar_badge_plus,
-                              size: 18,
-                            ),
-                            label: Text(
-                              _isAdded
-                                  ? 'Added to Calendar'
-                                  : 'Add to Calendar',
-                            ),
+                          icon: Icon(
+                            _isAdded
+                                ? CupertinoIcons.check_mark_circled_solid
+                                : CupertinoIcons.calendar_badge_plus,
+                            size: 18,
+                          ),
+                          label: Text(
+                            _isAdded ? 'Added to Calendar' : 'Add to Calendar',
                           ),
                         ),
                       ),
