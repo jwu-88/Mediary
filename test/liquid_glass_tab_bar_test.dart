@@ -7,7 +7,7 @@ import 'package:mediary/app_theme.dart';
 import 'package:mediary/liquid_glass_tab_bar.dart';
 
 void main() {
-  testWidgets('light navigation uses a transparent bordered glass surface', (
+  testWidgets('light navigation uses a solid bordered glass surface', (
     tester,
   ) async {
     await _pumpTabBar(tester);
@@ -16,12 +16,12 @@ void main() {
       find.byKey(const Key('liquidGlassTabBar')),
     );
     final decoration = surface.decoration! as BoxDecoration;
-    final gradient = decoration.gradient! as LinearGradient;
     final border = decoration.border! as Border;
 
     expect(surface.constraints!.maxHeight, 64);
     expect(decoration.borderRadius, BorderRadius.circular(32));
-    expect(gradient.colors.every((color) => color.a < 1), isTrue);
+    expect(decoration.color, const Color(0xFFF3F5F8));
+    expect(decoration.gradient, isNull);
     expect(border.top, border.right);
     expect(border.right, border.bottom);
     expect(border.bottom, border.left);
@@ -81,7 +81,7 @@ void main() {
         tester
             .widget<Icon>(
               find.descendant(
-                of: find.byKey(const Key('liquidGlassTabIcon-Today')),
+                of: find.byKey(const Key('liquidGlassTabIcon-Dashboard')),
                 matching: find.byType(Icon),
               ),
             )

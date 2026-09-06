@@ -536,75 +536,72 @@ class _FeaturedArticle extends StatelessWidget {
       semanticLabel: 'Open Antibiotics 101 article',
       borderRadius: BorderRadius.circular(14),
       pressedScale: .985,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: Material(
-          color: surface,
-          child: SizedBox(
-            height: 150,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 18, 12, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Antibiotics 101',
-                          style: TextStyle(
-                            color: ink,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                          ),
+      child: _LibraryGlassSurface(
+        baseColor: surface,
+        child: SizedBox(
+          height: 150,
+          child: Row(
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 18, 12, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Antibiotics 101',
+                        style: TextStyle(
+                          color: ink,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
                         ),
-                        const SizedBox(height: 7),
-                        Text(
-                          'Why completing your full course matters.',
-                          style: TextStyle(
-                            color: muted,
-                            fontSize: 11,
-                            height: 1.4,
-                          ),
+                      ),
+                      const SizedBox(height: 7),
+                      Text(
+                        'Why completing your full course matters.',
+                        style: TextStyle(
+                          color: muted,
+                          fontSize: 11,
+                          height: 1.4,
                         ),
-                        const Spacer(),
-                        Row(
-                          children: [
-                            Text(
-                              'Read 3 min',
-                              style: TextStyle(
-                                color: primary,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            SizedBox(width: 4),
-                            Icon(
-                              CupertinoIcons.arrow_right,
+                      ),
+                      const Spacer(),
+                      Row(
+                        children: [
+                          Text(
+                            'Read 3 min',
+                            style: TextStyle(
                               color: primary,
-                              size: 12,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
+                          ),
+                          SizedBox(width: 4),
+                          Icon(
+                            CupertinoIcons.arrow_right,
+                            color: primary,
+                            size: 12,
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-                Container(
-                  width: 138,
-                  decoration: BoxDecoration(
-                    border: Border(left: BorderSide(color: line, width: .7)),
-                  ),
-                  child: _MedicationArtwork(
-                    assetPath: _imageAsset,
-                    cacheWidth: 552,
-                    fallbackColor: const Color(0xFFF7C781),
-                    fallbackIcon: CupertinoIcons.capsule_fill,
-                    borderRadius: BorderRadius.zero,
-                  ),
+              ),
+              Container(
+                width: 138,
+                decoration: BoxDecoration(
+                  border: Border(left: BorderSide(color: line, width: .7)),
                 ),
-              ],
-            ),
+                child: _MedicationArtwork(
+                  assetPath: _imageAsset,
+                  cacheWidth: 552,
+                  fallbackColor: const Color(0xFFF7C781),
+                  fallbackIcon: CupertinoIcons.capsule_fill,
+                  borderRadius: BorderRadius.zero,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -631,23 +628,62 @@ class _MedicationList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _LibraryGlassSurface(
+      baseColor: surface,
+      child: Column(
+        children: [
+          for (var index = 0; index < medications.length; index++) ...[
+            _MedicationRow(
+              medication: medications[index],
+              ink: ink,
+              muted: muted,
+              onTap: () => onOpenMedication(medications[index]),
+            ),
+            if (index != medications.length - 1)
+              Divider(height: 1, indent: 77, color: line, thickness: .7),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _LibraryGlassSurface extends StatelessWidget {
+  const _LibraryGlassSurface({required this.baseColor, required this.child});
+
+  final Color baseColor;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final primary = theme.colorScheme.primary;
+    final glassBase = baseColor.withValues(alpha: dark ? .78 : .72);
+    final glassTint = primary.withValues(alpha: dark ? .045 : .025);
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
-      child: ColoredBox(
-        color: surface,
-        child: Column(
-          children: [
-            for (var index = 0; index < medications.length; index++) ...[
-              _MedicationRow(
-                medication: medications[index],
-                ink: ink,
-                muted: muted,
-                onTap: () => onOpenMedication(medications[index]),
-              ),
-              if (index != medications.length - 1)
-                Divider(height: 1, indent: 77, color: line, thickness: .7),
-            ],
-          ],
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color.alphaBlend(glassTint, glassBase),
+                Color.alphaBlend(
+                  primary.withValues(alpha: dark ? .018 : .012),
+                  glassBase,
+                ),
+              ],
+            ),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: dark ? .10 : .50),
+              width: .7,
+            ),
+          ),
+          child: child,
         ),
       ),
     );

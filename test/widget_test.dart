@@ -234,7 +234,7 @@ void main() {
       find.byKey(const Key('liquidGlassSelectionLens')),
     );
     expect(selectionLensSize.width, greaterThan(selectionLensSize.height + 8));
-    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('Dashboard'), findsOneWidget);
     expect(find.text('Calendar'), findsOneWidget);
     expect(find.text('Scan'), findsOneWidget);
     expect(find.text('Library'), findsOneWidget);

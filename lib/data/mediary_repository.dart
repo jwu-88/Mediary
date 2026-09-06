@@ -10,6 +10,7 @@ class ProfileWrite {
     required this.bloodType,
     required this.allergies,
     required this.careTeam,
+    this.photoUrl,
   });
 
   final String displayName;
@@ -17,6 +18,7 @@ class ProfileWrite {
   final String bloodType;
   final List<String> allergies;
   final String careTeam;
+  final String? photoUrl;
 }
 
 class MedicationWrite {
@@ -188,6 +190,9 @@ class MediaryRepository {
     final ref = firestore.collection('users').doc(user.uid);
     final snapshot = await ref.get();
     final data = snapshot.data() ?? const <String, dynamic>{};
+    final existingPhotoUrl = data['photoUrl'] is String
+        ? (data['photoUrl'] as String).trim()
+        : '';
     final existingPreferences = data['preferences'];
     final preferences = existingPreferences is Map
         ? Map<String, dynamic>.from(existingPreferences)
@@ -232,6 +237,9 @@ class MediaryRepository {
           ? (data['allergies'] as Iterable).whereType<String>().toList()
           : const <String>[],
       'careTeam': data['careTeam'] is String ? data['careTeam'] : '',
+      'photoUrl': existingPhotoUrl.isNotEmpty
+          ? existingPhotoUrl
+          : (user.photoURL ?? ''),
       'timezone': data['timezone'] is String ? data['timezone'] : 'UTC',
       'preferences': normalizedPreferences,
       'createdAt': data['createdAt'] is Timestamp
@@ -292,6 +300,7 @@ class MediaryRepository {
       'bloodType': profile.bloodType,
       'allergies': profile.allergies,
       'careTeam': profile.careTeam,
+      'photoUrl': profile.photoUrl ?? '',
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }

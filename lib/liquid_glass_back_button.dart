@@ -84,6 +84,16 @@ class LiquidGlassBackButton extends StatelessWidget {
                         end: Alignment.bottomRight,
                         colors: glassColors,
                       ),
+                      border: Border.all(
+                        color: Colors.white.withValues(
+                          alpha: overImage
+                              ? .16
+                              : dark
+                              ? .14
+                              : .52,
+                        ),
+                        width: .7,
+                      ),
                     ),
                     child: Stack(
                       fit: StackFit.expand,

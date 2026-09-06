@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import 'in_app_page.dart';
 import 'liquid_glass_accent_selector.dart';
 import 'liquid_glass_appearance_selector.dart';
 import 'liquid_glass_back_button.dart';
+import 'liquid_glass_switch.dart';
 import 'profile_image_policy.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -71,7 +73,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool get _dark => Theme.of(context).brightness == Brightness.dark;
   ColorScheme get _colors => Theme.of(context).colorScheme;
   Color get _background => Theme.of(context).scaffoldBackgroundColor;
-  Color get _surface => _colors.surface;
   Color get _ink => _colors.onSurface;
   Color get _muted => _colors.onSurfaceVariant;
   Color get _line => _colors.outlineVariant.withValues(alpha: _dark ? .8 : .55);
@@ -526,6 +527,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _group(key: const Key('settingsConnectedAppsGroup'), [
                     _SettingsRow(
                       icon: CupertinoIcons.heart_fill,
+                      iconWidget: _AppleHealthIcon(color: _success),
                       iconColor: _success,
                       title: 'Apple Health',
                       subtitle: _appleHealthConnected
@@ -622,19 +624,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _group(List<Widget> rows, {Key? key}) {
+    final glassColors = _dark
+        ? [
+            Colors.white.withValues(alpha: .09),
+            const Color(0xFF34404F).withValues(alpha: .16),
+            Colors.black.withValues(alpha: .16),
+          ]
+        : [
+            Colors.white.withValues(alpha: .78),
+            const Color(0xFFEAF4FF).withValues(alpha: .42),
+            const Color(0xFFDDE8F5).withValues(alpha: .28),
+          ];
     return ClipRRect(
       key: key,
       borderRadius: BorderRadius.circular(14),
-      child: ColoredBox(
-        color: _surface,
-        child: Column(
-          children: [
-            for (var index = 0; index < rows.length; index++) ...[
-              rows[index],
-              if (index < rows.length - 1)
-                Divider(height: 1, indent: 52, color: _line),
-            ],
-          ],
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: glassColors,
+            ),
+            border: Border.all(
+              color: _dark
+                  ? Colors.white.withValues(alpha: .14)
+                  : Colors.white.withValues(alpha: .72),
+              width: .8,
+            ),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: Column(
+              children: [
+                for (var index = 0; index < rows.length; index++) ...[
+                  rows[index],
+                  if (index < rows.length - 1)
+                    Divider(height: 1, indent: 52, color: _line),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -643,21 +675,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _chevron() =>
       Icon(CupertinoIcons.chevron_right, color: _muted, size: 15);
 
-  CupertinoSwitch _themedSwitch({
+  Widget _themedSwitch({
     required Key key,
     required bool value,
     required ValueChanged<bool> onChanged,
   }) {
-    return CupertinoSwitch(
-      key: key,
-      value: value,
-      activeTrackColor: _accent,
-      inactiveTrackColor: _dark
-          ? const Color(0xFF48484A)
-          : const Color(0xFFE5E5EA),
-      thumbColor: _dark ? const Color(0xFFF2F2F7) : Colors.white,
-      onChanged: onChanged,
-    );
+    return LiquidGlassSwitch(key: key, value: value, onChanged: onChanged);
   }
 
   Widget _value(String label) {
@@ -982,6 +1005,7 @@ class _SettingsRow extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.trailing,
+    this.iconWidget,
     this.onTap,
   });
 
@@ -990,6 +1014,7 @@ class _SettingsRow extends StatelessWidget {
   final String title;
   final String subtitle;
   final Widget trailing;
+  final Widget? iconWidget;
   final VoidCallback? onTap;
 
   @override
@@ -1007,7 +1032,7 @@ class _SettingsRow extends StatelessWidget {
               children: [
                 SizedBox(
                   width: 28,
-                  child: Icon(icon, color: iconColor, size: 18),
+                  child: iconWidget ?? Icon(icon, color: iconColor, size: 18),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -1042,6 +1067,115 @@ class _SettingsRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Native-style Apple Health mark: a white tile, red heart, and ECG pulse.
+/// Keeping it dedicated avoids reducing the branded mark to a generic glyph.
+class _AppleHealthIcon extends StatelessWidget {
+  const _AppleHealthIcon({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: 22,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: ColoredBox(
+          color: Colors.white,
+          child: CustomPaint(painter: _AppleHealthIconPainter(color)),
+        ),
+      ),
+    );
+  }
+}
+
+class _AppleHealthIconPainter extends CustomPainter {
+  const _AppleHealthIconPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final scale = size.shortestSide / 22;
+    final heart = Path()
+      ..moveTo(11 * scale, 18 * scale)
+      ..cubicTo(
+        9.1 * scale,
+        16.4 * scale,
+        4 * scale,
+        13.4 * scale,
+        4 * scale,
+        8.3 * scale,
+      )
+      ..cubicTo(
+        4 * scale,
+        5.8 * scale,
+        5.7 * scale,
+        4.2 * scale,
+        7.8 * scale,
+        4.2 * scale,
+      )
+      ..cubicTo(
+        9.1 * scale,
+        4.2 * scale,
+        10.3 * scale,
+        4.9 * scale,
+        11 * scale,
+        6 * scale,
+      )
+      ..cubicTo(
+        11.7 * scale,
+        4.9 * scale,
+        12.9 * scale,
+        4.2 * scale,
+        14.2 * scale,
+        4.2 * scale,
+      )
+      ..cubicTo(
+        16.3 * scale,
+        4.2 * scale,
+        18 * scale,
+        5.8 * scale,
+        18 * scale,
+        8.3 * scale,
+      )
+      ..cubicTo(
+        18 * scale,
+        13.4 * scale,
+        12.9 * scale,
+        16.4 * scale,
+        11 * scale,
+        18 * scale,
+      )
+      ..close();
+
+    canvas.drawPath(heart, Paint()..color = color);
+    canvas.save();
+    canvas.clipPath(heart);
+    final pulse = Path()
+      ..moveTo(3.5 * scale, 10.1 * scale)
+      ..lineTo(7.5 * scale, 10.1 * scale)
+      ..lineTo(9.1 * scale, 7.5 * scale)
+      ..lineTo(11 * scale, 13.5 * scale)
+      ..lineTo(12.7 * scale, 10.1 * scale)
+      ..lineTo(18.5 * scale, 10.1 * scale);
+    canvas.drawPath(
+      pulse,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.15 * scale
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _AppleHealthIconPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 class _PrivacyDivider extends StatelessWidget {
