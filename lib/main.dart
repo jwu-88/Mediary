@@ -1654,28 +1654,51 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       children: [
         lazy(0, _buildDashboard),
         lazy(1, _buildCalendar),
-        TickerMode(
-          enabled: _selectedIndex == 2,
-          child: lazy(2, _buildScanner),
-        ),
+        TickerMode(enabled: _selectedIndex == 2, child: lazy(2, _buildScanner)),
         lazy(3, _buildLibrary),
         lazy(4, _buildSettings),
       ],
     );
 
     if (_usesSidebarNavigation) {
+      final desktopWeb = kIsWeb && MediaQuery.sizeOf(context).width >= 900;
       final shell = Scaffold(
-        body: Row(
-          children: [
-            WebNavigationSidebar(
-              currentIndex: _selectedIndex,
-              onTap: _selectDestination,
-            ),
-            Expanded(child: pages),
-          ],
-        ),
+        body: desktopWeb
+            ? Stack(
+                fit: StackFit.expand,
+                children: [
+                  Positioned.fill(
+                    child: Padding(
+                      padding: const EdgeInsets.only(
+                        left: WebNavigationSidebar.collapsedWidth,
+                      ),
+                      child: pages,
+                    ),
+                  ),
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: WebNavigationSidebar.expandedWidth,
+                    child: WebNavigationSidebar(
+                      currentIndex: _selectedIndex,
+                      onTap: _selectDestination,
+                      overlayHoverArea: true,
+                    ),
+                  ),
+                ],
+              )
+            : Row(
+                children: [
+                  WebNavigationSidebar(
+                    currentIndex: _selectedIndex,
+                    onTap: _selectDestination,
+                  ),
+                  Expanded(child: pages),
+                ],
+              ),
       );
-      if (!kIsWeb || MediaQuery.sizeOf(context).width < 900) return shell;
+      if (!desktopWeb) return shell;
       final mediaQuery = MediaQuery.of(context);
       final baseTextSize = mediaQuery.textScaler.scale(1);
       return MediaQuery(

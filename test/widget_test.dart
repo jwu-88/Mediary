@@ -355,6 +355,27 @@ void main() {
     );
     expect(find.text('Mediary'), findsOneWidget);
 
+    await mouse.moveTo(const Offset(180, 100));
+    await tester.pump();
+    expect(
+      tester.getSize(find.byKey(const Key('webNavigationSidebar'))).width,
+      224,
+    );
+
+    await mouse.moveTo(const Offset(280, 100));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(find.byKey(const Key('webNavigationSidebar'))).width,
+      76,
+    );
+
+    await mouse.moveTo(const Offset(40, 100));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(find.byKey(const Key('webNavigationSidebar'))).width,
+      224,
+    );
+
     await tester.tap(find.byKey(const Key('webNavItem-3')));
     await tester.pumpAndSettle();
     expect(find.text('Medication Library'), findsOneWidget);
