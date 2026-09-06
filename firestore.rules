@@ -1,0 +1,284 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function hasOnly(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isNumber(value) {
+      return value is int || value is float;
+    }
+
+    function optionalString(data, field) {
+      return !data.keys().hasAny([field]) || data[field] is string;
+    }
+
+    function optionalTimestamp(data, field) {
+      return !data.keys().hasAny([field]) || data[field] is timestamp;
+    }
+
+    function validPreferences(data) {
+      return data is map
+        && data.keys().hasOnly([
+          'theme',
+          'accentColor',
+          'doseNotifications',
+          'followUpAlerts',
+          'reminderSound',
+          'language',
+          'units'
+        ])
+        && (!data.keys().hasAny(['theme'])
+          || data.theme in ['system', 'light', 'dark'])
+        && (!data.keys().hasAny(['accentColor'])
+          || data.accentColor in ['blue', 'indigo', 'purple', 'teal', 'orange'])
+        && (!data.keys().hasAny(['doseNotifications'])
+          || data.doseNotifications is bool)
+        && (!data.keys().hasAny(['followUpAlerts'])
+          || data.followUpAlerts is bool)
+        && (!data.keys().hasAny(['reminderSound'])
+          || data.reminderSound is string)
+        && (!data.keys().hasAny(['language'])
+          || data.language is string)
+        && (!data.keys().hasAny(['units'])
+          || data.units is string);
+    }
+
+    function validUser(data) {
+      return hasOnly([
+          'email',
+          'displayName',
+          'bloodType',
+          'allergies',
+          'careTeam',
+          'createdAt',
+          'updatedAt',
+          'timezone',
+          'preferences'
+        ])
+        && data.email is string
+        && data.displayName is string
+        && data.bloodType is string
+        && data.allergies is list
+        && data.careTeam is string
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.timezone is string
+        && validPreferences(data.preferences);
+    }
+
+    function validMedication(data) {
+      return hasOnly([
+          'name',
+          'genericName',
+          'strength',
+          'form',
+          'route',
+          'instructions',
+          'prescriber',
+          'pharmacy',
+          'notes',
+          'active',
+          'source',
+          'createdAt',
+          'updatedAt',
+          'archivedAt'
+        ])
+        && data.name is string
+        && data.genericName is string
+        && data.strength is string
+        && data.form is string
+        && data.route is string
+        && data.instructions is string
+        && data.prescriber is string
+        && data.pharmacy is string
+        && data.notes is string
+        && data.active is bool
+        && data.source in ['manual', 'scanner', 'library']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && optionalTimestamp(data, 'archivedAt');
+    }
+
+    function validSchedule(data) {
+      return hasOnly([
+          'medicationId',
+          'doseAmount',
+          'doseUnit',
+          'times',
+          'frequency',
+          'daysOfWeek',
+          'startDate',
+          'endDate',
+          'timezone',
+          'instructions',
+          'active',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.medicationId is string
+        && isNumber(data.doseAmount)
+        && data.doseAmount > 0
+        && data.doseUnit is string
+        && data.times is list
+        && data.frequency in [
+          'daily',
+          'weekly',
+          'every8Hours',
+          'every12Hours',
+          'asNeeded',
+          'once'
+        ]
+        && data.daysOfWeek is list
+        && data.startDate is string
+        && optionalString(data, 'endDate')
+        && data.timezone is string
+        && data.instructions is string
+        && data.active is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function validDoseLog(data) {
+      return hasOnly([
+          'medicationId',
+          'scheduleId',
+          'scheduledFor',
+          'localDate',
+          'localTime',
+          'status',
+          'takenAt',
+          'snoozedUntil',
+          'notes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.medicationId is string
+        && data.scheduleId is string
+        && data.scheduledFor is timestamp
+        && data.localDate is string
+        && data.localTime is string
+        && data.status in [
+          'due',
+          'taken',
+          'missed',
+          'skipped',
+          'cancelled',
+          'snoozed'
+        ]
+        && optionalTimestamp(data, 'takenAt')
+        && optionalTimestamp(data, 'snoozedUntil')
+        && optionalString(data, 'notes')
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (data.status != 'snoozed'
+          || data.keys().hasAny(['snoozedUntil']));
+    }
+
+    function validSavedMedication(data) {
+      return hasOnly(['savedAt', 'libraryVersion'])
+        && data.savedAt is timestamp
+        && data.libraryVersion is string;
+    }
+
+    function validReport(data) {
+      return hasOnly([
+          'periodStart',
+          'periodEnd',
+          'doseCount',
+          'takenCount',
+          'missedCount',
+          'skippedCount',
+          'adherencePercent',
+          'generatedAt',
+          'sourceVersion'
+        ])
+        && data.periodStart is string
+        && data.periodEnd is string
+        && data.doseCount is int
+        && data.takenCount is int
+        && data.missedCount is int
+        && data.skippedCount is int
+        && isNumber(data.adherencePercent)
+        && data.adherencePercent >= 0
+        && data.adherencePercent <= 100
+        && data.generatedAt is timestamp
+        && data.sourceVersion is string;
+    }
+
+    function validScan(data) {
+      return hasOnly([
+          'status',
+          'detectedMedicationName',
+          'extractedText',
+          'confidence',
+          'errorMessage',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.status in ['uploaded', 'processing', 'complete', 'failed']
+        && data.detectedMedicationName is string
+        && data.extractedText is string
+        && isNumber(data.confidence)
+        && data.confidence >= 0
+        && data.confidence <= 1
+        && data.errorMessage is string
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && validUser(request.resource.data);
+      allow delete: if false;
+
+      match /medications/{medicationId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && validMedication(request.resource.data);
+        allow delete: if false;
+      }
+
+      match /schedules/{scheduleId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && validSchedule(request.resource.data);
+        allow delete: if false;
+      }
+
+      match /doseLogs/{doseLogId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && validDoseLog(request.resource.data);
+        allow delete: if false;
+      }
+
+      match /savedMedications/{medicationId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && validSavedMedication(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      match /reports/{reportId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && validReport(request.resource.data);
+        allow delete: if false;
+      }
+
+      match /scans/{scanId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && validScan(request.resource.data);
+        allow delete: if false;
+      }
+    }
+  }
+}
