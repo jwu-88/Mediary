@@ -1,20 +1,28 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'add_medication_screen.dart';
+import 'app_interactions.dart';
 import 'app_theme.dart';
 import 'calendar_screen.dart';
 import 'dashboard_screen.dart';
+import 'data/mediary_data_store.dart';
+import 'data/mediary_models.dart';
+import 'data/mediary_repository.dart';
 import 'firebase_options.dart';
 import 'library_screens.dart';
 import 'liquid_glass_tab_bar.dart';
 import 'profile_screen.dart';
 import 'scanner_screens.dart';
 import 'settings_screen.dart';
+import 'web_camera.dart';
 import 'web_navigation_sidebar.dart';
 import 'weekly_report_screen.dart';
 
@@ -23,11 +31,26 @@ Future<void>? _googleSignInInitialization;
 
 Future<void> signInWithGoogle(FirebaseAuth auth) async {
   if (kIsWeb) {
-    await auth.signInWithPopup(GoogleAuthProvider());
+    final provider = GoogleAuthProvider();
+    try {
+      await auth.signInWithPopup(provider);
+    } on FirebaseAuthException catch (error) {
+      if (_normalizedAuthCode(error.code) != 'popup-blocked') rethrow;
+      await auth.signInWithRedirect(provider);
+    }
     return;
   }
 
-  await (_googleSignInInitialization ??= _googleSignIn.initialize());
+  final initialization = _googleSignInInitialization ??= _googleSignIn
+      .initialize();
+  try {
+    await initialization;
+  } catch (_) {
+    if (identical(_googleSignInInitialization, initialization)) {
+      _googleSignInInitialization = null;
+    }
+    rethrow;
+  }
   final googleUser = await _googleSignIn.authenticate();
   final googleAuth = googleUser.authentication;
   final credential = GoogleAuthProvider.credential(idToken: googleAuth.idToken);
@@ -37,7 +60,85 @@ Future<void> signInWithGoogle(FirebaseAuth auth) async {
 Future<void> signOut(FirebaseAuth auth) async {
   await auth.signOut();
   if (_googleSignInInitialization != null) {
-    await _googleSignIn.signOut();
+    try {
+      await _googleSignIn.signOut();
+    } catch (_) {
+      if (kDebugMode) {
+        debugPrint('Google provider cleanup failed after Firebase sign-out.');
+      }
+    }
+  }
+}
+
+enum FirebaseAuthAction {
+  signIn,
+  createAccount,
+  googleSignIn,
+  emailVerification,
+}
+
+String _normalizedAuthCode(String code) =>
+    code.toLowerCase().replaceFirst('auth/', '').replaceAll('_', '-');
+
+bool _isCanceledGoogleAuth(FirebaseAuthException error) {
+  return const {
+    'popup-closed-by-user',
+    'cancelled-popup-request',
+    'web-context-cancelled',
+  }.contains(_normalizedAuthCode(error.code));
+}
+
+/// Converts Firebase's platform-specific codes into safe, actionable copy.
+String firebaseAuthErrorMessage(
+  FirebaseAuthException error, {
+  required FirebaseAuthAction action,
+}) {
+  final code = _normalizedAuthCode(error.code);
+  switch (code) {
+    case 'invalid-email':
+      return 'Enter a valid email address.';
+    case 'user-not-found':
+    case 'wrong-password':
+    case 'invalid-credential':
+    case 'invalid-login-credentials':
+      return 'Incorrect email or password.';
+    case 'email-already-in-use':
+      return 'An account already exists for this email address.';
+    case 'weak-password':
+      return 'Use a stronger password with at least 8 characters.';
+    case 'user-disabled':
+      return 'This account has been disabled. Contact support for help.';
+    case 'network-request-failed':
+      return 'Unable to connect. Check your internet connection and try again.';
+    case 'too-many-requests':
+      return 'Too many attempts. Wait a moment before trying again.';
+    case 'operation-not-allowed':
+      return action == FirebaseAuthAction.googleSignIn
+          ? 'Google sign-in is not enabled for Mediary.'
+          : 'Email and password authentication is not enabled for Mediary.';
+    case 'account-exists-with-different-credential':
+      return 'An account already exists with a different sign-in method.';
+    case 'credential-already-in-use':
+      return 'This sign-in credential is already linked to another account.';
+    case 'unauthorized-domain':
+      return 'This web address is not authorized for Google sign-in.';
+    case 'popup-blocked':
+      return 'Your browser blocked Google sign-in. Allow pop-ups and try again.';
+    case 'app-not-authorized':
+    case 'invalid-api-key':
+      return 'Mediary is not authorized to use its Firebase configuration.';
+    case 'internal-error':
+      return 'Authentication is temporarily unavailable. Please try again.';
+    default:
+      return switch (action) {
+        FirebaseAuthAction.createAccount =>
+          'Unable to create your account. Please try again.',
+        FirebaseAuthAction.googleSignIn =>
+          'Unable to sign in with Google. Please try again.',
+        FirebaseAuthAction.emailVerification =>
+          'Unable to verify your email right now. Please try again.',
+        FirebaseAuthAction.signIn => 'Unable to sign in. Please try again.',
+      };
   }
 }
 
@@ -53,6 +154,10 @@ enum CameraAccessState {
 typedef CameraPermissionRequester = Future<CameraAccessState> Function();
 
 Future<CameraAccessState> requestCameraAccess() async {
+  if (kIsWeb) {
+    final granted = await requestWebCameraAccess();
+    return granted ? CameraAccessState.granted : CameraAccessState.denied;
+  }
   final status = await Permission.camera.request();
   if (status.isGranted) {
     return CameraAccessState.granted;
@@ -65,9 +170,7 @@ Future<CameraAccessState> requestCameraAccess() async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: kIsWeb ? DefaultFirebaseOptions.web : null,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MyApp());
 }
 
@@ -158,6 +261,9 @@ class AuthGate extends StatefulWidget {
 class _AuthGateState extends State<AuthGate> {
   late Stream<User?> _authStateChanges;
   User? _initialUser;
+  bool _returningUser = false;
+  String? _confirmedVerifiedUid;
+  MediaryDataStore? _dataStore;
 
   @override
   void initState() {
@@ -175,7 +281,37 @@ class _AuthGateState extends State<AuthGate> {
 
   void _subscribeToAuth(FirebaseAuth auth) {
     _initialUser = auth.currentUser;
-    _authStateChanges = auth.authStateChanges();
+    _returningUser = _returningUser || _initialUser != null;
+    _confirmedVerifiedUid = null;
+    _authStateChanges = auth.userChanges();
+  }
+
+  void _syncDataStore(User? user) {
+    if (user == null) {
+      _dataStore?.dispose();
+      _dataStore = null;
+      return;
+    }
+    if (_dataStore?.userId == user.uid) return;
+    _dataStore?.dispose();
+    final store = MediaryDataStore(
+      repository: MediaryRepository(auth: widget.auth),
+    );
+    _dataStore = store;
+    unawaited(store.start(user));
+  }
+
+  @override
+  void dispose() {
+    _dataStore?.dispose();
+    super.dispose();
+  }
+
+  bool _requiresEmailVerification(User user) {
+    if (user.emailVerified || _confirmedVerifiedUid == user.uid) return false;
+    return user.providerData.any(
+      (provider) => provider.providerId == EmailAuthProvider.PROVIDER_ID,
+    );
   }
 
   void _openSettings(BuildContext context) {
@@ -206,6 +342,24 @@ class _AuthGateState extends State<AuthGate> {
 
         final user = snapshot.data;
         if (user != null) {
+          _returningUser = true;
+          _syncDataStore(user);
+          if (_requiresEmailVerification(user)) {
+            return EmailVerificationScreen(
+              email: user.email ?? 'your email address',
+              onResend: user.sendEmailVerification,
+              onRefresh: () async {
+                await user.reload();
+                final refreshed = widget.auth.currentUser;
+                final verified = refreshed?.emailVerified ?? false;
+                if (verified && mounted) {
+                  setState(() => _confirmedVerifiedUid = refreshed!.uid);
+                }
+                return verified;
+              },
+              onSignOut: () => signOut(widget.auth),
+            );
+          }
           return AuthenticatedHome(
             email: user.email ?? 'Signed-in user',
             displayName: user.displayName,
@@ -215,24 +369,44 @@ class _AuthGateState extends State<AuthGate> {
             accentColor: widget.accentColor,
             onAccentColorChanged: widget.onAccentColorChanged,
             onSignOut: () => signOut(widget.auth),
+            dataStore: _dataStore,
             cameraPermissionRequester: requestCameraAccess,
             onOpenCameraSettings: openAppSettings,
           );
         }
 
+        _confirmedVerifiedUid = null;
+
         return AuthForm(
+          initialCreateAccount: !_returningUser,
           onOpenSettings: () => _openSettings(context),
           onGoogleSignIn: () => signInWithGoogle(widget.auth),
           onSubmit:
-              ({required email, required password, required createAccount}) {
+              ({
+                required email,
+                required password,
+                required createAccount,
+              }) async {
                 if (createAccount) {
-                  return widget.auth.createUserWithEmailAndPassword(
-                    email: email,
-                    password: password,
-                  );
+                  final credential = await widget.auth
+                      .createUserWithEmailAndPassword(
+                        email: email,
+                        password: password,
+                      );
+                  final newUser = credential.user;
+                  if (newUser != null && !newUser.emailVerified) {
+                    try {
+                      await newUser.sendEmailVerification();
+                    } on FirebaseAuthException {
+                      // Account creation succeeded. The verification page lets
+                      // the user safely retry delivery without creating a
+                      // duplicate account.
+                    }
+                  }
+                  return;
                 }
 
-                return widget.auth.signInWithEmailAndPassword(
+                await widget.auth.signInWithEmailAndPassword(
                   email: email,
                   password: password,
                 );
@@ -251,17 +425,229 @@ typedef AuthSubmitter = Future<void> Function({
 
 typedef GoogleAuthSubmitter = Future<void> Function();
 
+class EmailVerificationScreen extends StatefulWidget {
+  const EmailVerificationScreen({
+    super.key,
+    required this.email,
+    required this.onResend,
+    required this.onRefresh,
+    required this.onSignOut,
+  });
+
+  final String email;
+  final Future<void> Function() onResend;
+  final Future<bool> Function() onRefresh;
+  final Future<void> Function() onSignOut;
+
+  @override
+  State<EmailVerificationScreen> createState() =>
+      _EmailVerificationScreenState();
+}
+
+enum _VerificationAction { resend, refresh, signOut }
+
+class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
+  _VerificationAction? _busyAction;
+  String? _statusMessage;
+  bool _statusIsError = false;
+
+  bool get _isBusy => _busyAction != null;
+
+  void _setStatus(String message, {bool isError = false}) {
+    if (!mounted) return;
+    setState(() {
+      _statusMessage = message;
+      _statusIsError = isError;
+    });
+  }
+
+  Future<void> _resend() async {
+    if (_isBusy) return;
+    unawaited(AppHaptics.primaryAction());
+    setState(() {
+      _busyAction = _VerificationAction.resend;
+      _statusMessage = null;
+    });
+    try {
+      await widget.onResend();
+      _setStatus('Verification email sent. Check your inbox.');
+    } on FirebaseAuthException catch (error) {
+      _setStatus(
+        firebaseAuthErrorMessage(
+          error,
+          action: FirebaseAuthAction.emailVerification,
+        ),
+        isError: true,
+      );
+    } catch (_) {
+      _setStatus(
+        'Unable to send a verification email. Please try again.',
+        isError: true,
+      );
+    } finally {
+      if (mounted) setState(() => _busyAction = null);
+    }
+  }
+
+  Future<void> _refresh() async {
+    if (_isBusy) return;
+    unawaited(AppHaptics.selection());
+    setState(() {
+      _busyAction = _VerificationAction.refresh;
+      _statusMessage = null;
+    });
+    try {
+      final verified = await widget.onRefresh();
+      if (verified) {
+        _setStatus('Email verified. Loading Mediary.');
+      } else {
+        _setStatus(
+          'Your email is not verified yet. Open the link, then try again.',
+        );
+      }
+    } on FirebaseAuthException catch (error) {
+      _setStatus(
+        firebaseAuthErrorMessage(
+          error,
+          action: FirebaseAuthAction.emailVerification,
+        ),
+        isError: true,
+      );
+    } catch (_) {
+      _setStatus(
+        'Unable to check verification status. Please try again.',
+        isError: true,
+      );
+    } finally {
+      if (mounted) setState(() => _busyAction = null);
+    }
+  }
+
+  Future<void> _signOut() async {
+    if (_isBusy) return;
+    unawaited(AppHaptics.selection());
+    setState(() {
+      _busyAction = _VerificationAction.signOut;
+      _statusMessage = null;
+    });
+    try {
+      await widget.onSignOut();
+    } on FirebaseAuthException catch (error) {
+      _setStatus(
+        firebaseAuthErrorMessage(error, action: FirebaseAuthAction.signIn),
+        isError: true,
+      );
+    } catch (_) {
+      _setStatus('Unable to sign out. Please try again.', isError: true);
+    } finally {
+      if (mounted) setState(() => _busyAction = null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Scaffold(
+      key: const Key('emailVerificationScreen'),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Icon(
+                    Icons.mark_email_unread_outlined,
+                    color: colors.primary,
+                    size: 52,
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Verify Your Email',
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Verify ${widget.email} before continuing to Mediary. '
+                    'Use the link in your inbox, then return here.',
+                    style: Theme.of(context).textTheme.bodyLarge
+                        ?.copyWith(height: 1.45),
+                  ),
+                  if (_statusMessage != null) ...[
+                    const SizedBox(height: 20),
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        _statusMessage!,
+                        key: const Key('emailVerificationStatus'),
+                        style: TextStyle(
+                          color: _statusIsError ? colors.error : colors.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 28),
+                  FilledButton(
+                    key: const Key('refreshEmailVerificationButton'),
+                    onPressed: _isBusy ? null : _refresh,
+                    child: _busyAction == _VerificationAction.refresh
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('I Have Verified My Email'),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    key: const Key('resendVerificationButton'),
+                    onPressed: _isBusy ? null : _resend,
+                    child: _busyAction == _VerificationAction.resend
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Send a New Verification Email'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton(
+                    key: const Key('verificationSignOutButton'),
+                    onPressed: _isBusy ? null : _signOut,
+                    child: _busyAction == _VerificationAction.signOut
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Use a Different Account'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class AuthForm extends StatefulWidget {
   const AuthForm({
     super.key,
     required this.onSubmit,
     this.onOpenSettings,
     this.onGoogleSignIn,
+    this.initialCreateAccount = true,
   });
 
   final AuthSubmitter onSubmit;
   final VoidCallback? onOpenSettings;
   final GoogleAuthSubmitter? onGoogleSignIn;
+  final bool initialCreateAccount;
 
   @override
   State<AuthForm> createState() => _AuthFormState();
@@ -271,7 +657,9 @@ class _AuthFormState extends State<AuthForm> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  bool _createAccount = false;
+  final _confirmPasswordController = TextEditingController();
+  final _confirmPasswordFocus = FocusNode();
+  late bool _createAccount;
   bool _obscurePassword = true;
   bool _isSubmitting = false;
   bool _isGoogleSubmitting = false;
@@ -280,10 +668,33 @@ class _AuthFormState extends State<AuthForm> {
   bool get _isBusy => _isSubmitting || _isGoogleSubmitting;
 
   @override
+  void initState() {
+    super.initState();
+    _createAccount = widget.initialCreateAccount;
+  }
+
+  @override
+  void didUpdateWidget(covariant AuthForm oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialCreateAccount != widget.initialCreateAccount &&
+        !_isBusy) {
+      _createAccount = widget.initialCreateAccount;
+      _confirmPasswordController.clear();
+      _errorMessage = null;
+    }
+  }
+
+  @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    _confirmPasswordFocus.dispose();
     super.dispose();
+  }
+
+  void _clearStaleError(String _) {
+    if (_errorMessage != null) setState(() => _errorMessage = null);
   }
 
   Future<void> _submit() async {
@@ -291,6 +702,7 @@ class _AuthFormState extends State<AuthForm> {
       return;
     }
 
+    unawaited(AppHaptics.primaryAction());
     setState(() {
       _isSubmitting = true;
       _errorMessage = null;
@@ -302,9 +714,17 @@ class _AuthFormState extends State<AuthForm> {
         password: _passwordController.text,
         createAccount: _createAccount,
       );
+      TextInput.finishAutofillContext();
     } on FirebaseAuthException catch (error) {
       if (mounted) {
-        setState(() => _errorMessage = _messageFor(error));
+        setState(
+          () => _errorMessage = firebaseAuthErrorMessage(
+            error,
+            action: _createAccount
+                ? FirebaseAuthAction.createAccount
+                : FirebaseAuthAction.signIn,
+          ),
+        );
       }
     } catch (_) {
       if (mounted) {
@@ -325,6 +745,7 @@ class _AuthFormState extends State<AuthForm> {
       return;
     }
 
+    unawaited(AppHaptics.primaryAction());
     setState(() {
       _isGoogleSubmitting = true;
       _errorMessage = null;
@@ -335,15 +756,26 @@ class _AuthFormState extends State<AuthForm> {
     } on GoogleSignInException catch (error) {
       if (mounted && error.code != GoogleSignInExceptionCode.canceled) {
         setState(() {
-          _errorMessage =
-              error.code == GoogleSignInExceptionCode.clientConfigurationError
-              ? 'Google sign-in is not configured correctly.'
-              : 'Unable to sign in with Google. Please try again.';
+          _errorMessage = switch (error.code) {
+            GoogleSignInExceptionCode.clientConfigurationError ||
+            GoogleSignInExceptionCode.providerConfigurationError =>
+              'Google sign-in is not configured correctly.',
+            GoogleSignInExceptionCode.uiUnavailable =>
+              'Google sign-in could not open. Please try again.',
+            GoogleSignInExceptionCode.interrupted =>
+              'Google sign-in was interrupted. Please try again.',
+            _ => 'Unable to sign in with Google. Please try again.',
+          };
         });
       }
     } on FirebaseAuthException catch (error) {
-      if (mounted) {
-        setState(() => _errorMessage = _messageFor(error));
+      if (mounted && !_isCanceledGoogleAuth(error)) {
+        setState(
+          () => _errorMessage = firebaseAuthErrorMessage(
+            error,
+            action: FirebaseAuthAction.googleSignIn,
+          ),
+        );
       }
     } catch (_) {
       if (mounted) {
@@ -359,35 +791,13 @@ class _AuthFormState extends State<AuthForm> {
   }
 
   void _changeMode() {
+    unawaited(AppHaptics.selection());
+    FocusScope.of(context).unfocus();
     setState(() {
       _createAccount = !_createAccount;
+      _confirmPasswordController.clear();
       _errorMessage = null;
     });
-  }
-
-  String _messageFor(FirebaseAuthException error) {
-    switch (error.code) {
-      case 'invalid-email':
-        return 'Enter a valid email address.';
-      case 'user-not-found':
-      case 'wrong-password':
-      case 'invalid-credential':
-        return 'Incorrect email or password.';
-      case 'email-already-in-use':
-        return 'An account already exists for this email address.';
-      case 'weak-password':
-        return 'Choose a stronger password with at least 6 characters.';
-      case 'network-request-failed':
-        return 'Unable to connect. Check your internet connection and try again.';
-      case 'too-many-requests':
-        return 'Too many attempts. Please wait a moment and try again.';
-      case 'operation-not-allowed':
-        return 'This sign-in method is not enabled.';
-      case 'account-exists-with-different-credential':
-        return 'An account already exists with a different sign-in method.';
-      default:
-        return 'Unable to ${_createAccount ? 'create your account' : 'sign in'}. Please try again.';
-    }
   }
 
   String? _validateEmail(String? value) {
@@ -402,12 +812,23 @@ class _AuthFormState extends State<AuthForm> {
   }
 
   String? _validatePassword(String? value) {
-    if ((value ?? '').isEmpty) {
+    final password = value ?? '';
+    if (password.isEmpty) {
       return 'Password is required.';
     }
-    if ((value ?? '').length < 6) {
+    if (_createAccount && password.length < 8) {
+      return 'Use at least 8 characters for a new password.';
+    }
+    if (!_createAccount && password.length < 6) {
       return 'Password must be at least 6 characters.';
     }
+    return null;
+  }
+
+  String? _validatePasswordConfirmation(String? value) {
+    if (!_createAccount) return null;
+    if ((value ?? '').isEmpty) return 'Confirm your password.';
+    if (value != _passwordController.text) return 'Passwords do not match.';
     return null;
   }
 
@@ -415,149 +836,244 @@ class _AuthFormState extends State<AuthForm> {
   Widget build(BuildContext context) {
     final title = _createAccount ? 'Create an Account' : 'Welcome Back';
     final action = _createAccount ? 'Create account' : 'Sign in';
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
         actions: [
           IconButton(
             key: const Key('settingsButton'),
             tooltip: 'Settings',
-            onPressed: widget.onOpenSettings,
+            onPressed: widget.onOpenSettings == null
+                ? null
+                : () {
+                    unawaited(AppHaptics.selection());
+                    widget.onOpenSettings!();
+                  },
             icon: const Icon(Icons.settings_outlined),
           ),
         ],
       ),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Icon(
-                      Icons.lock_outline_rounded,
-                      color: Theme.of(context).colorScheme.primary,
-                      size: 48,
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      title,
-                      style: Theme.of(context).textTheme.headlineMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _createAccount
-                          ? 'Create your Mediary account.'
-                          : 'Sign in to Mediary.',
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    ),
-                    const SizedBox(height: 32),
-                    TextFormField(
-                      key: const Key('emailField'),
-                      controller: _emailController,
-                      enabled: !_isBusy,
-                      autofillHints: const [AutofillHints.email],
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
-                      validator: _validateEmail,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        prefixIcon: Icon(Icons.email_outlined),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset(
+            'assets/images/medication_auth_background.jpg',
+            key: const Key('authMedicationBackground'),
+            fit: BoxFit.cover,
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withValues(alpha: isDark ? .62 : .48),
+                  Colors.black.withValues(alpha: isDark ? .76 : .58),
+                ],
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 440),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: theme.scaffoldBackgroundColor.withValues(
+                        alpha: isDark ? .93 : .95,
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      key: const Key('passwordField'),
-                      controller: _passwordController,
-                      enabled: !_isBusy,
-                      autofillHints: _createAccount
-                          ? const [AutofillHints.newPassword]
-                          : const [AutofillHints.password],
-                      obscureText: _obscurePassword,
-                      textInputAction: TextInputAction.done,
-                      onFieldSubmitted: (_) => _submit(),
-                      validator: _validatePassword,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        prefixIcon: const Icon(Icons.lock_outline),
-                        suffixIcon: IconButton(
-                          tooltip: _obscurePassword
-                              ? 'Show password'
-                              : 'Hide password',
-                          onPressed: _isBusy
-                              ? null
-                              : () => setState(
-                                  () => _obscurePassword = !_obscurePassword,
-                                ),
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                          ),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: colors.outlineVariant.withValues(alpha: .55),
+                        width: .7,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x38000000),
+                          blurRadius: 28,
+                          offset: Offset(0, 12),
                         ),
-                      ),
+                      ],
                     ),
-                    if (_errorMessage != null) ...[
-                      const SizedBox(height: 16),
-                      Semantics(
-                        liveRegion: true,
-                        child: Text(
-                          _errorMessage!,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 24),
-                    FilledButton(
-                      key: const Key('submitButton'),
-                      onPressed: _isBusy ? null : _submit,
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(action),
-                    ),
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      key: const Key('googleSignInButton'),
-                      onPressed: _isBusy || widget.onGoogleSignIn == null
-                          ? null
-                          : _signInWithGoogle,
-                      icon: _isGoogleSubmitting
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text(
-                              'G',
-                              style: TextStyle(fontWeight: FontWeight.bold),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Form(
+                        key: _formKey,
+                        autovalidateMode: AutovalidateMode.onUserInteraction,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Icon(
+                              Icons.lock_outline_rounded,
+                              color: Theme.of(context).colorScheme.primary,
+                              size: 48,
                             ),
-                      label: const Text('Sign in with Google'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextButton(
-                      onPressed: _isBusy ? null : _changeMode,
-                      child: Text(
-                        _createAccount
-                            ? 'Already have an account? Sign in'
-                            : 'Need an account? Create one',
+                            const SizedBox(height: 24),
+                            Text(
+                              title,
+                              style: Theme.of(context).textTheme.headlineMedium,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _createAccount
+                                  ? 'Create your Mediary account.'
+                                  : 'Sign in to Mediary.',
+                              style: Theme.of(context).textTheme.bodyLarge,
+                            ),
+                            const SizedBox(height: 32),
+                            TextFormField(
+                              key: const Key('emailField'),
+                              controller: _emailController,
+                              enabled: !_isBusy,
+                              autofillHints: const [AutofillHints.email],
+                              keyboardType: TextInputType.emailAddress,
+                              textInputAction: TextInputAction.next,
+                              onChanged: _clearStaleError,
+                              validator: _validateEmail,
+                              decoration: const InputDecoration(
+                                labelText: 'Email',
+                                prefixIcon: Icon(Icons.email_outlined),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              key: const Key('passwordField'),
+                              controller: _passwordController,
+                              enabled: !_isBusy,
+                              autofillHints: _createAccount
+                                  ? const [AutofillHints.newPassword]
+                                  : const [AutofillHints.password],
+                              obscureText: _obscurePassword,
+                              textInputAction: _createAccount
+                                  ? TextInputAction.next
+                                  : TextInputAction.done,
+                              onChanged: _clearStaleError,
+                              onFieldSubmitted: (_) => _createAccount
+                                  ? _confirmPasswordFocus.requestFocus()
+                                  : _submit(),
+                              validator: _validatePassword,
+                              decoration: InputDecoration(
+                                labelText: 'Password',
+                                prefixIcon: const Icon(Icons.lock_outline),
+                                suffixIcon: IconButton(
+                                  tooltip: _obscurePassword
+                                      ? 'Show password'
+                                      : 'Hide password',
+                                  onPressed: _isBusy
+                                      ? null
+                                      : () {
+                                          unawaited(AppHaptics.selection());
+                                          setState(
+                                            () => _obscurePassword =
+                                                !_obscurePassword,
+                                          );
+                                        },
+                                  icon: Icon(
+                                    _obscurePassword
+                                        ? Icons.visibility_outlined
+                                        : Icons.visibility_off_outlined,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (_createAccount) ...[
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                key: const Key('confirmPasswordField'),
+                                controller: _confirmPasswordController,
+                                focusNode: _confirmPasswordFocus,
+                                enabled: !_isBusy,
+                                autofillHints: const [
+                                  AutofillHints.newPassword,
+                                ],
+                                obscureText: _obscurePassword,
+                                textInputAction: TextInputAction.done,
+                                onChanged: _clearStaleError,
+                                onFieldSubmitted: (_) => _submit(),
+                                validator: _validatePasswordConfirmation,
+                                decoration: const InputDecoration(
+                                  labelText: 'Confirm Password',
+                                  prefixIcon: Icon(Icons.lock_outline),
+                                ),
+                              ),
+                            ],
+                            if (_errorMessage != null) ...[
+                              const SizedBox(height: 16),
+                              Semantics(
+                                liveRegion: true,
+                                child: Text(
+                                  _errorMessage!,
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.error,
+                                  ),
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 24),
+                            FilledButton(
+                              key: const Key('submitButton'),
+                              onPressed: _isBusy ? null : _submit,
+                              child: _isSubmitting
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : Text(action),
+                            ),
+                            const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              key: const Key('googleSignInButton'),
+                              onPressed:
+                                  _isBusy || widget.onGoogleSignIn == null
+                                  ? null
+                                  : _signInWithGoogle,
+                              icon: _isGoogleSubmitting
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'G',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                              label: const Text('Sign in with Google'),
+                            ),
+                            const SizedBox(height: 12),
+                            TextButton(
+                              onPressed: _isBusy ? null : _changeMode,
+                              child: Text(
+                                _createAccount
+                                    ? 'Already have an account? Sign in'
+                                    : 'Need an account? Create one',
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -575,6 +1091,7 @@ class AuthenticatedHome extends StatefulWidget {
     this.accentColor = AppAccentColor.blue,
     this.onAccentColorChanged,
     this.onSignOut,
+    this.dataStore,
     this.now,
     this.cameraPermissionRequester,
     this.onOpenCameraSettings,
@@ -591,6 +1108,7 @@ class AuthenticatedHome extends StatefulWidget {
   final AppAccentColor accentColor;
   final ValueChanged<AppAccentColor>? onAccentColorChanged;
   final Future<void> Function()? onSignOut;
+  final MediaryDataStore? dataStore;
   final DateTime? now;
   final CameraPermissionRequester? cameraPermissionRequester;
   final Future<bool> Function()? onOpenCameraSettings;
@@ -607,6 +1125,50 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   int _selectedIndex = 0;
   bool _showScanResult = false;
   CameraAccessState _cameraAccess = CameraAccessState.notRequested;
+  String? _appliedPreferenceSignature;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.dataStore?.addListener(_onStoreChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant AuthenticatedHome oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.dataStore != widget.dataStore) {
+      oldWidget.dataStore?.removeListener(_onStoreChanged);
+      widget.dataStore?.addListener(_onStoreChanged);
+      _appliedPreferenceSignature = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.dataStore?.removeListener(_onStoreChanged);
+    super.dispose();
+  }
+
+  void _onStoreChanged() {
+    final preferences = widget.dataStore?.profile?.preferences;
+    if (preferences == null) return;
+    final signature = [preferences.theme, preferences.accentColor].join('|');
+    if (signature != _appliedPreferenceSignature) {
+      _appliedPreferenceSignature = signature;
+      final mode = switch (preferences.theme) {
+        'light' => ThemeMode.light,
+        'dark' => ThemeMode.dark,
+        _ => ThemeMode.system,
+      };
+      final accent = AppAccentColor.values.firstWhere(
+        (value) => value.name == preferences.accentColor,
+        orElse: () => AppAccentColor.blue,
+      );
+      widget.onAppearanceModeChanged?.call(mode);
+      widget.onAccentColorChanged?.call(accent);
+    }
+    if (mounted) setState(() {});
+  }
 
   bool get _usesSidebarNavigation => widget.useSidebarNavigation ?? kIsWeb;
 
@@ -640,33 +1202,155 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   }
 
   Widget _buildDashboard(BuildContext context) {
+    final store = widget.dataStore;
     return DashboardScreen(
-      email: widget.email,
-      displayName: widget.displayName,
+      email: store?.profile?.email ?? widget.email,
+      displayName: store?.profile?.displayName ?? widget.displayName,
       photoUrl: widget.photoUrl,
       now: widget.now,
       bottomPadding: _usesSidebarNavigation ? 32 : 120,
+      initialDoses: _dashboardDoses(store),
+      onDoseStatusChanged: store == null
+          ? null
+          : (doseId, status, {snoozedUntil}) => store.updateDoseStatus(
+              doseId,
+              status,
+              takenAt: status == 'taken' ? DateTime.now() : null,
+              snoozedUntil: snoozedUntil,
+            ),
       onViewReport: () {
         Navigator.of(context).push(
           MaterialPageRoute<void>(
-            builder: (context) => WeeklyReportScreen(weekEnding: widget.now),
+            builder: (context) => WeeklyReportScreen(
+              weekEnding: widget.now,
+              dailyTaken: _reportSeries(store).taken,
+              dailyScheduled: _reportSeries(store).scheduled,
+              timingOffsetsMinutes: _reportSeries(store).offsets,
+              dailySkipped: _reportSeries(store).skipped,
+              onSaveReport: store == null
+                  ? null
+                  : (report) => store.saveReport(report),
+            ),
           ),
         );
       },
       onAddMedication: () async {
         final selections = await showAddMedicationScreen(context);
+        if (selections != null && store != null) {
+          for (final medication in selections) {
+            await store.saveMedication(
+              MedicationWrite(
+                id: medication.id,
+                name: medication.name,
+                genericName: medication.genericName,
+                strength: medication.strength,
+                form: medication.form,
+                source: 'library',
+              ),
+            );
+          }
+        }
         return selections?.map((medication) => medication.name).toList();
       },
     );
   }
 
+  ({List<int> taken, List<int> scheduled, List<int> offsets, List<int> skipped})
+  _reportSeries(MediaryDataStore? store) {
+    final ending = DateUtils.dateOnly(widget.now ?? DateTime.now());
+    final start = ending.subtract(const Duration(days: 6));
+    final taken = List<int>.filled(7, 0);
+    final scheduled = List<int>.filled(7, 0);
+    final offsets = List<int>.filled(7, 0);
+    final skipped = List<int>.filled(7, 0);
+    for (final dose in store?.doseLogs ?? const <DoseLogRecord>[]) {
+      final date = DateUtils.dateOnly(dose.scheduledFor);
+      final index = date.difference(start).inDays;
+      if (index < 0 || index > 6 || dose.status == 'cancelled') continue;
+      scheduled[index]++;
+      if (dose.status == 'skipped') skipped[index]++;
+      if (dose.status == 'taken') {
+        taken[index]++;
+        if (dose.takenAt != null) {
+          offsets[index] += dose.takenAt!
+              .difference(dose.scheduledFor)
+              .inMinutes;
+        }
+      }
+    }
+    return (
+      taken: taken,
+      scheduled: scheduled,
+      offsets: offsets,
+      skipped: skipped,
+    );
+  }
+
+  List<DashboardDoseData> _dashboardDoses(MediaryDataStore? store) {
+    if (store == null) return const [];
+    final medications = {
+      for (final medication in store.medications) medication.id: medication,
+    };
+    final doses =
+        store.doseLogs.where((dose) => dose.status != 'cancelled').toList()
+          ..sort(
+            (first, second) =>
+                first.scheduledFor.compareTo(second.scheduledFor),
+          );
+    return [
+      for (final dose in doses.take(12))
+        DashboardDoseData(
+          id: dose.id,
+          name: medications[dose.medicationId]?.name ?? 'Medication',
+          details: [
+            if (medications[dose.medicationId]?.strength.isNotEmpty ?? false)
+              medications[dose.medicationId]!.strength,
+            if (dose.localTime.isNotEmpty) dose.localTime,
+          ].join(' · '),
+          status: dose.status,
+        ),
+    ];
+  }
+
   Widget _buildLibrary(BuildContext context) {
+    final store = widget.dataStore;
     return MedicationLibraryScreen(
       bottomPadding: _usesSidebarNavigation ? 32 : 128,
+      initialSavedMedicationIds: {
+        if (store != null) ...store.savedMedications.map((item) => item.id),
+      },
+      onSavedChanged: store == null
+          ? null
+          : (medicationId, saved) async {
+              if (saved) {
+                await store.saveLibraryMedication(id: medicationId);
+              } else {
+                await store.unsaveLibraryMedication(medicationId);
+              }
+            },
       onOpenMedication: () {
         Navigator.of(context).push(
           MaterialPageRoute<void>(
-            builder: (context) => const MedicationDetailScreen(),
+            builder: (context) => MedicationDetailScreen(
+              initialBookmarked:
+                  store?.savedMedications.any(
+                    (item) => item.id == 'amoxicillin-500-capsule',
+                  ) ??
+                  false,
+              onBookmarkChanged: store == null
+                  ? null
+                  : (saved) async {
+                      if (saved) {
+                        await store.saveLibraryMedication(
+                          id: 'amoxicillin-500-capsule',
+                        );
+                      } else {
+                        await store.unsaveLibraryMedication(
+                          'amoxicillin-500-capsule',
+                        );
+                      }
+                    },
+            ),
           ),
         );
       },
@@ -682,9 +1366,13 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (accountContext) => ProfileScreen(
-          email: widget.email,
-          displayName: widget.displayName,
+          email: widget.dataStore?.profile?.email ?? widget.email,
+          displayName:
+              widget.dataStore?.profile?.displayName ?? widget.displayName,
           photoUrl: widget.photoUrl,
+          initialBloodType: widget.dataStore?.profile?.bloodType,
+          initialAllergies: widget.dataStore?.profile?.allergies,
+          initialCareTeam: widget.dataStore?.profile?.careTeam,
           pageTitle: 'Account',
           onBack: () => Navigator.of(accountContext).maybePop(),
           onOpenLibrary: () {
@@ -692,6 +1380,17 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
             if (mounted) setState(() => _selectedIndex = 3);
           },
           onSignOut: widget.onSignOut,
+          onSave: widget.dataStore == null
+              ? null
+              : (draft) => widget.dataStore!.saveProfile(
+                  ProfileWrite(
+                    displayName: draft.name,
+                    email: draft.email,
+                    bloodType: draft.bloodType,
+                    allergies: draft.allergies,
+                    careTeam: draft.careTeam,
+                  ),
+                ),
           bottomPadding: 32,
         ),
       ),
@@ -708,16 +1407,81 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       accountEmail: widget.email,
       accountDisplayName: widget.displayName,
       accountPhotoUrl: widget.photoUrl,
+      onPreferenceChanged: widget.dataStore?.updatePreference,
+      initialPreferences: widget.dataStore?.profile?.preferences,
       onOpenAccount: () => _openAccount(context),
       bottomPadding: _usesSidebarNavigation ? 32 : 120,
     );
   }
 
   Widget _buildScanner(BuildContext context) {
+    final store = widget.dataStore;
     if (_showScanResult) {
       return ScanResultScreen(
         onBack: () => setState(() => _showScanResult = false),
         onScanAgain: () => setState(() => _showScanResult = false),
+        onScanReady: store?.saveScan,
+        onScheduleConfirmed: store == null
+            ? null
+            : (schedule) async {
+                final doseParts = schedule.dose.split(' ');
+                final doseAmount = schedule.dose.startsWith('½')
+                    ? .5
+                    : double.tryParse(doseParts.first) ?? 1;
+                final doseUnit = doseParts.length > 1
+                    ? doseParts.last
+                    : 'capsule';
+                final frequency = switch (schedule.frequency) {
+                  'Every 8 hours' => 'every8Hours',
+                  'Every 12 hours' => 'every12Hours',
+                  'As needed' => 'asNeeded',
+                  _ => 'daily',
+                };
+                final durationDays =
+                    int.tryParse(schedule.duration.split(' ').first) ?? 7;
+                final endDate = schedule.startDate.add(
+                  Duration(days: durationDays - 1),
+                );
+                final localDate = _dateKey(schedule.startDate);
+                final localTime =
+                    '${schedule.time.hour.toString().padLeft(2, '0')}:${schedule.time.minute.toString().padLeft(2, '0')}';
+                final scheduleId = 'scan_amoxicillin_${localDate}_$localTime';
+                await store.commitScheduleAndDose(
+                  medication: const MedicationWrite(
+                    id: 'amoxicillin-500-capsule',
+                    name: 'Amoxicillin',
+                    genericName: 'Amoxicillin',
+                    strength: '500 mg',
+                    form: 'Capsule',
+                    source: 'scanner',
+                  ),
+                  schedule: ScheduleWrite(
+                    id: scheduleId,
+                    medicationId: 'amoxicillin-500-capsule',
+                    doseAmount: doseAmount,
+                    doseUnit: doseUnit,
+                    times: [localTime],
+                    frequency: frequency,
+                    startDate: localDate,
+                    endDate: _dateKey(endDate),
+                    timezone: 'UTC',
+                  ),
+                  dose: DoseWrite(
+                    id: '${scheduleId}_$localDate',
+                    medicationId: 'amoxicillin-500-capsule',
+                    scheduleId: scheduleId,
+                    scheduledFor: DateTime(
+                      schedule.startDate.year,
+                      schedule.startDate.month,
+                      schedule.startDate.day,
+                      schedule.time.hour,
+                      schedule.time.minute,
+                    ),
+                    localDate: localDate,
+                    localTime: localTime,
+                  ),
+                );
+              },
         bottomNavigationInset: _usesSidebarNavigation ? 16 : 106,
       );
     }
@@ -734,20 +1498,117 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       },
       onRequestAccess: _requestCameraAccess,
       onClose: () => setState(() {
+        stopWebCamera();
         _selectedIndex = 0;
         _showScanResult = false;
       }),
       onCapture: () => setState(() => _showScanResult = true),
       onOpenSettings: widget.onOpenCameraSettings ?? openAppSettings,
+      isActive: _selectedIndex == 2,
       bottomNavigationInset: _usesSidebarNavigation ? 16 : 112,
     );
   }
 
   Widget _buildCalendar(BuildContext context) {
+    final store = widget.dataStore;
     return CalendarScreen(
       initialDate: widget.now,
       bottomPadding: _usesSidebarNavigation ? 32 : 120,
+      initialDoses: _calendarDoses(store),
+      onDoseStatusChanged: store == null
+          ? null
+          : (doseId, status) => store.updateDoseStatus(
+              doseId,
+              status,
+              takenAt: status == 'taken' ? DateTime.now() : null,
+            ),
+      onAddDose: store == null
+          ? null
+          : (date) async {
+              final selections = await showAddMedicationScreen(context);
+              if (selections == null || selections.isEmpty || !mounted) {
+                return;
+              }
+              if (!context.mounted) return;
+              final time = await showTimePicker(
+                context: context,
+                initialTime: TimeOfDay.fromDateTime(DateTime.now()),
+              );
+              if (time == null || !mounted) return;
+              final scheduledFor = DateTime(
+                date.year,
+                date.month,
+                date.day,
+                time.hour,
+                time.minute,
+              );
+              final localDate = _dateKey(date);
+              final localTime =
+                  '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+              for (final medication in selections) {
+                final scheduleId =
+                    'once_${medication.id}_${localDate}_$localTime';
+                await store.commitScheduleAndDose(
+                  medication: MedicationWrite(
+                    id: medication.id,
+                    name: medication.name,
+                    genericName: medication.genericName,
+                    strength: medication.strength,
+                    form: medication.form,
+                    source: 'library',
+                  ),
+                  schedule: ScheduleWrite(
+                    id: scheduleId,
+                    medicationId: medication.id,
+                    doseAmount: 1,
+                    doseUnit: medication.form.toLowerCase(),
+                    times: [localTime],
+                    frequency: 'once',
+                    startDate: localDate,
+                    endDate: localDate,
+                    timezone: 'UTC',
+                  ),
+                  dose: DoseWrite(
+                    id: scheduleId,
+                    medicationId: medication.id,
+                    scheduleId: scheduleId,
+                    scheduledFor: scheduledFor,
+                    localDate: localDate,
+                    localTime: localTime,
+                  ),
+                );
+              }
+            },
     );
+  }
+
+  List<CalendarDoseData> _calendarDoses(MediaryDataStore? store) {
+    if (store == null) return const [];
+    final medications = {
+      for (final medication in store.medications) medication.id: medication,
+    };
+    return [
+      for (final dose in store.doseLogs.where(
+        (dose) => dose.status != 'cancelled',
+      ))
+        CalendarDoseData(
+          id: dose.id,
+          localDate: dose.localDate,
+          name: medications[dose.medicationId]?.name ?? 'Medication',
+          details: [
+            if (medications[dose.medicationId]?.strength.isNotEmpty ?? false)
+              medications[dose.medicationId]!.strength,
+            if (dose.localTime.isNotEmpty) dose.localTime,
+          ].join(' · '),
+          status: dose.status,
+        ),
+    ];
+  }
+
+  String _dateKey(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '${date.year}-$month-$day';
   }
 
   @override

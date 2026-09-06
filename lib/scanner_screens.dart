@@ -1,9 +1,16 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'app_interactions.dart';
+import 'app_layout.dart';
+import 'data/mediary_repository.dart';
+import 'in_app_page.dart';
 import 'liquid_glass_back_button.dart';
+import 'web_camera.dart';
 
 /// Camera permission state used by [MedicationScannerScreen].
 ///
@@ -85,6 +92,7 @@ class MedicationScannerScreen extends StatefulWidget {
     required this.onClose,
     required this.onCapture,
     this.onOpenSettings,
+    this.isActive = true,
     this.bottomNavigationInset = 112,
   });
 
@@ -93,6 +101,7 @@ class MedicationScannerScreen extends StatefulWidget {
   final VoidCallback onClose;
   final VoidCallback onCapture;
   final Future<bool> Function()? onOpenSettings;
+  final bool isActive;
   final double bottomNavigationInset;
 
   @override
@@ -101,11 +110,14 @@ class MedicationScannerScreen extends StatefulWidget {
 }
 
 class _MedicationScannerScreenState extends State<MedicationScannerScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final AnimationController _scanController;
   bool _isAnalyzing = false;
   bool _torchEnabled = false;
   bool _barcodeMode = false;
+  bool _reduceMotion = false;
+  bool _tickerEnabled = true;
+  AppLifecycleState? _lifecycleState;
 
   @override
   void initState() {
@@ -113,11 +125,55 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen>
     _scanController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2300),
-    )..repeat(reverse: true);
+      value: .5,
+    );
+    _lifecycleState = WidgetsBinding.instance.lifecycleState;
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    _tickerEnabled = TickerMode.valuesOf(context).enabled;
+    _syncScanAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant MedicationScannerScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.accessState != widget.accessState) {
+      _syncScanAnimation();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lifecycleState = state;
+    _syncScanAnimation();
+  }
+
+  void _syncScanAnimation() {
+    final shouldAnimate =
+        widget.accessState == ScannerAccessState.granted &&
+        !_isAnalyzing &&
+        !_reduceMotion &&
+        _tickerEnabled &&
+        (_lifecycleState == null ||
+            _lifecycleState == AppLifecycleState.resumed);
+    if (shouldAnimate) {
+      if (!_scanController.isAnimating) {
+        _scanController.repeat(reverse: true);
+      }
+      return;
+    }
+    if (_scanController.isAnimating) _scanController.stop();
+    if (_scanController.value != .5) _scanController.value = .5;
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scanController.dispose();
     super.dispose();
   }
@@ -125,10 +181,15 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen>
   Future<void> _capture() async {
     if (_isAnalyzing) return;
     setState(() => _isAnalyzing = true);
+    _syncScanAnimation();
+    unawaited(AppHaptics.primaryAction());
     await Future<void>.delayed(const Duration(milliseconds: 850));
     if (!mounted) return;
     widget.onCapture();
-    if (mounted) setState(() => _isAnalyzing = false);
+    if (mounted) {
+      setState(() => _isAnalyzing = false);
+      _syncScanAnimation();
+    }
   }
 
   Future<void> _choosePhoto() async {
@@ -137,10 +198,14 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen>
       _barcodeMode = false;
       _isAnalyzing = true;
     });
+    _syncScanAnimation();
     await Future<void>.delayed(const Duration(milliseconds: 550));
     if (!mounted) return;
     widget.onCapture();
-    if (mounted) setState(() => _isAnalyzing = false);
+    if (mounted) {
+      setState(() => _isAnalyzing = false);
+      _syncScanAnimation();
+    }
   }
 
   void _toggleBarcodeMode() {
@@ -167,9 +232,11 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen>
         bottom: false,
         child: LayoutBuilder(
           builder: (context, pageConstraints) {
-            final panelHeight =
-                (pageConstraints.maxHeight - widget.bottomNavigationInset - 8)
-                    .clamp(0.0, 660.0);
+            final availableHeight =
+                pageConstraints.maxHeight - widget.bottomNavigationInset - 8;
+            final panelHeight = kIsWeb
+                ? availableHeight
+                : availableHeight.clamp(0.0, 660.0);
             return Padding(
               padding: EdgeInsets.fromLTRB(
                 16,
@@ -179,13 +246,18 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen>
               ),
               child: Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 390),
+                  constraints: BoxConstraints(
+                    maxWidth: responsiveContentWidth(
+                      context,
+                      nativeMaxWidth: 390,
+                    ),
+                  ),
                   child: SizedBox(
                     height: panelHeight,
                     width: double.infinity,
                     child: ClipRRect(
                       key: const Key('scannerCameraPanel'),
-                      borderRadius: BorderRadius.circular(28),
+                      borderRadius: BorderRadius.circular(kIsWeb ? 0 : 28),
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           final frameTop = (constraints.maxHeight * .18).clamp(
@@ -200,6 +272,12 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen>
                               const ColoredBox(
                                 key: Key('scannerCameraBackground'),
                                 color: Colors.black,
+                              ),
+                              Positioned.fill(
+                                child: WebCameraPreview(
+                                  key: const Key('scannerWebCameraPreview'),
+                                  active: widget.isActive,
+                                ),
                               ),
                               Positioned(
                                 left: 42,
@@ -641,7 +719,10 @@ class _GlassIconButton extends StatelessWidget {
             child: CupertinoButton(
               padding: EdgeInsets.zero,
               minimumSize: const Size.square(40),
-              onPressed: onPressed,
+              onPressed: () {
+                unawaited(AppHaptics.selection());
+                onPressed();
+              },
               color: isSelected
                   ? colors.primary.withValues(alpha: .69)
                   : const Color(0x7A10141D),
@@ -688,7 +769,12 @@ class _CaptureSideControl extends StatelessWidget {
         child: CupertinoButton(
           padding: const EdgeInsets.all(8),
           minimumSize: const Size.square(48),
-          onPressed: enabled ? onPressed : null,
+          onPressed: enabled
+              ? () {
+                  unawaited(AppHaptics.selection());
+                  onPressed();
+                }
+              : null,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 160),
             width: 46,
@@ -801,12 +887,16 @@ class ScanResultScreen extends StatefulWidget {
     this.onBack,
     this.onScanAgain,
     this.onAdded,
+    this.onScanReady,
+    this.onScheduleConfirmed,
     this.bottomNavigationInset = 106,
   });
 
   final VoidCallback? onBack;
   final VoidCallback? onScanAgain;
   final VoidCallback? onAdded;
+  final Future<String> Function(ScanWrite scan)? onScanReady;
+  final Future<void> Function(ScanScheduleData schedule)? onScheduleConfirmed;
   final double bottomNavigationInset;
 
   @override
@@ -818,7 +908,26 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
   String _frequency = 'Every 8 hours';
   String _duration = '7 days';
   DateTime _startDate = DateTime(2026, 8, 30);
+  TimeOfDay _time = const TimeOfDay(hour: 8, minute: 0);
   bool _isAdded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_saveScanResult());
+  }
+
+  Future<void> _saveScanResult() async {
+    await widget.onScanReady?.call(
+      const ScanWrite(
+        status: 'complete',
+        detectedMedicationName: 'Amoxicillin',
+        extractedText:
+            'Amoxicillin 500 mg capsule. Prescription medication label.',
+        confidence: .98,
+      ),
+    );
+  }
 
   String _formatDate(DateTime date) {
     const months = [
@@ -843,30 +952,23 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
     required List<String> options,
     required ValueChanged<String> onSelected,
   }) async {
-    final appTheme = Theme.of(context);
-    final selected = await showCupertinoModalPopup<String>(
-      context: context,
-      builder: (modalContext) => CupertinoTheme(
-        data: CupertinoThemeData(
-          brightness: appTheme.brightness,
-          primaryColor: appTheme.colorScheme.primary,
-        ),
-        child: CupertinoActionSheet(
-          title: Text(title),
-          actions: options
-              .map(
-                (option) => CupertinoActionSheetAction(
-                  onPressed: () => Navigator.pop(modalContext, option),
-                  child: Text(option),
-                ),
-              )
-              .toList(),
-          cancelButton: CupertinoActionSheetAction(
-            isDefaultAction: true,
-            onPressed: () => Navigator.pop(modalContext),
-            child: const Text('Cancel'),
-          ),
-        ),
+    final selected = await pushInAppPage<String>(
+      context,
+      builder: (context) => InAppOptionPage<String>(
+        title: title,
+        options: [
+          for (final option in options)
+            InAppPageOption(
+              label: option,
+              value: option,
+              selected: switch (title) {
+                'Dose' => option == _dose,
+                'Frequency' => option == _frequency,
+                'Duration' => option == _duration,
+                _ => false,
+              },
+            ),
+        ],
       ),
     );
     if (selected != null && mounted) onSelected(selected);
@@ -874,58 +976,27 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
 
   Future<void> _chooseStartDate() async {
     var draft = _startDate;
-    final appTheme = Theme.of(context);
-    final palette = _ScannerPalette.of(context);
-    final selected = await showCupertinoModalPopup<DateTime>(
-      context: context,
-      builder: (modalContext) => CupertinoTheme(
-        data: CupertinoThemeData(
-          brightness: appTheme.brightness,
-          primaryColor: appTheme.colorScheme.primary,
-        ),
-        child: Container(
-          height: 320,
-          color: palette.surface,
-          child: SafeArea(
-            top: false,
-            child: Column(
-              children: [
-                SizedBox(
-                  height: 52,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      CupertinoButton(
-                        onPressed: () => Navigator.pop(modalContext),
-                        child: const Text('Cancel'),
-                      ),
-                      Text(
-                        'Start Date',
-                        style: TextStyle(
-                          color: palette.primaryText,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      CupertinoButton(
-                        onPressed: () => Navigator.pop(modalContext, draft),
-                        child: const Text(
-                          'Done',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: CupertinoDatePicker(
-                    mode: CupertinoDatePickerMode.date,
-                    initialDateTime: _startDate,
-                    minimumDate: DateTime(2020),
-                    maximumDate: DateTime(2100),
-                    onDateTimeChanged: (value) => draft = value,
-                  ),
-                ),
-              ],
+    final selected = await pushInAppPage<DateTime>(
+      context,
+      builder: (pageContext) => InAppPageScaffold(
+        title: 'Start Date',
+        actions: [
+          TextButton(
+            key: const Key('confirmStartDateButton'),
+            onPressed: () => Navigator.of(pageContext).pop(draft),
+            child: const Text('Done'),
+          ),
+          const SizedBox(width: 8),
+        ],
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 420),
+            child: CupertinoDatePicker(
+              mode: CupertinoDatePickerMode.date,
+              initialDateTime: _startDate,
+              minimumDate: DateTime(2020),
+              maximumDate: DateTime(2100),
+              onDateTimeChanged: (value) => draft = value,
             ),
           ),
         ),
@@ -934,22 +1005,45 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
     if (selected != null && mounted) setState(() => _startDate = selected);
   }
 
-  void _addToCalendar() {
+  Future<void> _chooseTime() async {
+    final selected = await showTimePicker(context: context, initialTime: _time);
+    if (selected != null && mounted) setState(() => _time = selected);
+  }
+
+  Future<void> _addToCalendar() async {
     if (_isAdded) return;
-    setState(() => _isAdded = true);
-    widget.onAdded?.call();
+    try {
+      await widget.onScheduleConfirmed?.call(
+        ScanScheduleData(
+          dose: _dose,
+          frequency: _frequency,
+          duration: _duration,
+          startDate: _startDate,
+          time: _time,
+        ),
+      );
+      if (!mounted) return;
+      setState(() => _isAdded = true);
+      widget.onAdded?.call();
+    } catch (_) {
+      // Keep the CTA available so the user can retry after a failed write.
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final palette = _ScannerPalette.of(context);
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final contentWidth = viewportWidth >= 900
+        ? responsiveContentWidth(context, nativeMaxWidth: 720)
+        : 520.0;
     return Scaffold(
       backgroundColor: palette.background,
       body: SafeArea(
         bottom: false,
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
+            constraints: BoxConstraints(maxWidth: contentWidth),
             child: Column(
               children: [
                 SizedBox(
@@ -1071,6 +1165,13 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                               ],
                             ),
                             const SizedBox(height: 13),
+                            _ScheduleField(
+                              label: 'TIME',
+                              value: _time.format(context),
+                              onTap: _chooseTime,
+                              icon: CupertinoIcons.time,
+                            ),
+                            const SizedBox(height: 13),
                             Row(
                               children: [
                                 Expanded(
@@ -1185,9 +1286,11 @@ class _ResultHero extends StatelessWidget {
             borderRadius: BorderRadius.circular(10),
             child: SizedBox.square(
               dimension: 82,
-              child: Image.network(
-                'https://images.unsplash.com/photo-1471864190281-a93a3070b6de?auto=format&fit=crop&w=300&q=90',
+              child: Image.asset(
+                'assets/images/medication_auth_background.jpg',
                 fit: BoxFit.cover,
+                cacheWidth: 328,
+                filterQuality: FilterQuality.medium,
                 errorBuilder: (context, error, stackTrace) => const ColoredBox(
                   color: Color(0xFFF0E5EF),
                   child: Icon(
@@ -1244,6 +1347,22 @@ class _ResultHero extends StatelessWidget {
       ),
     );
   }
+}
+
+class ScanScheduleData {
+  const ScanScheduleData({
+    required this.dose,
+    required this.frequency,
+    required this.duration,
+    required this.startDate,
+    required this.time,
+  });
+
+  final String dose;
+  final String frequency;
+  final String duration;
+  final DateTime startDate;
+  final TimeOfDay time;
 }
 
 class _InfoGrid extends StatelessWidget {

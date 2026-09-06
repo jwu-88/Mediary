@@ -3,17 +3,28 @@ import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'app_interactions.dart';
+import 'app_layout.dart';
+import 'in_app_page.dart';
+
 /// A native, interactive medication calendar based on the calendar prototype.
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({
     super.key,
     this.initialDate,
     this.onAdd,
+    this.onAddDose,
+    this.initialDoses = const [],
+    this.onDoseStatusChanged,
     this.bottomPadding = 120,
   });
 
   final DateTime? initialDate;
   final VoidCallback? onAdd;
+  final Future<void> Function(DateTime selectedDate)? onAddDose;
+  final List<CalendarDoseData> initialDoses;
+  final Future<void> Function(String doseId, String status)?
+  onDoseStatusChanged;
   final double bottomPadding;
 
   @override
@@ -21,6 +32,8 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
+  static const _noDoses = <_CalendarDose>[];
+
   static const _months = [
     'January',
     'February',
@@ -50,6 +63,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   late DateTime _selectedDate;
   late DateTime _visibleMonth;
   final Map<String, List<_CalendarDose>> _dosesByDate = {};
+  String? _announcement;
 
   @override
   void initState() {
@@ -58,19 +72,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   @override
-  void didUpdateWidget(CalendarScreen oldWidget) {
+  void didUpdateWidget(covariant CalendarScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.initialDate != oldWidget.initialDate &&
         widget.initialDate != null) {
       _setInitialDate(widget.initialDate!);
     }
+    if (widget.initialDoses != oldWidget.initialDoses) _loadInitialDoses();
   }
 
   void _setInitialDate(DateTime value) {
     _referenceDate = DateUtils.dateOnly(value);
     _selectedDate = _referenceDate;
     _visibleMonth = DateTime(value.year, value.month);
-    _ensureDoses(_selectedDate);
+    if (widget.initialDoses.isEmpty) _seedPreviewDoses(_referenceDate);
+    _loadInitialDoses();
   }
 
   String _dateKey(DateTime date) {
@@ -79,18 +95,43 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return '${date.year}-$month-$day';
   }
 
-  List<_CalendarDose> _ensureDoses(DateTime date) {
-    return _dosesByDate.putIfAbsent(
+  void _seedPreviewDoses(DateTime date) {
+    _dosesByDate.putIfAbsent(
       _dateKey(date),
       () => [
         const _CalendarDose(
           name: 'Vitamin D3',
           details: '1000 IU · 8:00 AM',
-          isTaken: true,
+          status: 'taken',
         ),
         const _CalendarDose(name: 'Amoxicillin', details: '500 mg · 10:30 AM'),
       ],
     );
+  }
+
+  void _loadInitialDoses() {
+    if (widget.initialDoses.isEmpty) return;
+    _dosesByDate.clear();
+    for (final dose in widget.initialDoses) {
+      _dosesByDate
+          .putIfAbsent(dose.localDate, () => <_CalendarDose>[])
+          .add(
+            _CalendarDose(
+              id: dose.id,
+              name: dose.name,
+              details: dose.details,
+              status: dose.status,
+            ),
+          );
+    }
+  }
+
+  List<_CalendarDose> _dosesFor(DateTime date) {
+    return _dosesByDate[_dateKey(date)] ?? _noDoses;
+  }
+
+  List<_CalendarDose> _editableDosesFor(DateTime date) {
+    return _dosesByDate.putIfAbsent(_dateKey(date), () => <_CalendarDose>[]);
   }
 
   void _moveMonth(int offset) {
@@ -105,7 +146,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     setState(() {
       _visibleMonth = targetMonth;
       _selectedDate = DateTime(targetMonth.year, targetMonth.month, targetDay);
-      _ensureDoses(_selectedDate);
     });
   }
 
@@ -116,7 +156,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
           date.month != _visibleMonth.month) {
         _visibleMonth = DateTime(date.year, date.month);
       }
-      _ensureDoses(_selectedDate);
     });
   }
 
@@ -125,116 +164,118 @@ class _CalendarScreenState extends State<CalendarScreen> {
     setState(() {
       _selectedDate = today;
       _visibleMonth = DateTime(today.year, today.month);
-      _ensureDoses(_selectedDate);
     });
   }
 
   Future<void> _addDose() async {
+    if (widget.onAddDose != null) {
+      await widget.onAddDose!(_selectedDate);
+      return;
+    }
     if (widget.onAdd != null) {
       widget.onAdd!();
       return;
     }
-    final dose = await showCupertinoModalPopup<_CalendarDose>(
-      context: context,
-      builder: (context) => CupertinoActionSheet(
-        title: const Text('Add Medication'),
-        message: Text(_longDate(_selectedDate)),
-        actions: [
-          CupertinoActionSheetAction(
-            onPressed: () => Navigator.pop(
-              context,
-              const _CalendarDose(
-                name: 'Cetirizine',
-                details: '10 mg · 8:00 PM',
-              ),
+    final dose = await pushInAppPage<_CalendarDose>(
+      context,
+      builder: (context) => InAppOptionPage<_CalendarDose>(
+        title: 'Add Medication',
+        subtitle: _longDate(_selectedDate),
+        options: const [
+          InAppPageOption(
+            label: 'Cetirizine',
+            detail: '10 mg · 8:00 PM',
+            value: _CalendarDose(
+              name: 'Cetirizine',
+              details: '10 mg · 8:00 PM',
             ),
-            child: const Text('Cetirizine'),
           ),
-          CupertinoActionSheetAction(
-            onPressed: () => Navigator.pop(
-              context,
-              const _CalendarDose(
-                name: 'Ibuprofen',
-                details: '200 mg · As Needed',
-              ),
+          InAppPageOption(
+            label: 'Ibuprofen',
+            detail: '200 mg · As Needed',
+            value: _CalendarDose(
+              name: 'Ibuprofen',
+              details: '200 mg · As Needed',
             ),
-            child: const Text('Ibuprofen'),
           ),
         ],
-        cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
       ),
     );
     if (!mounted || dose == null) return;
-    setState(() => _ensureDoses(_selectedDate).add(dose));
+    setState(() => _editableDosesFor(_selectedDate).add(dose));
     _showConfirmation('${dose.name} Added');
   }
 
   Future<void> _showDoseActions(int index) async {
-    final doses = _ensureDoses(_selectedDate);
+    final doses = _dosesByDate[_dateKey(_selectedDate)];
+    if (doses == null || index < 0 || index >= doses.length) return;
     final dose = doses[index];
-    final action = await showCupertinoModalPopup<_CalendarDoseAction>(
-      context: context,
-      builder: (context) => CupertinoActionSheet(
-        title: Text(dose.name),
-        message: Text(dose.details),
-        actions: [
-          CupertinoActionSheetAction(
-            onPressed: () =>
-                Navigator.pop(context, _CalendarDoseAction.toggleTaken),
-            child: Text(dose.isTaken ? 'Mark As Due' : 'Mark As Taken'),
+    final action = await pushInAppPage<_CalendarDoseAction>(
+      context,
+      builder: (context) => InAppOptionPage<_CalendarDoseAction>(
+        title: dose.name,
+        subtitle: dose.details,
+        options: [
+          InAppPageOption(
+            label: dose.isTaken ? 'Mark As Due' : 'Mark As Taken',
+            value: _CalendarDoseAction.toggleTaken,
+            icon: dose.isTaken
+                ? CupertinoIcons.arrow_counterclockwise
+                : CupertinoIcons.check_mark_circled,
           ),
-          CupertinoActionSheetAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.pop(context, _CalendarDoseAction.remove),
-            child: const Text('Remove From Day'),
+          const InAppPageOption(
+            label: 'Remove From Day',
+            value: _CalendarDoseAction.remove,
+            icon: CupertinoIcons.trash,
+            destructive: true,
           ),
         ],
-        cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
       ),
     );
     if (!mounted || action == null) return;
     switch (action) {
       case _CalendarDoseAction.toggleTaken:
-        setState(() => doses[index] = dose.copyWith(isTaken: !dose.isTaken));
-        _showConfirmation(dose.isTaken ? 'Dose Marked Due' : 'Dose Taken');
+        final nextStatus = dose.isTaken ? 'due' : 'taken';
+        try {
+          await widget.onDoseStatusChanged?.call(dose.id, nextStatus);
+          if (!mounted) return;
+          setState(() => doses[index] = dose.copyWith(status: nextStatus));
+          _showConfirmation(dose.isTaken ? 'Dose Marked Due' : 'Dose Taken');
+        } catch (_) {
+          _showConfirmation('Dose could not be updated');
+        }
       case _CalendarDoseAction.remove:
-        setState(() => doses.removeAt(index));
-        _showConfirmation('${dose.name} Removed');
+        try {
+          await widget.onDoseStatusChanged?.call(dose.id, 'cancelled');
+          if (!mounted) return;
+          setState(() => doses[index] = dose.copyWith(status: 'cancelled'));
+          _showConfirmation('${dose.name} Removed');
+        } catch (_) {
+          _showConfirmation('Dose could not be removed');
+        }
     }
   }
 
   void _showConfirmation(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+    if (!mounted) return;
+    setState(() => _announcement = message);
   }
 
   Future<void> _showOptions() async {
-    await showCupertinoModalPopup<void>(
-      context: context,
-      builder: (context) => CupertinoActionSheet(
-        title: const Text('Calendar'),
-        actions: [
-          CupertinoActionSheetAction(
-            onPressed: () {
-              Navigator.pop(context);
-              _jumpToToday();
-            },
-            child: const Text('Jump to Today'),
+    final jumpToToday = await pushInAppPage<bool>(
+      context,
+      builder: (context) => const InAppOptionPage<bool>(
+        title: 'Calendar Options',
+        options: [
+          InAppPageOption(
+            label: 'Jump to Today',
+            value: true,
+            icon: CupertinoIcons.calendar_today,
           ),
         ],
-        cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
       ),
     );
+    if (jumpToToday == true && mounted) _jumpToToday();
   }
 
   String _monthYear(DateTime date) => '${_months[date.month - 1]} ${date.year}';
@@ -247,18 +288,36 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   Widget build(BuildContext context) {
     final palette = _CalendarPalette.of(context);
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final contentWidth = viewportWidth >= 900
+        ? responsiveContentWidth(context, nativeMaxWidth: 760)
+        : 520.0;
     return ColoredBox(
       color: palette.background,
       child: SafeArea(
         bottom: false,
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
+            constraints: BoxConstraints(maxWidth: contentWidth),
             child: ListView(
               key: const Key('calendarScrollView'),
               padding: EdgeInsets.fromLTRB(16, 7, 16, widget.bottomPadding),
               children: [
                 _CalendarHeader(onOptions: _showOptions),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: _announcement == null
+                      ? const SizedBox.shrink()
+                      : Padding(
+                          key: ValueKey(_announcement),
+                          padding: const EdgeInsets.only(top: 12),
+                          child: _CalendarInlineStatus(
+                            message: _announcement!,
+                            onDismiss: () =>
+                                setState(() => _announcement = null),
+                          ),
+                        ),
+                ),
                 const SizedBox(height: 14),
                 _AdherenceSummary(month: _months[_visibleMonth.month - 1]),
                 const SizedBox(height: 18),
@@ -278,11 +337,55 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 ),
                 const SizedBox(height: 8),
                 _DoseList(
-                  doses: _ensureDoses(_selectedDate),
+                  doses: _dosesFor(_selectedDate),
                   onTapDose: _showDoseActions,
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CalendarInlineStatus extends StatelessWidget {
+  const _CalendarInlineStatus({required this.message, required this.onDismiss});
+
+  final String message;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Semantics(
+      liveRegion: true,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.primary.withValues(alpha: .1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
+          child: Row(
+            children: [
+              Icon(Icons.check_circle_outline, color: colors.primary, size: 19),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    color: colors.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Dismiss',
+                onPressed: onDismiss,
+                icon: const Icon(Icons.close_rounded, size: 18),
+              ),
+            ],
           ),
         ),
       ),
@@ -653,13 +756,14 @@ class _CalendarDay extends StatelessWidget {
     };
     return Semantics(
       selected: selected,
-      button: true,
-      label: statusLabel == null ? '$date' : '$date, $statusLabel',
-      child: CupertinoButton(
+      child: AppPressable(
         key: Key('calendarDay-$_dateKey'),
         onPressed: onPressed,
-        minimumSize: Size.zero,
-        padding: EdgeInsets.zero,
+        semanticLabel: statusLabel == null ? '$date' : '$date, $statusLabel',
+        borderRadius: BorderRadius.circular(9),
+        hoverScale: 1.045,
+        hoverOffset: Offset.zero,
+        pressedScale: .88,
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: selected ? palette.accent : Colors.transparent,
@@ -835,73 +939,73 @@ class _DoseRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = _CalendarPalette.of(context);
-    return Semantics(
-      button: true,
-      label: '$name, $details, $status',
-      child: CupertinoButton(
-        onPressed: onTap,
-        minimumSize: Size.zero,
-        padding: EdgeInsets.zero,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-          child: Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: iconBackground,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  CupertinoIcons.capsule_fill,
-                  color: iconColor,
-                  size: 17,
-                ),
+    return AppPressable(
+      onPressed: onTap,
+      autoManageBusy: false,
+      semanticLabel: '$name, $details, $status',
+      borderRadius: BorderRadius.zero,
+      hoverScale: 1,
+      hoverOffset: Offset.zero,
+      pressedScale: .99,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: iconBackground,
+                shape: BoxShape.circle,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: TextStyle(
-                        color: palette.ink,
-                        fontSize: 14,
-                        height: 1.25,
-                        fontWeight: FontWeight.w700,
-                      ),
+              child: Icon(
+                CupertinoIcons.capsule_fill,
+                color: iconColor,
+                size: 17,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: TextStyle(
+                      color: palette.ink,
+                      fontSize: 14,
+                      height: 1.25,
+                      fontWeight: FontWeight.w700,
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      details,
-                      style: TextStyle(
-                        color: palette.muted,
-                        fontSize: 11,
-                        height: 1.3,
-                      ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    details,
+                    style: TextStyle(
+                      color: palette.muted,
+                      fontSize: 11,
+                      height: 1.3,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Text(
-                status,
-                style: TextStyle(
-                  color: statusColor,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              status,
+              style: TextStyle(
+                color: statusColor,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
               ),
-              const SizedBox(width: 5),
-              Icon(
-                CupertinoIcons.chevron_right,
-                color: palette.muted.withValues(alpha: .65),
-                size: 12,
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 5),
+            Icon(
+              CupertinoIcons.chevron_right,
+              color: palette.muted.withValues(alpha: .65),
+              size: 12,
+            ),
+          ],
         ),
       ),
     );
@@ -912,22 +1016,43 @@ enum _CalendarDoseAction { toggleTaken, remove }
 
 class _CalendarDose {
   const _CalendarDose({
+    this.id = '',
     required this.name,
     required this.details,
-    this.isTaken = false,
+    this.status = 'due',
   });
 
+  final String id;
   final String name;
   final String details;
-  final bool isTaken;
+  final String status;
 
-  _CalendarDose copyWith({bool? isTaken}) {
+  bool get isTaken => status == 'taken';
+
+  _CalendarDose copyWith({String? status}) {
     return _CalendarDose(
+      id: id,
       name: name,
       details: details,
-      isTaken: isTaken ?? this.isTaken,
+      status: status ?? this.status,
     );
   }
+}
+
+class CalendarDoseData {
+  const CalendarDoseData({
+    required this.id,
+    required this.localDate,
+    required this.name,
+    required this.details,
+    required this.status,
+  });
+
+  final String id;
+  final String localDate;
+  final String name;
+  final String details;
+  final String status;
 }
 
 class _CalendarPalette {

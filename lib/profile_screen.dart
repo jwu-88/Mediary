@@ -2,7 +2,15 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'app_interactions.dart';
+import 'app_layout.dart';
+import 'app_theme.dart';
+import 'in_app_page.dart';
 import 'liquid_glass_back_button.dart';
+import 'profile_image_policy.dart';
+
+String? validateProfilePhotoUrl(String? value) =>
+    validateProfileImageUrl(value);
 
 class ProfileDraft {
   const ProfileDraft({
@@ -29,6 +37,9 @@ class ProfileScreen extends StatefulWidget {
     this.pageTitle = 'Account',
     this.displayName,
     this.photoUrl,
+    this.initialBloodType,
+    this.initialAllergies,
+    this.initialCareTeam,
     this.onOpenLibrary,
     this.onOpenSettings,
     this.onBack,
@@ -41,6 +52,9 @@ class ProfileScreen extends StatefulWidget {
   final String pageTitle;
   final String? displayName;
   final String? photoUrl;
+  final String? initialBloodType;
+  final List<String>? initialAllergies;
+  final String? initialCareTeam;
   final VoidCallback? onOpenLibrary;
 
   /// Retained for callers that have not yet migrated to the Settings shell.
@@ -69,9 +83,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late String _savedName;
   late String _savedEmail;
   String? _savedPhotoUrl;
-  String _savedBloodType = 'O+';
-  List<String> _savedAllergies = ['Penicillin'];
-  String _savedCareTeam = 'Dr. Hannah Lee · City Health';
+  late String _savedBloodType;
+  late List<String> _savedAllergies;
+  late String _savedCareTeam;
 
   String _draftBloodType = 'O+';
   List<String> _draftAllergies = ['Penicillin'];
@@ -83,12 +97,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _emailError;
   String? _careTeamError;
   String? _saveError;
+  String? _inlineFeedback;
+  bool _inlineFeedbackIsError = false;
   String _announcement = '';
 
   bool get _isDark => Theme.of(context).brightness == Brightness.dark;
   Color get _background =>
-      _isDark ? const Color(0xFF101418) : const Color(0xFFF2F2F7);
-  Color get _surface => _isDark ? const Color(0xFF1C1C1E) : Colors.white;
+      _isDark ? AppColors.darkBackground : const Color(0xFFF2F2F7);
+  Color get _surface => _isDark ? AppColors.darkSurface : Colors.white;
   Color get _ink => _isDark ? const Color(0xFFF2F2F7) : const Color(0xFF1C1C1E);
   Color get _muted =>
       _isDark ? const Color(0xFFB8B8BE) : const Color(0xFF515157);
@@ -104,6 +120,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         : displayName;
     _savedEmail = widget.email;
     _savedPhotoUrl = widget.photoUrl;
+    _savedBloodType = widget.initialBloodType ?? 'O+';
+    _savedAllergies = [
+      ...(widget.initialAllergies ?? const ['Penicillin']),
+    ];
+    _savedCareTeam = widget.initialCareTeam ?? 'Dr. Hannah Lee · City Health';
     _draftPhotoUrl = _savedPhotoUrl;
     _nameController = TextEditingController(text: _savedName);
     _emailController = TextEditingController(text: _savedEmail);
@@ -194,6 +215,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _emailError = null;
       _careTeamError = null;
       _saveError = null;
+      _inlineFeedback = null;
       _announcement = 'Profile editing mode. Name field focused.';
       _isEditing = true;
     });
@@ -238,22 +260,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return;
     }
 
-    final discard = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text('Discard Changes?'),
-        content: const Text('Your profile edits will not be saved.'),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Keep Editing'),
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Discard Changes'),
-          ),
-        ],
+    FocusScope.of(context).unfocus();
+    final discard = await pushInAppPage<bool>(
+      context,
+      builder: (context) => const KeyedSubtree(
+        key: Key('discardProfileChangesPage'),
+        child: InAppOptionPage<bool>(
+          title: 'Discard Changes?',
+          subtitle: 'Your profile edits will not be saved.',
+          options: [
+            InAppPageOption(
+              label: 'Keep Editing',
+              value: false,
+              icon: CupertinoIcons.pencil,
+            ),
+            InAppPageOption(
+              label: 'Discard Changes',
+              value: true,
+              icon: CupertinoIcons.trash,
+              destructive: true,
+            ),
+          ],
+        ),
       ),
     );
     if (discard == true && mounted) _exitEditing();
@@ -301,11 +329,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _isEditing = false;
         _announcement = 'Profile saved.';
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
+      final message = error is StateError
+          ? error.message.toString()
+          : 'Profile could not be saved. Try again.';
       setState(() {
         _isSaving = false;
-        _saveError = 'Profile could not be saved. Try again.';
+        _saveError = message;
         _announcement =
             'Profile could not be saved. Your changes are preserved.';
       });
@@ -314,33 +345,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _addAllergy() async {
     final controller = TextEditingController();
-    final allergy = await showCupertinoDialog<String>(
-      context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text('Add Allergy'),
-        content: Padding(
-          padding: const EdgeInsets.only(top: 12),
-          child: CupertinoTextField(
-            key: const Key('allergyField'),
-            controller: controller,
-            autofocus: true,
-            placeholder: 'Allergy name',
-            textInputAction: TextInputAction.done,
-            onSubmitted: (value) => Navigator.pop(context, value),
-          ),
+    final allergy = await pushInAppPage<String>(
+      context,
+      builder: (context) => InAppPageScaffold(
+        title: 'Add Allergy',
+        child: ListView(
+          key: const Key('addAllergyPage'),
+          children: [
+            const _ProfilePageLead(
+              icon: CupertinoIcons.bandage,
+              title: 'Record an Allergy',
+              body: 'Add a medication or ingredient you need to avoid.',
+            ),
+            const SizedBox(height: 24),
+            TextField(
+              key: const Key('allergyField'),
+              controller: controller,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: 'Allergy Name',
+                hintText: 'For example, Penicillin',
+              ),
+              onSubmitted: (value) => Navigator.pop(context, value),
+            ),
+            const SizedBox(height: 24),
+            FilledButton(
+              key: const Key('confirmAddAllergyButton'),
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: const Text('Add Allergy'),
+            ),
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+          ],
         ),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Add'),
-          ),
-        ],
       ),
     );
+    await Future<void>.delayed(const Duration(milliseconds: 250));
     controller.dispose();
     final value = allergy?.trim();
     if (value == null || value.isEmpty || !mounted) return;
@@ -352,38 +397,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _changeProfilePhoto() async {
     final controller = TextEditingController(text: _draftPhotoUrl ?? '');
-    final photoUrl = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Profile Photo'),
-        content: TextField(
-          key: const Key('profilePhotoUrlField'),
-          controller: controller,
-          autofocus: true,
-          keyboardType: TextInputType.url,
-          textInputAction: TextInputAction.done,
-          decoration: const InputDecoration(
-            labelText: 'Image URL',
-            hintText: 'https://example.com/photo.jpg',
+    final formKey = GlobalKey<FormState>();
+    final photoUrl = await pushInAppPage<String>(
+      context,
+      builder: (context) => InAppPageScaffold(
+        title: 'Profile Photo',
+        child: Form(
+          key: formKey,
+          child: ListView(
+            key: const Key('profilePhotoPage'),
+            children: [
+              const _ProfilePageLead(
+                icon: CupertinoIcons.person_crop_circle,
+                title: 'Choose Your Photo',
+                body:
+                    'Paste a Mediary Storage or Google account image link, '
+                    'or display your initials.',
+              ),
+              const SizedBox(height: 24),
+              TextFormField(
+                key: const Key('profilePhotoUrlField'),
+                controller: controller,
+                autofocus: true,
+                keyboardType: TextInputType.url,
+                textInputAction: TextInputAction.done,
+                autocorrect: false,
+                enableSuggestions: false,
+                validator: validateProfilePhotoUrl,
+                decoration: const InputDecoration(
+                  labelText: 'Image URL',
+                  hintText: 'https://firebasestorage.googleapis.com/…',
+                ),
+                onFieldSubmitted: (value) {
+                  if (formKey.currentState?.validate() ?? false) {
+                    Navigator.pop(context, value.trim());
+                  }
+                },
+              ),
+              const SizedBox(height: 24),
+              FilledButton(
+                key: const Key('saveProfilePhotoButton'),
+                onPressed: () {
+                  if (formKey.currentState?.validate() ?? false) {
+                    Navigator.pop(context, controller.text.trim());
+                  }
+                },
+                child: const Text('Save Photo'),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton(
+                key: const Key('useProfileInitialsButton'),
+                onPressed: () => Navigator.pop(context, ''),
+                child: const Text('Use Initials'),
+              ),
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+            ],
           ),
-          onSubmitted: (value) => Navigator.pop(context, value.trim()),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, ''),
-            child: const Text('Use Initials'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
+    await Future<void>.delayed(const Duration(milliseconds: 250));
     controller.dispose();
     if (photoUrl == null || !mounted) return;
     setState(() {
@@ -394,42 +471,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
-  Future<void> _showInfoDialog({
+  Future<void> _openInfoPage({
     required String title,
     required String body,
     String? copyText,
   }) async {
-    final copied = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: SelectionArea(child: Text(body)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Done'),
-          ),
-          if (copyText != null)
-            FilledButton.tonalIcon(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: copyText));
-                if (context.mounted) Navigator.pop(context, true);
-              },
-              icon: const Icon(CupertinoIcons.doc_on_doc, size: 16),
-              label: const Text('Copy'),
+    final copied = await pushInAppPage<bool>(
+      context,
+      builder: (context) => InAppPageScaffold(
+        title: title,
+        child: ListView(
+          key: const Key('profileInfoPage'),
+          children: [
+            SelectionArea(
+              child: Text(
+                body,
+                key: const Key('profileInfoBody'),
+                style: Theme.of(context).textTheme.bodyLarge
+                    ?.copyWith(height: 1.55),
+              ),
             ),
-        ],
+            const SizedBox(height: 28),
+            if (copyText != null) ...[
+              FilledButton.tonalIcon(
+                key: const Key('copyProfileInfoButton'),
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: copyText));
+                  if (context.mounted) Navigator.pop(context, true);
+                },
+                icon: const Icon(CupertinoIcons.doc_on_doc, size: 16),
+                label: const Text('Copy'),
+              ),
+              const SizedBox(height: 10),
+            ],
+            TextButton(
+              key: const Key('doneProfileInfoButton'),
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
       ),
     );
     if (copied == true && mounted) {
-      _announce('$title copied.');
-      ScaffoldMessenger.maybeOf(context)
-          ?.showSnackBar(SnackBar(content: Text('$title copied')));
+      setState(() {
+        _announcement = '$title copied.';
+        _inlineFeedback = '$title copied.';
+        _inlineFeedbackIsError = false;
+      });
     }
   }
 
   Future<void> _showCareTeam() {
-    return _showInfoDialog(
+    return _openInfoPage(
       title: 'Care Team',
       body: _savedCareTeam,
       copyText: _savedCareTeam,
@@ -444,7 +538,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'Allergies: ${_savedAllergies.isEmpty ? 'None' : _savedAllergies.join(', ')}\n'
         'Active Medications: 3\n'
         'Care Team: $_savedCareTeam';
-    return _showInfoDialog(
+    return _openInfoPage(
       title: 'Health Report',
       body: report,
       copyText: report,
@@ -457,7 +551,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'Blood Type: $_savedBloodType\n'
         'Allergies: ${_savedAllergies.isEmpty ? 'None' : _savedAllergies.join(', ')}\n'
         'Care Team: $_savedCareTeam';
-    return _showInfoDialog(
+    return _openInfoPage(
       title: 'Emergency Profile',
       body: summary,
       copyText: summary,
@@ -469,7 +563,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       widget.onOpenLibrary!();
       return;
     }
-    await _showInfoDialog(
+    await _openInfoPage(
       title: 'Active Medications',
       body: 'Amoxicillin\nVitamin D3\nCetirizine',
     );
@@ -486,10 +580,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (_) {
       if (!mounted) return;
-      _announce('Could not sign out. Try again.');
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(content: Text('Could not sign out. Try again.')),
-      );
+      setState(() {
+        _announcement = 'Could not sign out. Try again.';
+        _inlineFeedback = 'Could not sign out. Try again.';
+        _inlineFeedbackIsError = true;
+      });
     } finally {
       if (mounted) setState(() => _isSigningOut = false);
     }
@@ -504,47 +599,72 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           children: [
             Expanded(
-              child: ListView(
-                key: const Key('profileScrollView'),
-                padding: EdgeInsets.fromLTRB(16, 4, 16, widget.bottomPadding),
-                children: [
-                  _ProfileHeader(
-                    pageTitle: widget.pageTitle,
-                    isEditing: _isEditing,
-                    isSaving: _isSaving,
-                    ink: _ink,
-                    muted: _muted,
-                    onBack: widget.onBack,
-                    onEdit: _startEditing,
-                    onCancel: _cancelEditing,
-                    onDone: _saveProfile,
-                  ),
-                  _buildHero(),
-                  if (_saveError != null)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(4, 10, 4, 0),
-                      child: Text(
-                        _saveError!,
-                        key: const Key('profileSaveError'),
-                        style: const TextStyle(
-                          color: _red,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: responsiveContentWidth(
+                      context,
+                      nativeMaxWidth: 760,
                     ),
-                  _sectionTitle(
-                    'Health Details',
-                    key: const Key('profileHealthDetailsTitle'),
                   ),
-                  _buildHealthSummary(),
-                  _sectionTitle('Care'),
-                  _buildProfileList(),
-                  if (widget.onSignOut != null) ...[
-                    const SizedBox(height: 24),
-                    _buildSignOutButton(),
-                  ],
-                ],
+                  child: ListView(
+                    key: const Key('profileScrollView'),
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      4,
+                      16,
+                      widget.bottomPadding,
+                    ),
+                    children: [
+                      _ProfileHeader(
+                        pageTitle: widget.pageTitle,
+                        isEditing: _isEditing,
+                        isSaving: _isSaving,
+                        ink: _ink,
+                        muted: _muted,
+                        onBack: widget.onBack,
+                        onEdit: _startEditing,
+                        onCancel: _cancelEditing,
+                        onDone: _saveProfile,
+                      ),
+                      _buildHero(),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        child: _inlineFeedback == null
+                            ? const SizedBox.shrink()
+                            : _ProfileInlineFeedback(
+                                key: const Key('profileInlineFeedback'),
+                                message: _inlineFeedback!,
+                                isError: _inlineFeedbackIsError,
+                              ),
+                      ),
+                      if (_saveError != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(4, 10, 4, 0),
+                          child: Text(
+                            _saveError!,
+                            key: const Key('profileSaveError'),
+                            style: const TextStyle(
+                              color: _red,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      _sectionTitle(
+                        'Health Details',
+                        key: const Key('profileHealthDetailsTitle'),
+                      ),
+                      _buildHealthSummary(),
+                      _sectionTitle('Care'),
+                      _buildProfileList(),
+                      if (widget.onSignOut != null) ...[
+                        const SizedBox(height: 24),
+                        _buildSignOutButton(),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
             Semantics(
@@ -931,6 +1051,93 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
+class _ProfilePageLead extends StatelessWidget {
+  const _ProfilePageLead({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: colors.primary, size: 34),
+          const SizedBox(height: 18),
+          Text(
+            title,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              color: colors.onSurface,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -.35,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            body,
+            style: Theme.of(context).textTheme.bodyLarge
+                ?.copyWith(color: colors.onSurfaceVariant, height: 1.45),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileInlineFeedback extends StatelessWidget {
+  const _ProfileInlineFeedback({
+    super.key,
+    required this.message,
+    required this.isError,
+  });
+
+  final String message;
+  final bool isError;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final color = isError ? colors.error : colors.primary;
+    return Semantics(
+      liveRegion: true,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(3, 12, 3, 0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              isError
+                  ? CupertinoIcons.exclamationmark_circle_fill
+                  : CupertinoIcons.check_mark_circled_solid,
+              color: color,
+              size: 17,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                message,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ProfileHeader extends StatelessWidget {
   const _ProfileHeader({
     required this.pageTitle,
@@ -1060,56 +1267,64 @@ class _ProfileAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final photo = photoUrl?.trim();
     final colors = Theme.of(context).colorScheme;
-    return Semantics(
-      button: isEditing,
-      label: isEditing ? 'Change profile photo' : 'Profile photo',
-      child: GestureDetector(
-        key: const Key('changeProfilePhotoButton'),
-        behavior: HitTestBehavior.opaque,
-        onTap: isEditing ? onTap : null,
-        child: SizedBox(
-          width: 66,
-          height: 66,
-          child: Stack(
-            children: [
-              CircleAvatar(
-                radius: 32,
-                backgroundColor: colors.primaryContainer,
-                foregroundImage: photo == null || photo.isEmpty
-                    ? null
-                    : NetworkImage(photo),
-                child: Text(
-                  initials,
-                  style: TextStyle(
-                    color: colors.onPrimaryContainer,
-                    fontSize: 19,
-                    fontWeight: FontWeight.w700,
-                  ),
+    final avatar = SizedBox(
+      width: 66,
+      height: 66,
+      child: Stack(
+        children: [
+          CircleAvatar(
+            radius: 32,
+            backgroundColor: colors.primaryContainer,
+            foregroundImage: safeProfileImageProvider(photo),
+            child: Text(
+              initials,
+              style: TextStyle(
+                color: colors.onPrimaryContainer,
+                fontSize: 19,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          if (isEditing)
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  color: colors.primary,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: surfaceColor, width: 2),
+                ),
+                child: Icon(
+                  CupertinoIcons.camera_fill,
+                  color: colors.onPrimary,
+                  size: 12,
                 ),
               ),
-              if (isEditing)
-                Positioned(
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    width: 26,
-                    height: 26,
-                    decoration: BoxDecoration(
-                      color: colors.primary,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: surfaceColor, width: 2),
-                    ),
-                    child: Icon(
-                      CupertinoIcons.camera_fill,
-                      color: colors.onPrimary,
-                      size: 12,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
+            ),
+        ],
       ),
+    );
+    if (!isEditing) {
+      return Semantics(
+        label: 'Profile photo',
+        child: KeyedSubtree(
+          key: const Key('changeProfilePhotoButton'),
+          child: avatar,
+        ),
+      );
+    }
+    return AppPressable(
+      key: const Key('changeProfilePhotoButton'),
+      onPressed: onTap,
+      autoManageBusy: false,
+      semanticLabel: 'Change profile photo',
+      borderRadius: BorderRadius.circular(33),
+      hoverScale: 1.025,
+      pressedScale: .95,
+      child: avatar,
     );
   }
 }
@@ -1176,56 +1391,63 @@ class _ProfileRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final ink = dark ? const Color(0xFFF2F2F7) : const Color(0xFF1C1C1E);
+    final ink = dark ? AppColors.darkText : const Color(0xFF1C1C1E);
     final muted = dark ? const Color(0xFFB8B8BE) : const Color(0xFF5F5F65);
+    final row = Container(
+      constraints: const BoxConstraints(minHeight: 58),
+      margin: const EdgeInsets.only(left: 14),
+      padding: const EdgeInsets.fromLTRB(0, 10, 14, 10),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: lineColor)),
+      ),
+      child: Row(
+        children: [
+          if (leading != null) ...[
+            SizedBox(width: 28, child: Center(child: leading)),
+            const SizedBox(width: 10),
+          ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: ink,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(subtitle!, style: TextStyle(color: muted, fontSize: 11)),
+                ],
+                ?content,
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          trailing,
+        ],
+      ),
+    );
+    final interactive = enabled && onTap != null;
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 150),
       opacity: enabled ? 1 : .42,
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 58),
-          margin: const EdgeInsets.only(left: 14),
-          padding: const EdgeInsets.fromLTRB(0, 10, 14, 10),
-          decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: lineColor)),
-          ),
-          child: Row(
-            children: [
-              if (leading != null) ...[
-                SizedBox(width: 28, child: Center(child: leading)),
-                const SizedBox(width: 10),
-              ],
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: ink,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle!,
-                        style: TextStyle(color: muted, fontSize: 11),
-                      ),
-                    ],
-                    ?content,
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              trailing,
-            ],
-          ),
-        ),
-      ),
+      child: interactive
+          ? AppPressable(
+              onPressed: onTap,
+              autoManageBusy: false,
+              semanticLabel: subtitle == null ? title : '$title, $subtitle',
+              borderRadius: BorderRadius.zero,
+              hoverScale: 1,
+              hoverOffset: Offset.zero,
+              pressedScale: .99,
+              child: row,
+            )
+          : row,
     );
   }
 }

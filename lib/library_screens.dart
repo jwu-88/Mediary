@@ -3,6 +3,10 @@ import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'app_interactions.dart';
+import 'app_layout.dart';
+import 'app_theme.dart';
+import 'in_app_page.dart';
 import 'liquid_glass_back_button.dart';
 import 'liquid_glass_search_field.dart';
 
@@ -10,10 +14,14 @@ class MedicationLibraryScreen extends StatefulWidget {
   const MedicationLibraryScreen({
     super.key,
     this.onOpenMedication,
+    this.onSavedChanged,
+    this.initialSavedMedicationIds = const {},
     this.bottomPadding = 128,
   });
 
   final VoidCallback? onOpenMedication;
+  final Future<void> Function(String medicationId, bool saved)? onSavedChanged;
+  final Set<String> initialSavedMedicationIds;
   final double bottomPadding;
 
   @override
@@ -31,26 +39,29 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
   ];
   static const _medications = [
     _Medication(
+      id: 'amoxicillin-500-capsule',
       name: 'Amoxicillin',
       description: 'Antibiotic · Capsule',
       category: 'Popular',
-      imageUrl: 'https://images.unsplash.com/photo-1471864190281-a93a3070b6de?auto=format&fit=crop&w=180&q=85',
+      imageAsset: 'assets/images/medication_auth_background.jpg',
       fallbackColor: Color(0xFFF5DDE6),
       fallbackIcon: CupertinoIcons.capsule,
     ),
     _Medication(
+      id: 'ibuprofen-200-tablet',
       name: 'Ibuprofen',
       description: 'Pain relief · Tablet',
       category: 'Pain',
-      imageUrl: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=180&q=85',
+      imageAsset: 'assets/images/ibuprofen.jpg',
       fallbackColor: Color(0xFFDDEBF5),
       fallbackIcon: CupertinoIcons.bandage,
     ),
     _Medication(
+      id: 'cetirizine-10-tablet',
       name: 'Cetirizine',
       description: 'Allergy relief · Tablet',
       category: 'Allergy',
-      imageUrl: 'https://images.unsplash.com/photo-1550572017-edd951b55104?auto=format&fit=crop&w=180&q=85',
+      imageAsset: 'assets/images/cetirizine.jpg',
       fallbackColor: Color(0xFFE4E8E0),
       fallbackIcon: CupertinoIcons.drop,
     ),
@@ -60,12 +71,14 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
   String _selectedCategory = 'Popular';
   bool _savedOnly = false;
   bool _sortAlphabetically = false;
-  final Set<String> _savedMedicationNames = {};
+  late final Set<String> _savedMedicationIds = {
+    ...widget.initialSavedMedicationIds,
+  };
 
   bool get _isDark => Theme.of(context).brightness == Brightness.dark;
   Color get _background =>
-      _isDark ? const Color(0xFF101418) : const Color(0xFFF2F2F7);
-  Color get _surface => _isDark ? const Color(0xFF1C1C1E) : Colors.white;
+      _isDark ? AppColors.darkBackground : const Color(0xFFF2F2F7);
+  Color get _surface => _isDark ? AppColors.darkSurface : Colors.white;
   Color get _ink => _isDark ? const Color(0xFFF2F2F7) : const Color(0xFF1C1C1E);
   Color get _muted =>
       _isDark ? const Color(0xFFB8B8BE) : const Color(0xFF6E6E73);
@@ -82,13 +95,24 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
           medication.name.toLowerCase().contains(query) ||
           medication.description.toLowerCase().contains(query);
       final matchesSaved =
-          !_savedOnly || _savedMedicationNames.contains(medication.name);
+          !_savedOnly || _savedMedicationIds.contains(medication.id);
       return matchesCategory && matchesQuery && matchesSaved;
     }).toList();
     if (_sortAlphabetically) {
       medications.sort((first, second) => first.name.compareTo(second.name));
     }
     return medications;
+  }
+
+  @override
+  void didUpdateWidget(covariant MedicationLibraryScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialSavedMedicationIds !=
+        widget.initialSavedMedicationIds) {
+      _savedMedicationIds
+        ..clear()
+        ..addAll(widget.initialSavedMedicationIds);
+    }
   }
 
   @override
@@ -110,12 +134,9 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
   }
 
   Future<void> _showArticle() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      useSafeArea: true,
-      isScrollControlled: true,
-      builder: (context) => const _InformationSheet(
+    await pushInAppPage<void>(
+      context,
+      builder: (context) => const _InformationPage(
         title: 'Antibiotics 101',
         body: 'Take antibiotics exactly as prescribed and finish the full course. Skipping doses can make treatment less effective. Contact your care team if you have a reaction or questions.',
       ),
@@ -128,21 +149,20 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
       return;
     }
 
-    final saved = _savedMedicationNames.contains(medication.name);
-    final shouldSave = await showModalBottomSheet<bool>(
-      context: context,
-      showDragHandle: true,
-      useSafeArea: true,
-      isScrollControlled: true,
+    final saved = _savedMedicationIds.contains(medication.id);
+    final shouldSave = await pushInAppPage<bool>(
+      context,
       builder: (context) =>
-          _MedicationPreviewSheet(medication: medication, saved: saved),
+          _MedicationPreviewPage(medication: medication, saved: saved),
     );
     if (shouldSave == null || !mounted) return;
+    await widget.onSavedChanged?.call(medication.id, shouldSave);
+    if (!mounted) return;
     setState(() {
       if (shouldSave) {
-        _savedMedicationNames.add(medication.name);
+        _savedMedicationIds.add(medication.id);
       } else {
-        _savedMedicationNames.remove(medication.name);
+        _savedMedicationIds.remove(medication.id);
       }
     });
   }
@@ -150,13 +170,17 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
   @override
   Widget build(BuildContext context) {
     final medications = _visibleMedications;
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final contentWidth = viewportWidth >= 900
+        ? responsiveContentWidth(context, nativeMaxWidth: 760)
+        : 520.0;
     return ColoredBox(
       color: _background,
       child: SafeArea(
         bottom: false,
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
+            constraints: BoxConstraints(maxWidth: contentWidth),
             child: CustomScrollView(
               key: const Key('medicationLibraryScrollView'),
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -401,11 +425,15 @@ class _CategoryTabs extends StatelessWidget {
           final category = categories[index];
           final selected = category == selectedCategory;
           return Semantics(
-            button: true,
             selected: selected,
-            child: InkWell(
+            child: AppPressable(
               key: Key('medicationCategory$category'),
-              onTap: () => onSelected(category),
+              onPressed: () => onSelected(category),
+              semanticLabel: '$category medication category',
+              borderRadius: BorderRadius.circular(8),
+              hoverScale: 1,
+              hoverOffset: Offset.zero,
+              pressedScale: .96,
               child: Container(
                 alignment: Alignment.bottomCenter,
                 padding: const EdgeInsets.only(bottom: 10),
@@ -490,8 +518,7 @@ class _FeaturedArticle extends StatelessWidget {
     required this.onTap,
   });
 
-  static const _imageUrl =
-      'https://images.unsplash.com/photo-1587854692152-cbe660dbde88?auto=format&fit=crop&w=500&q=88';
+  static const _imageAsset = 'assets/images/atorvastatin.jpg';
 
   final Color surface;
   final Color ink;
@@ -502,13 +529,17 @@ class _FeaturedArticle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
-    return ClipRRect(
+    return AppPressable(
+      key: const Key('featuredAntibioticsCard'),
+      onPressed: onTap,
+      autoManageBusy: false,
+      semanticLabel: 'Open Antibiotics 101 article',
       borderRadius: BorderRadius.circular(14),
-      child: Material(
-        key: const Key('featuredAntibioticsCard'),
-        color: surface,
-        child: InkWell(
-          onTap: onTap,
+      pressedScale: .985,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Material(
+          color: surface,
           child: SizedBox(
             height: 150,
             child: Row(
@@ -564,8 +595,9 @@ class _FeaturedArticle extends StatelessWidget {
                   decoration: BoxDecoration(
                     border: Border(left: BorderSide(color: line, width: .7)),
                   ),
-                  child: _NetworkMedicationImage(
-                    url: _imageUrl,
+                  child: _MedicationArtwork(
+                    assetPath: _imageAsset,
+                    cacheWidth: 552,
                     fallbackColor: const Color(0xFFF7C781),
                     fallbackIcon: CupertinoIcons.capsule_fill,
                     borderRadius: BorderRadius.zero,
@@ -637,54 +669,58 @@ class _MedicationRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: onTap != null,
-      label: 'Open ${medication.name} details',
-      child: InkWell(
-        key: Key('medication${medication.name}'),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(11),
-          child: Row(
-            children: [
-              SizedBox.square(
-                dimension: 54,
-                child: _NetworkMedicationImage(
-                  url: medication.imageUrl,
-                  fallbackColor: medication.fallbackColor,
-                  fallbackIcon: medication.fallbackIcon,
-                  borderRadius: BorderRadius.circular(8),
-                ),
+    return AppPressable(
+      key: Key('medication${medication.name}'),
+      onPressed: onTap,
+      autoManageBusy: false,
+      enabled: onTap != null,
+      semanticLabel: 'Open ${medication.name} details',
+      borderRadius: BorderRadius.zero,
+      hoverScale: 1,
+      hoverOffset: Offset.zero,
+      pressedScale: .99,
+      child: Padding(
+        padding: const EdgeInsets.all(11),
+        child: Row(
+          children: [
+            SizedBox.square(
+              dimension: 54,
+              child: _MedicationArtwork(
+                assetPath: medication.imageAsset,
+                cacheWidth: 216,
+                fallbackColor: medication.fallbackColor,
+                fallbackIcon: medication.fallbackIcon,
+                borderRadius: BorderRadius.circular(8),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      medication.name,
-                      style: TextStyle(
-                        color: ink,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    medication.name,
+                    style: TextStyle(
+                      color: ink,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      medication.description,
-                      style: TextStyle(color: muted, fontSize: 11),
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    medication.description,
+                    style: TextStyle(color: muted, fontSize: 11),
+                  ),
+                ],
               ),
-              const Icon(
-                CupertinoIcons.chevron_right,
-                color: Color(0xFFB5B5BA),
-                size: 15,
-              ),
-              const SizedBox(width: 2),
-            ],
-          ),
+            ),
+            const Icon(
+              CupertinoIcons.chevron_right,
+              color: Color(0xFFB5B5BA),
+              size: 15,
+            ),
+            const SizedBox(width: 2),
+          ],
         ),
       ),
     );
@@ -738,30 +774,36 @@ class _EmptyResults extends StatelessWidget {
 }
 
 class MedicationDetailScreen extends StatefulWidget {
-  const MedicationDetailScreen({super.key, this.onBack, this.onAdded});
+  const MedicationDetailScreen({
+    super.key,
+    this.onBack,
+    this.onAdded,
+    this.initialBookmarked = false,
+    this.onBookmarkChanged,
+  });
 
   final VoidCallback? onBack;
   final VoidCallback? onAdded;
+  final bool initialBookmarked;
+  final Future<void> Function(bool saved)? onBookmarkChanged;
 
   @override
   State<MedicationDetailScreen> createState() => _MedicationDetailScreenState();
 }
 
 class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
-  static const _heroImage =
-      'https://images.unsplash.com/photo-1471864190281-a93a3070b6de?auto=format&fit=crop&w=900&q=90';
+  static const _heroImage = 'assets/images/medication_auth_background.jpg';
 
-  bool _isBookmarked = false;
+  late bool _isBookmarked = widget.initialBookmarked;
   bool _isAdded = false;
 
   bool get _isDark => Theme.of(context).brightness == Brightness.dark;
   Color get _background =>
-      _isDark ? const Color(0xFF101418) : const Color(0xFFF2F2F7);
-  Color get _ink => _isDark ? const Color(0xFFF2F2F7) : const Color(0xFF1C1C1E);
+      _isDark ? AppColors.darkBackground : const Color(0xFFF2F2F7);
+  Color get _ink => _isDark ? AppColors.darkText : const Color(0xFF1C1C1E);
   Color get _muted =>
-      _isDark ? const Color(0xFFB8B8BE) : const Color(0xFF6E6E73);
-  Color get _line =>
-      _isDark ? const Color(0xFF3A3A3C) : const Color(0xFFD9D9DE);
+      _isDark ? AppColors.darkMutedText : const Color(0xFF6E6E73);
+  Color get _line => _isDark ? AppColors.darkOutline : const Color(0xFFD9D9DE);
 
   void _goBack() {
     final onBack = widget.onBack;
@@ -778,12 +820,9 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
   }
 
   Future<void> _showSideEffects() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      useSafeArea: true,
-      isScrollControlled: true,
-      builder: (context) => const _InformationSheet(
+    await pushInAppPage<void>(
+      context,
+      builder: (context) => const _InformationPage(
         title: 'Common Side Effects',
         body: 'Nausea\nDiarrhea\nRash\nHeadache\nChanges in taste\n\nSeek urgent care for swelling, trouble breathing, or a severe rash.',
       ),
@@ -794,6 +833,9 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     final heroHeight = (media.size.height * .332).clamp(250.0, 290.0);
+    final contentWidth = media.size.width >= 900
+        ? responsiveContentWidth(context, nativeMaxWidth: 760)
+        : 520.0;
     return ColoredBox(
       color: _background,
       child: Stack(
@@ -804,13 +846,11 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
             right: 0,
             height: heroHeight,
             child: _DetailHero(
-              imageUrl: _heroImage,
+              imageAsset: _heroImage,
               topPadding: media.padding.top,
               bookmarked: _isBookmarked,
               onBack: _goBack,
-              onBookmark: () {
-                setState(() => _isBookmarked = !_isBookmarked);
-              },
+              onBookmark: _toggleBookmark,
             ),
           ),
           Positioned.fill(
@@ -823,7 +863,7 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
                 color: _background,
                 child: Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 520),
+                    constraints: BoxConstraints(maxWidth: contentWidth),
                     child: SingleChildScrollView(
                       key: const Key('medicationDetailScrollView'),
                       padding: EdgeInsets.fromLTRB(
@@ -859,18 +899,28 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
       ),
     );
   }
+
+  Future<void> _toggleBookmark() async {
+    final next = !_isBookmarked;
+    setState(() => _isBookmarked = next);
+    try {
+      await widget.onBookmarkChanged?.call(next);
+    } catch (_) {
+      if (mounted) setState(() => _isBookmarked = !next);
+    }
+  }
 }
 
 class _DetailHero extends StatelessWidget {
   const _DetailHero({
-    required this.imageUrl,
+    required this.imageAsset,
     required this.topPadding,
     required this.bookmarked,
     required this.onBack,
     required this.onBookmark,
   });
 
-  final String imageUrl;
+  final String imageAsset;
   final double topPadding;
   final bool bookmarked;
   final VoidCallback onBack;
@@ -881,8 +931,8 @@ class _DetailHero extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        _NetworkMedicationImage(
-          url: imageUrl,
+        _MedicationArtwork(
+          assetPath: imageAsset,
           fallbackColor: const Color(0xFFDDE4EB),
           fallbackIcon: CupertinoIcons.capsule_fill,
           borderRadius: BorderRadius.zero,
@@ -1285,7 +1335,9 @@ class _StickyAddAction extends StatelessWidget {
         child: Container(
           padding: EdgeInsets.fromLTRB(16, 10, 16, bottomPadding + 10),
           decoration: BoxDecoration(
-            color: dark ? const Color(0xE61C1C1E) : const Color(0xE6F9F9F9),
+            color: dark
+                ? AppColors.darkSurface.withValues(alpha: .90)
+                : const Color(0xE6F9F9F9),
             border: const Border(
               top: BorderSide(color: Color(0x333C3C43), width: .5),
             ),
@@ -1330,11 +1382,8 @@ class _StickyAddAction extends StatelessWidget {
   }
 }
 
-class _MedicationPreviewSheet extends StatelessWidget {
-  const _MedicationPreviewSheet({
-    required this.medication,
-    required this.saved,
-  });
+class _MedicationPreviewPage extends StatelessWidget {
+  const _MedicationPreviewPage({required this.medication, required this.saved});
 
   final _Medication medication;
   final bool saved;
@@ -1342,18 +1391,19 @@ class _MedicationPreviewSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return InAppPageScaffold(
+      title: 'Medication Preview',
+      child: ListView(
+        key: const Key('medicationPreviewPage'),
+        padding: EdgeInsets.zero,
         children: [
           Row(
             children: [
               SizedBox.square(
                 dimension: 64,
-                child: _NetworkMedicationImage(
-                  url: medication.imageUrl,
+                child: _MedicationArtwork(
+                  assetPath: medication.imageAsset,
+                  cacheWidth: 256,
                   fallbackColor: medication.fallbackColor,
                   fallbackIcon: medication.fallbackIcon,
                   borderRadius: BorderRadius.circular(10),
@@ -1406,14 +1456,15 @@ class _MedicationPreviewSheet extends StatelessWidget {
               label: Text(saved ? 'Remove From Saved' : 'Save Medication'),
             ),
           ),
+          const SizedBox(height: 12),
         ],
       ),
     );
   }
 }
 
-class _InformationSheet extends StatelessWidget {
-  const _InformationSheet({required this.title, required this.body});
+class _InformationPage extends StatelessWidget {
+  const _InformationPage({required this.title, required this.body});
 
   final String title;
   final String body;
@@ -1421,21 +1472,12 @@ class _InformationSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(22, 4, 22, 28),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return InAppPageScaffold(
+      title: title,
+      child: ListView(
+        key: Key('informationPage$title'),
+        padding: EdgeInsets.zero,
         children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: colors.onSurface,
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 12),
           Text(
             body,
             style: TextStyle(
@@ -1444,32 +1486,35 @@ class _InformationSheet extends StatelessWidget {
               height: 1.5,
             ),
           ),
-          const SizedBox(height: 20),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
+          const SizedBox(height: 28),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Done'),
             ),
           ),
+          const SizedBox(height: 12),
         ],
       ),
     );
   }
 }
 
-class _NetworkMedicationImage extends StatelessWidget {
-  const _NetworkMedicationImage({
-    required this.url,
+class _MedicationArtwork extends StatelessWidget {
+  const _MedicationArtwork({
+    required this.assetPath,
     required this.fallbackColor,
     required this.fallbackIcon,
     required this.borderRadius,
+    this.cacheWidth = 1200,
   });
 
-  final String url;
+  final String assetPath;
   final Color fallbackColor;
   final IconData fallbackIcon;
   final BorderRadius borderRadius;
+  final int cacheWidth;
 
   Widget _fallback() {
     return ColoredBox(
@@ -1484,9 +1529,11 @@ class _NetworkMedicationImage extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: borderRadius,
-      child: Image.network(
-        url,
+      child: Image.asset(
+        assetPath,
         fit: BoxFit.cover,
+        cacheWidth: cacheWidth,
+        filterQuality: FilterQuality.medium,
         frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
           if (wasSynchronouslyLoaded || frame != null) return child;
           return _fallback();
@@ -1499,18 +1546,20 @@ class _NetworkMedicationImage extends StatelessWidget {
 
 class _Medication {
   const _Medication({
+    required this.id,
     required this.name,
     required this.description,
     required this.category,
-    required this.imageUrl,
+    required this.imageAsset,
     required this.fallbackColor,
     required this.fallbackIcon,
   });
 
+  final String id;
   final String name;
   final String description;
   final String category;
-  final String imageUrl;
+  final String imageAsset;
   final Color fallbackColor;
   final IconData fallbackIcon;
 }

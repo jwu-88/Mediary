@@ -1,5 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+
+import 'app_interactions.dart';
+import 'app_layout.dart';
+import 'in_app_page.dart';
+import 'profile_image_policy.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
@@ -11,6 +18,8 @@ class DashboardScreen extends StatefulWidget {
     this.bottomPadding = 120,
     this.onViewReport,
     this.onAddMedication,
+    this.initialDoses = const [],
+    this.onDoseStatusChanged,
   });
 
   final String email;
@@ -20,6 +29,13 @@ class DashboardScreen extends StatefulWidget {
   final double bottomPadding;
   final VoidCallback? onViewReport;
   final Future<List<String>?> Function()? onAddMedication;
+  final List<DashboardDoseData> initialDoses;
+  final Future<void> Function(
+    String doseId,
+    String status, {
+    DateTime? snoozedUntil,
+  })?
+  onDoseStatusChanged;
 
   static const _lightTaken = Color(0xFF279F49);
   static const _darkTaken = Color(0xFF30D158);
@@ -76,7 +92,11 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  late final List<_DashboardDose> _doses = [
+  bool _isOpeningReport = false;
+  bool _isAddingMedication = false;
+  String? _announcement;
+
+  late List<_DashboardDose> _doses = [
     const _DashboardDose(
       name: 'Vitamin D3',
       details: '1000 IU · 8:00 AM',
@@ -97,81 +117,80 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ),
   ];
 
-  Future<void> _showProfile() async {
-    await showCupertinoModalPopup<void>(
-      context: context,
-      builder: (context) => CupertinoActionSheet(
-        title: const Text('Your Profile'),
-        message: Text('${widget._name}\n${widget.email}'),
-        cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Done'),
+  @override
+  void initState() {
+    super.initState();
+    _syncInitialDoses();
+  }
+
+  @override
+  void didUpdateWidget(covariant DashboardScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialDoses != oldWidget.initialDoses) _syncInitialDoses();
+  }
+
+  void _syncInitialDoses() {
+    if (widget.initialDoses.isEmpty) return;
+    _doses = [
+      for (final dose in widget.initialDoses)
+        _DashboardDose(
+          id: dose.id,
+          name: dose.name,
+          details: dose.details,
+          status: dose.displayStatus,
+          firestoreStatus: dose.status,
+          tone: dose.status == 'taken' ? _DoseTone.taken : _DoseTone.primary,
         ),
+    ];
+  }
+
+  Future<void> _showProfile() async {
+    await pushInAppPage<void>(
+      context,
+      builder: (context) => _DashboardProfilePage(
+        name: widget._name,
+        email: widget.email,
+        photoUrl: widget.photoUrl,
       ),
     );
   }
 
   Future<void> _showWeeklyReport() async {
-    await showCupertinoModalPopup<void>(
-      context: context,
-      builder: (context) => CupertinoActionSheet(
-        title: const Text('Weekly Report'),
-        message: const Text(
-          '92% adherence\n11 of 12 scheduled doses completed',
-        ),
-        actions: [
-          CupertinoActionSheetAction(
-            onPressed: () {
-              Navigator.pop(context);
-              _showConfirmation('Report Ready');
-            },
-            child: const Text('Prepare Summary'),
-          ),
-        ],
-        cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Done'),
-        ),
-      ),
+    final prepared = await pushInAppPage<bool>(
+      context,
+      builder: (context) => const _DashboardReportPage(),
     );
+    if (prepared == true && mounted) _showConfirmation('Report Ready');
   }
 
   Future<void> _showAddMedication() async {
-    final medication = await showCupertinoModalPopup<_DashboardDose>(
-      context: context,
-      builder: (context) => CupertinoActionSheet(
-        title: const Text('Add Medication'),
-        message: const Text('Choose a medication for today'),
-        actions: [
-          CupertinoActionSheetAction(
-            onPressed: () => Navigator.pop(
-              context,
-              const _DashboardDose(
-                name: 'Ibuprofen',
-                details: '200 mg · 2:00 PM',
-                status: 'Today',
-                tone: _DoseTone.primary,
-              ),
+    final medication = await pushInAppPage<_DashboardDose>(
+      context,
+      builder: (context) => const InAppOptionPage<_DashboardDose>(
+        title: 'Add Medication',
+        subtitle: 'Choose a medication for today.',
+        options: [
+          InAppPageOption(
+            label: 'Ibuprofen',
+            detail: '200 mg · 2:00 PM',
+            value: _DashboardDose(
+              name: 'Ibuprofen',
+              details: '200 mg · 2:00 PM',
+              status: 'Today',
+              tone: _DoseTone.primary,
             ),
-            child: const Text('Ibuprofen'),
           ),
-          CupertinoActionSheetAction(
-            onPressed: () => Navigator.pop(
-              context,
-              const _DashboardDose(
-                name: 'Vitamin C',
-                details: '500 mg · 6:00 PM',
-                status: 'Tonight',
-                tone: _DoseTone.warning,
-              ),
+          InAppPageOption(
+            label: 'Vitamin C',
+            detail: '500 mg · 6:00 PM',
+            value: _DashboardDose(
+              name: 'Vitamin C',
+              details: '500 mg · 6:00 PM',
+              status: 'Tonight',
+              tone: _DoseTone.warning,
             ),
-            child: const Text('Vitamin C'),
           ),
         ],
-        cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
       ),
     );
     if (!mounted || medication == null) return;
@@ -180,24 +199,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _handleAddMedication() async {
-    final picker = widget.onAddMedication;
-    if (picker == null) {
-      await _showAddMedication();
-      return;
-    }
-
-    final selections = await picker();
-    if (!mounted || selections == null || selections.isEmpty) return;
-    setState(() {
-      for (final name in selections) {
-        _doses.add(_doseForSelection(name));
+    if (_isAddingMedication) return;
+    setState(() => _isAddingMedication = true);
+    unawaited(AppHaptics.primaryAction());
+    try {
+      final picker = widget.onAddMedication;
+      if (picker == null) {
+        await _showAddMedication();
+        return;
       }
-    });
-    _showConfirmation(
-      selections.length == 1
-          ? '${selections.single} Added'
-          : '${selections.length} Medications Added',
-    );
+
+      final selections = await picker();
+      if (!mounted || selections == null || selections.isEmpty) return;
+      setState(() {
+        for (final name in selections) {
+          _doses.add(_doseForSelection(name));
+        }
+      });
+      _showConfirmation(
+        selections.length == 1
+            ? '${selections.single} Added'
+            : '${selections.length} Medications Added',
+      );
+    } finally {
+      if (mounted) setState(() => _isAddingMedication = false);
+    }
+  }
+
+  Future<void> _handleViewReport() async {
+    if (_isOpeningReport) return;
+    setState(() => _isOpeningReport = true);
+    unawaited(AppHaptics.primaryAction());
+    try {
+      final openReport = widget.onViewReport;
+      if (openReport == null) {
+        await _showWeeklyReport();
+      } else {
+        openReport();
+        // A supplied callback commonly pushes a route synchronously. Keep the
+        // source action locked through that transition so two rapid clicks
+        // cannot add duplicate report routes to the navigator.
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+      }
+    } finally {
+      if (mounted) setState(() => _isOpeningReport = false);
+    }
   }
 
   _DashboardDose _doseForSelection(String name) {
@@ -225,63 +271,87 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _showDoseActions(int index) async {
     final dose = _doses[index];
-    final action = await showCupertinoModalPopup<_DoseAction>(
-      context: context,
-      builder: (context) => CupertinoActionSheet(
-        title: Text(dose.name),
-        message: Text(dose.details),
-        actions: [
-          CupertinoActionSheetAction(
-            onPressed: () => Navigator.pop(context, _DoseAction.toggleTaken),
-            child: Text(
-              dose.status == 'Taken' ? 'Mark As Due' : 'Mark As Taken',
-            ),
+    final action = await pushInAppPage<_DoseAction>(
+      context,
+      builder: (context) => InAppOptionPage<_DoseAction>(
+        title: dose.name,
+        subtitle: dose.details,
+        options: [
+          InAppPageOption(
+            label: dose.status == 'Taken' ? 'Mark As Due' : 'Mark As Taken',
+            value: _DoseAction.toggleTaken,
+            icon: dose.status == 'Taken'
+                ? CupertinoIcons.arrow_counterclockwise
+                : CupertinoIcons.check_mark_circled,
           ),
-          CupertinoActionSheetAction(
-            onPressed: () => Navigator.pop(context, _DoseAction.snooze),
-            child: const Text('Remind Me Later'),
+          const InAppPageOption(
+            label: 'Remind Me Later',
+            value: _DoseAction.snooze,
+            icon: CupertinoIcons.clock,
           ),
-          CupertinoActionSheetAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.pop(context, _DoseAction.remove),
-            child: const Text('Remove From Today'),
+          const InAppPageOption(
+            label: 'Remove From Today',
+            value: _DoseAction.remove,
+            icon: CupertinoIcons.trash,
+            destructive: true,
           ),
         ],
-        cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
       ),
     );
     if (!mounted || action == null) return;
     switch (action) {
       case _DoseAction.toggleTaken:
-        setState(() {
-          _doses[index] = dose.status == 'Taken'
-              ? dose.copyWith(status: 'Due', tone: _DoseTone.primary)
-              : dose.copyWith(status: 'Taken', tone: _DoseTone.taken);
-        });
-        _showConfirmation(
-          dose.status == 'Taken' ? 'Dose Marked Due' : 'Dose Taken',
-        );
-      case _DoseAction.snooze:
-        setState(() {
-          _doses[index] = dose.copyWith(
-            status: 'Later',
-            tone: _DoseTone.warning,
+        final nextStatus = dose.status == 'Taken' ? 'due' : 'taken';
+        try {
+          await widget.onDoseStatusChanged?.call(dose.id, nextStatus);
+          if (!mounted) return;
+          setState(() {
+            _doses[index] = dose.copyWith(
+              status: nextStatus == 'taken' ? 'Taken' : 'Due',
+              firestoreStatus: nextStatus,
+              tone: nextStatus == 'taken' ? _DoseTone.taken : _DoseTone.primary,
+            );
+          });
+          _showConfirmation(
+            nextStatus == 'taken' ? 'Dose Taken' : 'Dose Marked Due',
           );
-        });
-        _showConfirmation('Reminder Moved');
+        } catch (_) {
+          _showConfirmation('Dose could not be updated');
+        }
+      case _DoseAction.snooze:
+        try {
+          await widget.onDoseStatusChanged?.call(
+            dose.id,
+            'snoozed',
+            snoozedUntil: DateTime.now().add(const Duration(minutes: 15)),
+          );
+          if (!mounted) return;
+          setState(() {
+            _doses[index] = dose.copyWith(
+              status: 'Later',
+              firestoreStatus: 'snoozed',
+              tone: _DoseTone.warning,
+            );
+          });
+          _showConfirmation('Reminder Moved');
+        } catch (_) {
+          _showConfirmation('Reminder could not be saved');
+        }
       case _DoseAction.remove:
-        setState(() => _doses.removeAt(index));
-        _showConfirmation('${dose.name} Removed');
+        try {
+          await widget.onDoseStatusChanged?.call(dose.id, 'cancelled');
+          if (!mounted) return;
+          setState(() => _doses.removeAt(index));
+          _showConfirmation('${dose.name} Removed');
+        } catch (_) {
+          _showConfirmation('Dose could not be removed');
+        }
     }
   }
 
   void _showConfirmation(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+    if (!mounted) return;
+    setState(() => _announcement = message);
   }
 
   @override
@@ -289,13 +359,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final today = DateUtils.dateOnly(widget.now ?? DateTime.now());
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final contentWidth = viewportWidth >= 900
+        ? responsiveContentWidth(context, nativeMaxWidth: 760)
+        : 520.0;
     return ColoredBox(
       color: theme.scaffoldBackgroundColor,
       child: SafeArea(
         bottom: false,
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
+            constraints: BoxConstraints(maxWidth: contentWidth),
             child: ListView(
               key: const Key('dashboardScrollView'),
               padding: EdgeInsets.fromLTRB(16, 8, 16, widget.bottomPadding),
@@ -340,12 +414,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ],
                 ),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: _announcement == null
+                      ? const SizedBox.shrink()
+                      : Padding(
+                          key: ValueKey(_announcement),
+                          padding: const EdgeInsets.only(top: 18),
+                          child: _DashboardInlineStatus(
+                            message: _announcement!,
+                            onDismiss: () =>
+                                setState(() => _announcement = null),
+                          ),
+                        ),
+                ),
                 const SizedBox(height: 28),
                 _SectionHeader(
                   title: 'Weekly Progress',
                   actionLabel: 'View Report',
                   actionKey: const Key('dashboardViewReportButton'),
-                  onPressed: widget.onViewReport ?? _showWeeklyReport,
+                  busy: _isOpeningReport,
+                  loadingKey: const Key('dashboardViewReportLoadingIndicator'),
+                  onPressed: _handleViewReport,
                 ),
                 const SizedBox(height: 6),
                 const _AdherenceSummary(),
@@ -355,12 +445,208 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   actionLabel: 'Add',
                   actionIcon: CupertinoIcons.add,
                   actionKey: const Key('dashboardAddButton'),
+                  busy: _isAddingMedication,
+                  loadingKey: const Key('dashboardAddLoadingIndicator'),
                   onPressed: _handleAddMedication,
                 ),
                 const SizedBox(height: 10),
                 _ScheduleTable(doses: _doses, onTapDose: _showDoseActions),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardProfilePage extends StatelessWidget {
+  const _DashboardProfilePage({
+    required this.name,
+    required this.email,
+    required this.photoUrl,
+  });
+
+  final String name;
+  final String email;
+  final String? photoUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final profileImage = safeProfileImageProvider(photoUrl, cacheWidth: 216);
+    final initials = name
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .take(2)
+        .map((part) => part[0])
+        .join()
+        .toUpperCase();
+    final fallback = ColoredBox(
+      color: colors.primary.withValues(alpha: .14),
+      child: Center(
+        child: Text(
+          initials,
+          style: TextStyle(
+            color: colors.primary,
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+    return InAppPageScaffold(
+      title: 'Your Profile',
+      child: ListView(
+        children: [
+          Row(
+            children: [
+              ClipOval(
+                child: SizedBox.square(
+                  dimension: 72,
+                  child: profileImage == null
+                      ? fallback
+                      : Image(
+                          image: profileImage,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => fallback,
+                        ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: TextStyle(
+                        color: colors.onSurface,
+                        fontSize: 21,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      email,
+                      style: TextStyle(
+                        color: colors.onSurfaceVariant,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Divider(color: colors.outlineVariant),
+          const SizedBox(height: 16),
+          Text(
+            'Account information is managed from Settings.',
+            style: TextStyle(
+              color: colors.onSurfaceVariant,
+              fontSize: 15,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardReportPage extends StatelessWidget {
+  const _DashboardReportPage();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return InAppPageScaffold(
+      title: 'Weekly Report',
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Done'),
+        ),
+        const SizedBox(width: 8),
+      ],
+      child: ListView(
+        children: [
+          Text(
+            '92%',
+            style: TextStyle(
+              color: colors.primary,
+              fontSize: 48,
+              height: 1,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -1.4,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '11 of 12 scheduled doses completed',
+            style: TextStyle(
+              color: colors.onSurfaceVariant,
+              fontSize: 16,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Divider(color: colors.outlineVariant),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            key: const Key('prepareDashboardSummaryButton'),
+            onPressed: () => Navigator.of(context).pop(true),
+            icon: const Icon(CupertinoIcons.doc_text, size: 19),
+            label: const Text('Prepare Summary'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardInlineStatus extends StatelessWidget {
+  const _DashboardInlineStatus({
+    required this.message,
+    required this.onDismiss,
+  });
+
+  final String message;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Semantics(
+      liveRegion: true,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.primary.withValues(alpha: .1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
+          child: Row(
+            children: [
+              Icon(Icons.check_circle_outline, color: colors.primary, size: 19),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    color: colors.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Dismiss',
+                onPressed: onDismiss,
+                icon: const Icon(Icons.close_rounded, size: 18),
+              ),
+            ],
           ),
         ),
       ),
@@ -382,6 +668,7 @@ class _ProfileAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final profileImage = safeProfileImageProvider(photoUrl, cacheWidth: 126);
     final fallback = ColoredBox(
       color: colors.primary.withValues(alpha: .14),
       child: Center(
@@ -406,10 +693,10 @@ class _ProfileAvatar extends StatelessWidget {
         child: ClipOval(
           child: SizedBox.square(
             dimension: 42,
-            child: photoUrl == null || photoUrl!.isEmpty
+            child: profileImage == null
                 ? fallback
-                : Image.network(
-                    photoUrl!,
+                : Image(
+                    image: profileImage,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) => fallback,
                   ),
@@ -426,6 +713,8 @@ class _SectionHeader extends StatelessWidget {
     required this.actionLabel,
     this.actionIcon,
     this.actionKey,
+    this.loadingKey,
+    this.busy = false,
     required this.onPressed,
   });
 
@@ -433,6 +722,8 @@ class _SectionHeader extends StatelessWidget {
   final String actionLabel;
   final IconData? actionIcon;
   final Key? actionKey;
+  final Key? loadingKey;
+  final bool busy;
   final VoidCallback onPressed;
 
   @override
@@ -453,20 +744,33 @@ class _SectionHeader extends StatelessWidget {
         ),
         TextButton.icon(
           key: actionKey,
-          onPressed: onPressed,
+          onPressed: busy ? null : onPressed,
           style: TextButton.styleFrom(
             minimumSize: const Size(44, 44),
             padding: const EdgeInsets.symmetric(horizontal: 4),
             foregroundColor: colors.primary,
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
-          icon: actionIcon == null
+          icon: busy || actionIcon == null
               ? const SizedBox.shrink()
               : Icon(actionIcon, size: 15),
-          label: Text(
-            actionLabel,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-          ),
+          label: busy
+              ? SizedBox.square(
+                  key: loadingKey,
+                  dimension: 15,
+                  child: CircularProgressIndicator(
+                    value: .72,
+                    strokeWidth: 1.8,
+                    color: colors.primary,
+                  ),
+                )
+              : Text(
+                  actionLabel,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
         ),
       ],
     );
@@ -821,23 +1125,55 @@ enum _DoseAction { toggleTaken, snooze, remove }
 
 class _DashboardDose {
   const _DashboardDose({
+    this.id = '',
     required this.name,
     required this.details,
     required this.status,
+    this.firestoreStatus = 'due',
     required this.tone,
   });
 
+  final String id;
   final String name;
   final String details;
   final String status;
+  final String firestoreStatus;
   final _DoseTone tone;
 
-  _DashboardDose copyWith({String? status, _DoseTone? tone}) {
+  _DashboardDose copyWith({
+    String? status,
+    String? firestoreStatus,
+    _DoseTone? tone,
+  }) {
     return _DashboardDose(
+      id: id,
       name: name,
       details: details,
       status: status ?? this.status,
+      firestoreStatus: firestoreStatus ?? this.firestoreStatus,
       tone: tone ?? this.tone,
     );
   }
+}
+
+class DashboardDoseData {
+  const DashboardDoseData({
+    required this.id,
+    required this.name,
+    required this.details,
+    required this.status,
+  });
+
+  final String id;
+  final String name;
+  final String details;
+  final String status;
+
+  String get displayStatus => switch (status) {
+    'taken' => 'Taken',
+    'snoozed' => 'Later',
+    'missed' => 'Missed',
+    'cancelled' => 'Cancelled',
+    _ => 'Due',
+  };
 }
