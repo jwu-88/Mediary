@@ -432,11 +432,12 @@ class _CalendarHeader extends StatelessWidget {
             ],
           ),
         ),
-        CupertinoButton(
-          key: const Key('calendarOptionsButton'),
+        ResponsiveCupertinoButton(
+          buttonKey: const Key('calendarOptionsButton'),
           onPressed: onOptions,
           minimumSize: const Size.square(44),
           padding: EdgeInsets.zero,
+          semanticLabel: 'Calendar options',
           child: Icon(CupertinoIcons.ellipsis, color: palette.accent, size: 21),
         ),
       ],
@@ -682,10 +683,11 @@ class _MonthControl extends StatelessWidget {
     return Semantics(
       button: true,
       label: label,
-      child: CupertinoButton(
+      child: ResponsiveCupertinoButton(
         onPressed: onPressed,
         minimumSize: const Size.square(38),
         padding: EdgeInsets.zero,
+        semanticLabel: label,
         child: Container(
           width: 30,
           height: 30,
@@ -837,11 +839,12 @@ class _SectionHeader extends StatelessWidget {
             ),
           ),
         ),
-        CupertinoButton(
-          key: const Key('calendarAddButton'),
+        ResponsiveCupertinoButton(
+          buttonKey: const Key('calendarAddButton'),
           onPressed: onAdd,
           minimumSize: const Size.square(44),
           padding: const EdgeInsets.symmetric(horizontal: 4),
+          semanticLabel: 'Add medication',
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [

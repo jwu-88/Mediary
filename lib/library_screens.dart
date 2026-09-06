@@ -1,3 +1,4 @@
+import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -333,11 +334,14 @@ class _LibraryHeader extends StatelessWidget {
           button: true,
           selected: savedOnly,
           label: savedOnly ? 'Show all medications' : 'Show saved medications',
-          child: CupertinoButton(
-            key: const Key('savedMedicationsButton'),
+          child: ResponsiveCupertinoButton(
+            buttonKey: const Key('savedMedicationsButton'),
             minimumSize: const Size(44, 44),
             padding: EdgeInsets.zero,
             onPressed: onSavedPressed,
+            semanticLabel: savedOnly
+                ? 'Show all medications'
+                : 'Show saved medications',
             child: Icon(
               savedOnly
                   ? CupertinoIcons.bookmark_fill
@@ -374,11 +378,12 @@ class _SearchField extends StatelessWidget {
       trailing: Semantics(
         button: true,
         label: 'Filter medications',
-        child: CupertinoButton(
-          key: const Key('medicationFilterButton'),
+        child: ResponsiveCupertinoButton(
+          buttonKey: const Key('medicationFilterButton'),
           minimumSize: const Size(44, 52),
           padding: EdgeInsets.zero,
           onPressed: onFilterPressed,
+          semanticLabel: 'Filter medications',
           child: Icon(
             CupertinoIcons.slider_horizontal_3,
             color: primary,
@@ -490,10 +495,11 @@ class _SectionHeading extends StatelessWidget {
             ),
           ),
         ),
-        CupertinoButton(
+        ResponsiveCupertinoButton(
           minimumSize: const Size(44, 36),
           padding: const EdgeInsets.symmetric(horizontal: 2),
           onPressed: onPressed,
+          semanticLabel: action,
           child: Text(
             action,
             style: TextStyle(
@@ -798,8 +804,9 @@ class _EmptyResults extends StatelessWidget {
                 : 'Try another name or category.',
             style: TextStyle(color: muted, fontSize: 12),
           ),
-          CupertinoButton(
+          ResponsiveCupertinoButton(
             onPressed: onReset,
+            semanticLabel: 'Show all medications',
             child: const Text('Show All Medications'),
           ),
         ],
@@ -1030,10 +1037,11 @@ class _HeroButton extends StatelessWidget {
     return Semantics(
       button: true,
       label: semanticLabel,
-      child: CupertinoButton(
+      child: ResponsiveCupertinoButton(
         minimumSize: const Size(44, 44),
         padding: EdgeInsets.zero,
         onPressed: onPressed,
+        semanticLabel: semanticLabel,
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: const Color(0x33000000),
@@ -1137,10 +1145,11 @@ class _DetailContent extends StatelessWidget {
                 ),
               ),
             ),
-            CupertinoButton(
+            ResponsiveCupertinoButton(
               minimumSize: const Size(44, 36),
               padding: const EdgeInsets.symmetric(horizontal: 2),
               onPressed: onViewAllSideEffects,
+              semanticLabel: 'View all side effects',
               child: Text(
                 'View All',
                 style: TextStyle(

@@ -1030,11 +1030,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       borderRadius: BorderRadius.circular(14),
       child: ColoredBox(
         color: _surface,
-        child: CupertinoButton(
-          key: const Key('accountSignOutButton'),
+        child: ResponsiveCupertinoButton(
+          buttonKey: const Key('accountSignOutButton'),
           minimumSize: const Size.fromHeight(52),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           onPressed: _isEditing || _isSigningOut ? null : _signOut,
+          busy: _isSigningOut,
+          semanticLabel: 'Sign Out',
           child: _isSigningOut
               ? const CupertinoActivityIndicator(radius: 9)
               : const Text(

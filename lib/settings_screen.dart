@@ -815,6 +815,9 @@ class _PrivacyControlsPageState extends State<_PrivacyControlsPage> {
                   ListTile(
                     key: const Key('cameraAccessControl'),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                    hoverColor: colors.primary.withValues(alpha: .07),
+                    focusColor: colors.primary.withValues(alpha: .10),
+                    splashColor: colors.primary.withValues(alpha: .12),
                     title: const Text('Camera Access'),
                     subtitle: Text(
                       _cameraStatus ??
@@ -903,8 +906,13 @@ class _AccountSettingsRow extends StatelessWidget {
     return Semantics(
       button: onTap != null,
       label: 'Open Account',
-      child: InkWell(
-        onTap: onTap,
+      child: AppPressable(
+        onPressed: onTap,
+        semanticLabel: 'Open Account',
+        borderRadius: BorderRadius.zero,
+        hoverScale: 1,
+        hoverOffset: Offset.zero,
+        pressedScale: .99,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 72),
           child: Padding(
@@ -1022,8 +1030,13 @@ class _SettingsRow extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return Semantics(
       button: onTap != null,
-      child: InkWell(
-        onTap: onTap,
+      child: AppPressable(
+        onPressed: onTap,
+        semanticLabel: title,
+        borderRadius: BorderRadius.zero,
+        hoverScale: 1,
+        hoverOffset: Offset.zero,
+        pressedScale: .99,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 58),
           child: Padding(

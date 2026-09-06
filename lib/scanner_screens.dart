@@ -277,81 +277,6 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
                                 ),
                               ),
                               Positioned(
-                                left: 52,
-                                right: 52,
-                                bottom: 174,
-                                child: Center(
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(99),
-                                    child: WebAwareBlur(
-                                      sigma: 10,
-                                      child: AnimatedContainer(
-                                        duration: const Duration(
-                                          milliseconds: 180,
-                                        ),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 14,
-                                          vertical: 10,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF0C1119)
-                                              .withValues(alpha: .58),
-                                          borderRadius: BorderRadius.circular(
-                                            99,
-                                          ),
-                                          border: Border.all(
-                                            color: Colors.white.withValues(
-                                              alpha: .12,
-                                            ),
-                                            width: .5,
-                                          ),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            if (_isAnalyzing)
-                                              const SizedBox.square(
-                                                dimension: 14,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                      strokeWidth: 1.8,
-                                                      color: Colors.white,
-                                                    ),
-                                              )
-                                            else
-                                              const Icon(
-                                                CupertinoIcons.sparkles,
-                                                color: Colors.white,
-                                                size: 14,
-                                              ),
-                                            const SizedBox(width: 7),
-                                            Flexible(
-                                              child: Text(
-                                                _isAnalyzing
-                                                    ? 'Analyzing…'
-                                                    : _barcodeMode
-                                                    ? 'Center the barcode'
-                                                    : 'Center the label',
-                                                textAlign: TextAlign.center,
-                                                maxLines: 2,
-                                                style: const TextStyle(
-                                                  color: Color(0xE6FFFFFF),
-                                                  fontSize: 11,
-                                                  height: 1.25,
-                                                  fontWeight: FontWeight.w500,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              Positioned(
                                 left: 0,
                                 right: 0,
                                 bottom: 22,
@@ -378,11 +303,22 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
                                         label: _isAnalyzing
                                             ? 'Analyzing medication'
                                             : 'Capture medication',
-                                        child: GestureDetector(
+                                        child: AppPressable(
                                           key: const Key(
                                             'captureMedicationButton',
                                           ),
-                                          onTap: _isAnalyzing ? null : _capture,
+                                          onPressed: _isAnalyzing
+                                              ? null
+                                              : _capture,
+                                          busy: _isAnalyzing,
+                                          semanticLabel: 'Capture medication',
+                                          borderRadius: BorderRadius.circular(
+                                            99,
+                                          ),
+                                          hoverScale: 1.04,
+                                          pressedScale: .92,
+                                          hoverOffset: Offset.zero,
+                                          haptic: AppHapticKind.primaryAction,
                                           child: AnimatedScale(
                                             duration: const Duration(
                                               milliseconds: 120,
@@ -643,13 +579,11 @@ class _GlassIconButton extends StatelessWidget {
         child: ClipOval(
           child: WebAwareBlur(
             sigma: 12,
-            child: CupertinoButton(
+            child: ResponsiveCupertinoButton(
               padding: EdgeInsets.zero,
               minimumSize: const Size.square(40),
-              onPressed: () {
-                unawaited(AppHaptics.selection());
-                onPressed();
-              },
+              onPressed: onPressed,
+              semanticLabel: label,
               color: isSelected
                   ? colors.primary.withValues(alpha: .69)
                   : const Color(0x7A10141D),
@@ -693,15 +627,11 @@ class _CaptureSideControl extends StatelessWidget {
         enabled: enabled,
         selected: isSelected,
         label: label,
-        child: CupertinoButton(
+        child: ResponsiveCupertinoButton(
           padding: const EdgeInsets.all(8),
           minimumSize: const Size.square(48),
-          onPressed: enabled
-              ? () {
-                  unawaited(AppHaptics.selection());
-                  onPressed();
-                }
-              : null,
+          onPressed: enabled ? onPressed : null,
+          semanticLabel: label,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 160),
             width: 46,
@@ -981,13 +911,14 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                             width: 62,
                             child: Tooltip(
                               message: 'Scan Again',
-                              child: CupertinoButton(
-                                key: const Key('scanAgainButton'),
+                              child: ResponsiveCupertinoButton(
+                                buttonKey: const Key('scanAgainButton'),
                                 padding: EdgeInsets.zero,
                                 minimumSize: const Size.square(44),
                                 onPressed:
                                     widget.onScanAgain ??
                                     () => Navigator.maybePop(context),
+                                semanticLabel: 'Scan Again',
                                 child: Icon(
                                   CupertinoIcons.arrow_clockwise,
                                   color: palette.primary,
@@ -1119,52 +1050,62 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                     ),
                   ],
                 ),
-                ClipRect(
-                  child: WebAwareBlur(
-                    sigma: 20,
-                    child: Container(
-                      padding: EdgeInsets.fromLTRB(
-                        16,
-                        10,
-                        16,
-                        MediaQuery.paddingOf(context).bottom +
-                            widget.bottomNavigationInset,
-                      ),
-                      decoration: BoxDecoration(
-                        color: palette.actionMaterial,
-                        border: Border(
-                          top: BorderSide(color: palette.separator, width: .5),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: ClipRect(
+                    child: WebAwareBlur(
+                      sigma: 20,
+                      child: Container(
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          10,
+                          16,
+                          MediaQuery.paddingOf(context).bottom +
+                              widget.bottomNavigationInset,
                         ),
-                      ),
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: 48,
-                        child: FilledButton.icon(
-                          key: const Key('addScanResultButton'),
-                          onPressed: _addToCalendar,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: _isAdded
-                                ? palette.success
-                                : palette.primary,
-                            foregroundColor: _isAdded
-                                ? palette.onSuccess
-                                : Theme.of(context).colorScheme.onPrimary,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(11),
-                            ),
-                            textStyle: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
+                        decoration: BoxDecoration(
+                          color: palette.actionMaterial,
+                          border: Border(
+                            top: BorderSide(
+                              color: palette.separator,
+                              width: .5,
                             ),
                           ),
-                          icon: Icon(
-                            _isAdded
-                                ? CupertinoIcons.check_mark_circled_solid
-                                : CupertinoIcons.calendar_badge_plus,
-                            size: 18,
-                          ),
-                          label: Text(
-                            _isAdded ? 'Added to Calendar' : 'Add to Calendar',
+                        ),
+                        child: SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: FilledButton.icon(
+                            key: const Key('addScanResultButton'),
+                            onPressed: _addToCalendar,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: _isAdded
+                                  ? palette.success
+                                  : palette.primary,
+                              foregroundColor: _isAdded
+                                  ? palette.onSuccess
+                                  : Theme.of(context).colorScheme.onPrimary,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(11),
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            icon: Icon(
+                              _isAdded
+                                  ? CupertinoIcons.check_mark_circled_solid
+                                  : CupertinoIcons.calendar_badge_plus,
+                              size: 18,
+                            ),
+                            label: Text(
+                              _isAdded
+                                  ? 'Added to Calendar'
+                                  : 'Add to Calendar',
+                            ),
                           ),
                         ),
                       ),
@@ -1461,9 +1402,13 @@ class _ScheduleField extends StatelessWidget {
         Material(
           color: palette.fieldSurface,
           borderRadius: BorderRadius.circular(10),
-          child: InkWell(
-            onTap: onTap,
+          child: AppPressable(
+            onPressed: onTap,
+            semanticLabel: '$label, $value',
             borderRadius: BorderRadius.circular(10),
+            hoverScale: 1,
+            hoverOffset: Offset.zero,
+            pressedScale: .98,
             child: Container(
               height: 43,
               padding: const EdgeInsets.symmetric(horizontal: 11),

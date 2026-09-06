@@ -259,6 +259,54 @@ void main() {
     });
   });
 
+  testWidgets('responsive Cupertino buttons hover and show async progress', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final completion = Completer<void>();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        home: Scaffold(
+          body: Center(
+            child: ResponsiveCupertinoButton(
+              buttonKey: const Key('responsiveCupertinoButton'),
+              semanticLabel: 'Open details',
+              onPressed: () => completion.future,
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final button = find.byKey(const Key('responsiveCupertinoButton'));
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(tester.getCenter(button));
+    await tester.pump();
+    expect(
+      tester
+          .widget<AnimatedScale>(find.byKey(const Key('appPressableScale')))
+          .scale,
+      1.018,
+    );
+
+    await tester.tap(button);
+    await tester.pump();
+    expect(
+      find.byKey(const Key('responsiveCupertinoLoadingIndicator')),
+      findsOneWidget,
+    );
+
+    completion.complete();
+    await tester.pumpAndSettle();
+    await mouse.removePointer();
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   test('button themes expose hover, press, disabled, and cursor feedback', () {
     final theme = AppTheme.lightFor(AppAccentColor.blue);
     final style = theme.filledButtonTheme.style!;

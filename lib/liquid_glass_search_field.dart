@@ -4,6 +4,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'app_interactions.dart';
+
 /// A capsule search field that uses the same glass treatment as the native
 /// bottom navigator. Web keeps the capsule shape but uses a solid surface.
 class LiquidGlassSearchField extends StatefulWidget {
@@ -241,11 +243,12 @@ class _LiquidGlassSearchFieldState extends State<LiquidGlassSearchField> {
           Semantics(
             button: true,
             label: 'Clear search',
-            child: CupertinoButton(
-              key: const Key('liquidGlassSearchClearButton'),
+            child: ResponsiveCupertinoButton(
+              buttonKey: const Key('liquidGlassSearchClearButton'),
               minimumSize: const Size(40, 52),
               padding: EdgeInsets.zero,
               onPressed: _clear,
+              semanticLabel: 'Clear search',
               child: Icon(
                 CupertinoIcons.xmark_circle_fill,
                 color: colors.onSurfaceVariant.withValues(alpha: .72),
