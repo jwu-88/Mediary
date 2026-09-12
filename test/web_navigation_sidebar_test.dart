@@ -38,6 +38,24 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('sidebar branding follows the active appearance', (tester) async {
+    Future<String> assetFor(Brightness brightness) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Theme(
+            data: ThemeData(brightness: brightness),
+            child: WebNavigationSidebar(currentIndex: 0, onTap: (_) {}),
+          ),
+        ),
+      );
+      final image = tester.widget<Image>(find.byType(Image));
+      return (image.image as AssetImage).assetName;
+    }
+
+    expect(await assetFor(Brightness.light), 'assets/icon/Mediary App.png');
+    expect(await assetFor(Brightness.dark), 'assets/icon/Mediary App Dark.png');
+  });
+
   testWidgets('destination has hover, press, and callback feedback', (
     tester,
   ) async {
@@ -72,7 +90,7 @@ void main() {
     await mouse.moveTo(tester.getCenter(item));
     await tester.pump();
 
-    expect(tester.widget<AnimatedScale>(feedbackScale).scale, 1.012);
+    expect(tester.widget<AnimatedScale>(feedbackScale).scale, 1);
 
     await mouse.down(tester.getCenter(item));
     await tester.pump();

@@ -339,6 +339,10 @@ void main() {
       tester.getSize(find.byKey(const Key('webNavigationSidebar'))).width,
       76,
     );
+    expect(
+      tester.getTopLeft(find.byKey(const Key('webNavigationSidebar'))).dx,
+      0,
+    );
 
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
     addTearDown(mouse.removePointer);

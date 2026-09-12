@@ -70,6 +70,8 @@ flutter:
 
   assets:
     - assets/images/
+    - assets/icon/Mediary App.png
+    - assets/icon/Mediary App Dark.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

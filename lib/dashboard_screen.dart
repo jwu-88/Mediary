@@ -711,11 +711,6 @@ class _ProfileAvatarState extends State<_ProfileAvatar> {
               ),
       ),
     );
-    final showName = kIsWeb && _hovered;
-    final accountName = widget.displayName.trim().isEmpty
-        ? 'Account'
-        : widget.displayName.trim();
-
     return Semantics(
       button: true,
       label: 'Open Account Settings',
@@ -732,41 +727,23 @@ class _ProfileAvatarState extends State<_ProfileAvatar> {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
-            width: showName ? 176 : 44,
+            width: 44,
             height: 44,
             padding: const EdgeInsets.symmetric(horizontal: 1),
             decoration: BoxDecoration(
-              color: showName
+              color: _hovered
                   ? colors.surface.withValues(alpha: .92)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(24),
-              border: showName
+              border: _hovered
                   ? Border.all(
                       color: colors.outlineVariant.withValues(alpha: .55),
                     )
                   : null,
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                if (showName)
-                  Flexible(
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 12, right: 8),
-                      child: Text(
-                        accountName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: colors.onSurface,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                avatar,
-              ],
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [avatar],
             ),
           ),
         ),
