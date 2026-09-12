@@ -14,15 +14,15 @@ import 'liquid_glass_back_button.dart';
 /// A weekly medication-adherence report that can be pushed as a standalone
 /// route.
 ///
-/// The default values are realistic preview data. Pass seven entries for each
-/// data series when connecting this screen to stored medication history.
+/// Empty data is rendered as an empty report until stored medication history is
+/// supplied by the signed-in user's data store.
 class WeeklyReportScreen extends StatelessWidget {
   WeeklyReportScreen({
     super.key,
     this.weekEnding,
-    List<int> dailyTaken = const [2, 2, 2, 1, 2, 1, 1],
-    List<int> dailyScheduled = const [2, 2, 2, 2, 2, 1, 1],
-    List<int> timingOffsetsMinutes = const [2, -1, 5, 12, 4, 8, 9],
+    List<int> dailyTaken = const [],
+    List<int> dailyScheduled = const [],
+    List<int> timingOffsetsMinutes = const [],
     List<int> dailySkipped = const [],
     this.onSaveReport,
   }) : dailyTaken = _normalizeCounts(dailyTaken),

@@ -85,6 +85,9 @@ service cloud.firestore {
           'notes',
           'active',
           'source',
+          'catalogId',
+          'catalogSource',
+          'catalogVersion',
           'createdAt',
           'updatedAt',
           'archivedAt'
@@ -100,6 +103,9 @@ service cloud.firestore {
         && data.notes is string
         && data.active is bool
         && data.source in ['manual', 'scanner', 'library']
+        && optionalString(data, 'catalogId')
+        && optionalString(data, 'catalogSource')
+        && optionalString(data, 'catalogVersion')
         && data.createdAt is timestamp
         && data.updatedAt is timestamp
         && optionalTimestamp(data, 'archivedAt');
@@ -181,9 +187,18 @@ service cloud.firestore {
     }
 
     function validSavedMedication(data) {
-      return hasOnly(['savedAt', 'libraryVersion'])
+      return hasOnly([
+          'savedAt',
+          'libraryVersion',
+          'catalogId',
+          'catalogSource',
+          'catalogVersion'
+        ])
         && data.savedAt is timestamp
-        && data.libraryVersion is string;
+        && data.libraryVersion is string
+        && optionalString(data, 'catalogId')
+        && optionalString(data, 'catalogSource')
+        && optionalString(data, 'catalogVersion');
     }
 
     function validReport(data) {
@@ -221,7 +236,13 @@ service cloud.firestore {
           'createdAt',
           'updatedAt'
         ])
-        && data.status in ['uploaded', 'processing', 'complete', 'failed']
+        && data.status in [
+          'uploaded',
+          'processing',
+          'complete',
+          'failed',
+          'needsReview'
+        ]
         && data.detectedMedicationName is string
         && data.extractedText is string
         && isNumber(data.confidence)

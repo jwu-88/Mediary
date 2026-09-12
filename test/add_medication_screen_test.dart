@@ -4,6 +4,29 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/add_medication_screen.dart';
 
 void main() {
+  const fixtureMedications = [
+    MedicationOption(
+      id: 'amoxicillin-500-capsule',
+      name: 'Amoxicillin',
+      genericName: 'amoxicillin',
+      strength: '500 mg',
+      form: 'Capsule',
+    ),
+    MedicationOption(
+      id: 'vitamin-d3-1000-iu',
+      name: 'Vitamin D3',
+      genericName: 'cholecalciferol',
+      strength: '1000 IU',
+      form: 'Tablet',
+    ),
+    MedicationOption(
+      id: 'ibuprofen-200-tablet',
+      name: 'Ibuprofen',
+      genericName: 'ibuprofen',
+      strength: '200 mg',
+      form: 'Tablet',
+    ),
+  ];
   void usePhoneSize(WidgetTester tester) {
     tester.view.physicalSize = const Size(430, 932);
     tester.view.devicePixelRatio = 1;
@@ -13,7 +36,11 @@ void main() {
 
   testWidgets('filters medications by name and generic name', (tester) async {
     usePhoneSize(tester);
-    await tester.pumpWidget(const MaterialApp(home: AddMedicationScreen()));
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: AddMedicationScreen(medications: fixtureMedications),
+      ),
+    );
 
     expect(find.text('Amoxicillin'), findsOneWidget);
     expect(find.text('Vitamin D3'), findsOneWidget);
@@ -50,7 +77,10 @@ void main() {
         home: Builder(
           builder: (context) => TextButton(
             onPressed: () async {
-              result = await showAddMedicationScreen(context);
+              result = await showAddMedicationScreen(
+                context,
+                medications: fixtureMedications,
+              );
             },
             child: const Text('Open Picker'),
           ),

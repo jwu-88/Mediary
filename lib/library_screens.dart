@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'app_interactions.dart';
 import 'app_layout.dart';
 import 'app_theme.dart';
+import 'data/medication_catalog_client.dart';
 import 'in_app_page.dart';
 import 'liquid_glass_back_button.dart';
 import 'liquid_glass_search_field.dart';
@@ -13,14 +16,19 @@ import 'liquid_glass_search_field.dart';
 class MedicationLibraryScreen extends StatefulWidget {
   const MedicationLibraryScreen({
     super.key,
-    this.onOpenMedication,
+    this.catalogClient,
     this.onSavedChanged,
     this.initialSavedMedicationIds = const {},
     this.bottomPadding = 128,
   });
 
-  final VoidCallback? onOpenMedication;
-  final Future<void> Function(String medicationId, bool saved)? onSavedChanged;
+  final MedicationCatalogClient? catalogClient;
+  final Future<void> Function(
+    String medicationId,
+    bool saved, {
+    String? catalogVersion,
+  })?
+  onSavedChanged;
   final Set<String> initialSavedMedicationIds;
   final double bottomPadding;
 
@@ -30,47 +38,17 @@ class MedicationLibraryScreen extends StatefulWidget {
 }
 
 class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
-  static const _categories = [
-    'Popular',
-    'Allergy',
-    'Pain',
-    'Heart',
-    'Vitamins',
-  ];
-  static const _medications = [
-    _Medication(
-      id: 'amoxicillin-500-capsule',
-      name: 'Amoxicillin',
-      description: 'Antibiotic · Capsule',
-      category: 'Popular',
-      imageAsset: 'assets/images/medication_auth_background.jpg',
-      fallbackColor: Color(0xFFF5DDE6),
-      fallbackIcon: CupertinoIcons.capsule,
-    ),
-    _Medication(
-      id: 'ibuprofen-200-tablet',
-      name: 'Ibuprofen',
-      description: 'Pain relief · Tablet',
-      category: 'Pain',
-      imageAsset: 'assets/images/ibuprofen.jpg',
-      fallbackColor: Color(0xFFDDEBF5),
-      fallbackIcon: CupertinoIcons.bandage,
-    ),
-    _Medication(
-      id: 'cetirizine-10-tablet',
-      name: 'Cetirizine',
-      description: 'Allergy relief · Tablet',
-      category: 'Allergy',
-      imageAsset: 'assets/images/cetirizine.jpg',
-      fallbackColor: Color(0xFFE4E8E0),
-      fallbackIcon: CupertinoIcons.drop,
-    ),
-  ];
-
   final _searchController = TextEditingController();
-  String _selectedCategory = 'Popular';
+  Timer? _searchDebounce;
+  var _searchRequest = 0;
+  var _isSearching = false;
+  String? _searchError;
+  List<MedicationCatalogRecord> _results = const [];
   bool _savedOnly = false;
-  bool _sortAlphabetically = false;
+  bool _isLoadingSaved = false;
+  String? _savedError;
+  var _savedRequest = 0;
+  final Map<String, MedicationCatalogRecord> _savedResults = {};
   late final Set<String> _savedMedicationIds = {
     ...widget.initialSavedMedicationIds,
   };
@@ -84,25 +62,22 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
       _isDark ? const Color(0xFFB8B8BE) : const Color(0xFF6E6E73);
   Color get _line =>
       _isDark ? const Color(0xFF3A3A3C) : const Color(0xFFD9D9DE);
-  List<_Medication> get _visibleMedications {
-    final query = _searchController.text.trim().toLowerCase();
-    final medications = _medications.where((medication) {
-      final matchesCategory =
-          _selectedCategory == 'Popular' ||
-          medication.category == _selectedCategory;
-      final matchesQuery =
-          query.isEmpty ||
-          medication.name.toLowerCase().contains(query) ||
-          medication.description.toLowerCase().contains(query);
-      final matchesSaved =
-          !_savedOnly || _savedMedicationIds.contains(medication.id);
-      return matchesCategory && matchesQuery && matchesSaved;
-    }).toList();
-    if (_sortAlphabetically) {
-      medications.sort((first, second) => first.name.compareTo(second.name));
-    }
-    return medications;
+  List<MedicationCatalogRecord> get _visibleCatalogResults {
+    final source = _savedOnly && _searchController.text.trim().isEmpty
+        ? _savedResults.values
+        : _results;
+    return [
+      for (final medication in source)
+        if (!_savedOnly || _savedMedicationIds.contains(medication.rxcui))
+          medication,
+    ];
   }
+
+  List<_Medication> get _visibleMedications => [
+    for (final medication in _visibleCatalogResults)
+      if (!_savedOnly || _savedMedicationIds.contains(medication.rxcui))
+        _Medication.fromCatalog(medication),
+  ];
 
   @override
   void didUpdateWidget(covariant MedicationLibraryScreen oldWidget) {
@@ -112,59 +87,135 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
       _savedMedicationIds
         ..clear()
         ..addAll(widget.initialSavedMedicationIds);
+      _savedResults.removeWhere((id, _) => !_savedMedicationIds.contains(id));
+      if (_savedOnly && _searchController.text.trim().isEmpty) {
+        unawaited(_loadSavedMedications());
+      }
     }
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
-  void _selectCategory(String category) {
-    setState(() => _selectedCategory = category);
-  }
-
   void _toggleSavedOnly() {
-    setState(() => _savedOnly = !_savedOnly);
+    final next = !_savedOnly;
+    setState(() {
+      _savedOnly = next;
+      _savedError = null;
+    });
+    if (next && _searchController.text.trim().isEmpty) {
+      unawaited(_loadSavedMedications());
+    }
   }
 
-  void _toggleSort() {
-    setState(() => _sortAlphabetically = !_sortAlphabetically);
+  Future<void> _loadSavedMedications() async {
+    final client = widget.catalogClient;
+    if (client == null || _savedMedicationIds.isEmpty) return;
+    final request = ++_savedRequest;
+    if (mounted) {
+      setState(() {
+        _isLoadingSaved = true;
+        _savedError = null;
+      });
+    }
+    final loaded = <String, MedicationCatalogRecord>{};
+    Object? firstError;
+    for (final id in _savedMedicationIds) {
+      if (!mounted || request != _savedRequest) return;
+      final cached = _savedResults[id];
+      if (cached != null) {
+        loaded[id] = cached;
+        continue;
+      }
+      try {
+        loaded[id] = await client.getDetails(id);
+      } catch (error) {
+        firstError ??= error;
+      }
+    }
+    if (!mounted || request != _savedRequest) return;
+    setState(() {
+      _savedResults
+        ..clear()
+        ..addAll(loaded);
+      _savedError = loaded.isEmpty && firstError != null
+          ? firstError.toString()
+          : null;
+      _isLoadingSaved = false;
+    });
   }
 
-  Future<void> _showArticle() async {
-    await pushInAppPage<void>(
-      context,
-      builder: (context) => const _InformationPage(
-        title: 'Antibiotics 101',
-        body: 'Take antibiotics exactly as prescribed and finish the full course. Skipping doses can make treatment less effective. Contact your care team if you have a reaction or questions.',
-      ),
-    );
+  void _onSearchChanged(String value) {
+    final client = widget.catalogClient;
+    if (client == null) {
+      setState(() {});
+      return;
+    }
+    _searchDebounce?.cancel();
+    final request = ++_searchRequest;
+    final query = value.trim();
+    setState(() {
+      _searchError = null;
+      _results = const [];
+      _isSearching = query.length >= 2;
+    });
+    if (query.length < 2) return;
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () async {
+      try {
+        final page = await client.search(query);
+        if (!mounted || request != _searchRequest) return;
+        setState(() {
+          _results = page.items;
+          _isSearching = false;
+        });
+      } catch (error) {
+        if (!mounted || request != _searchRequest) return;
+        setState(() {
+          _searchError = error.toString();
+          _isSearching = false;
+        });
+      }
+    });
   }
 
   Future<void> _openMedication(_Medication medication) async {
-    if (medication.name == 'Amoxicillin' && widget.onOpenMedication != null) {
-      widget.onOpenMedication!();
-      return;
-    }
-
-    final saved = _savedMedicationIds.contains(medication.id);
-    final shouldSave = await pushInAppPage<bool>(
-      context,
-      builder: (context) =>
-          _MedicationPreviewPage(medication: medication, saved: saved),
-    );
-    if (shouldSave == null || !mounted) return;
-    await widget.onSavedChanged?.call(medication.id, shouldSave);
-    if (!mounted) return;
-    setState(() {
-      if (shouldSave) {
-        _savedMedicationIds.add(medication.id);
-      } else {
-        _savedMedicationIds.remove(medication.id);
+    var record = medication.catalogRecord;
+    if (record != null && widget.catalogClient != null) {
+      try {
+        record = await widget.catalogClient!.getDetails(record.rxcui);
+      } catch (_) {
+        // The RxNorm search result remains usable if openFDA enrichment fails.
       }
-    });
+    }
+    if (!mounted || record == null) return;
+    final resolvedRecord = record;
+    final saved = _savedMedicationIds.contains(medication.id);
+    await pushInAppPage<void>(
+      context,
+      builder: (context) => MedicationDetailScreen(
+        medication: resolvedRecord,
+        initialBookmarked: saved,
+        onBookmarkChanged: (next) async {
+          await widget.onSavedChanged?.call(
+            medication.id,
+            next,
+            catalogVersion: resolvedRecord.sourceVersion,
+          );
+          if (!mounted) return;
+          setState(() {
+            if (next) {
+              _savedMedicationIds.add(medication.id);
+            } else {
+              _savedMedicationIds.remove(medication.id);
+            }
+          });
+        },
+      ),
+    );
   }
 
   @override
@@ -198,23 +249,22 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
                       const SizedBox(height: 16),
                       _SearchField(
                         controller: _searchController,
-                        onChanged: (_) => setState(() {}),
+                        onChanged: _onSearchChanged,
                         onFilterPressed: () {
                           FocusScope.of(context).unfocus();
                           _toggleSavedOnly();
                         },
                       ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Catalog data from RxNorm (U.S. National Library of Medicine). Label details may come from openFDA. Verify with your pharmacist or care team.',
+                        style: TextStyle(
+                          color: _muted,
+                          fontSize: 10,
+                          height: 1.35,
+                        ),
+                      ),
                     ],
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: _CategoryTabs(
-                    categories: _categories,
-                    selectedCategory: _selectedCategory,
-                    ink: _ink,
-                    muted: _muted,
-                    line: _line,
-                    onSelected: _selectCategory,
                   ),
                 ),
                 SliverPadding(
@@ -227,40 +277,28 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
                   sliver: SliverList.list(
                     children: [
                       _SectionHeading(
-                        title: 'Learn Today',
-                        action: 'See All',
+                        title: 'RxNorm results',
+                        action: _savedOnly ? 'All results' : 'Saved only',
                         ink: _ink,
-                        onPressed: _showArticle,
+                        onPressed: _toggleSavedOnly,
                       ),
                       const SizedBox(height: 10),
-                      _FeaturedArticle(
-                        surface: _surface,
-                        ink: _ink,
-                        muted: _muted,
-                        line: _line,
-                        onTap: _showArticle,
-                      ),
-                      const SizedBox(height: 24),
-                      _SectionHeading(
-                        title: _selectedCategory == 'Popular'
-                            ? 'Popular Medications'
-                            : '$_selectedCategory Medications',
-                        action: _sortAlphabetically ? 'Featured' : 'A–Z',
-                        ink: _ink,
-                        onPressed: _toggleSort,
-                      ),
-                      const SizedBox(height: 10),
-                      if (medications.isEmpty)
+                      if (_isSearching || (_savedOnly && _isLoadingSaved))
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 28),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      else if (_searchError != null || _savedError != null)
+                        _LibraryError(message: _searchError ?? _savedError!)
+                      else if (medications.isEmpty)
                         _EmptyResults(
                           ink: _ink,
                           muted: _muted,
                           savedOnly: _savedOnly,
+                          hasQuery: _searchController.text.trim().isNotEmpty,
                           onReset: () {
                             _searchController.clear();
-                            setState(() {
-                              _selectedCategory = 'Popular';
-                              _savedOnly = false;
-                            });
+                            setState(() => _savedOnly = false);
                           },
                         )
                       else
@@ -395,77 +433,6 @@ class _SearchField extends StatelessWidget {
   }
 }
 
-class _CategoryTabs extends StatelessWidget {
-  const _CategoryTabs({
-    required this.categories,
-    required this.selectedCategory,
-    required this.ink,
-    required this.muted,
-    required this.line,
-    required this.onSelected,
-  });
-
-  final List<String> categories;
-  final String selectedCategory;
-  final Color ink;
-  final Color muted;
-  final Color line;
-  final ValueChanged<String> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
-    return Container(
-      height: 51,
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: line, width: .7)),
-      ),
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        scrollDirection: Axis.horizontal,
-        itemCount: categories.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 22),
-        itemBuilder: (context, index) {
-          final category = categories[index];
-          final selected = category == selectedCategory;
-          return Semantics(
-            selected: selected,
-            child: AppPressable(
-              key: Key('medicationCategory$category'),
-              onPressed: () => onSelected(category),
-              semanticLabel: '$category medication category',
-              borderRadius: BorderRadius.circular(8),
-              hoverScale: 1,
-              hoverOffset: Offset.zero,
-              pressedScale: .96,
-              child: Container(
-                alignment: Alignment.bottomCenter,
-                padding: const EdgeInsets.only(bottom: 10),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: selected ? primary : Colors.transparent,
-                      width: 2,
-                    ),
-                  ),
-                ),
-                child: Text(
-                  category,
-                  style: TextStyle(
-                    color: selected ? primary : muted,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
 class _SectionHeading extends StatelessWidget {
   const _SectionHeading({
     required this.title,
@@ -510,106 +477,6 @@ class _SectionHeading extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _FeaturedArticle extends StatelessWidget {
-  const _FeaturedArticle({
-    required this.surface,
-    required this.ink,
-    required this.muted,
-    required this.line,
-    required this.onTap,
-  });
-
-  static const _imageAsset = 'assets/images/atorvastatin.jpg';
-
-  final Color surface;
-  final Color ink;
-  final Color muted;
-  final Color line;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
-    return AppPressable(
-      key: const Key('featuredAntibioticsCard'),
-      onPressed: onTap,
-      autoManageBusy: false,
-      semanticLabel: 'Open Antibiotics 101 article',
-      borderRadius: BorderRadius.circular(14),
-      pressedScale: .985,
-      child: _LibraryGlassSurface(
-        baseColor: surface,
-        child: SizedBox(
-          height: 150,
-          child: Row(
-            children: [
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 18, 12, 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Antibiotics 101',
-                        style: TextStyle(
-                          color: ink,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 7),
-                      Text(
-                        'Why completing your full course matters.',
-                        style: TextStyle(
-                          color: muted,
-                          fontSize: 11,
-                          height: 1.4,
-                        ),
-                      ),
-                      const Spacer(),
-                      Row(
-                        children: [
-                          Text(
-                            'Read 3 min',
-                            style: TextStyle(
-                              color: primary,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          SizedBox(width: 4),
-                          Icon(
-                            CupertinoIcons.arrow_right,
-                            color: primary,
-                            size: 12,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Container(
-                width: 138,
-                decoration: BoxDecoration(
-                  border: Border(left: BorderSide(color: line, width: .7)),
-                ),
-                child: _MedicationArtwork(
-                  assetPath: _imageAsset,
-                  cacheWidth: 552,
-                  fallbackColor: const Color(0xFFF7C781),
-                  fallbackIcon: CupertinoIcons.capsule_fill,
-                  borderRadius: BorderRadius.zero,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -717,10 +584,10 @@ class _MedicationRow extends StatelessWidget {
             SizedBox.square(
               dimension: 54,
               child: _MedicationArtwork(
-                assetPath: medication.imageAsset,
+                assetPath: '',
                 cacheWidth: 216,
-                fallbackColor: medication.fallbackColor,
-                fallbackIcon: medication.fallbackIcon,
+                fallbackColor: const Color(0xFFDDE4EB),
+                fallbackIcon: CupertinoIcons.capsule_fill,
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
@@ -763,12 +630,14 @@ class _EmptyResults extends StatelessWidget {
     required this.ink,
     required this.muted,
     required this.savedOnly,
+    required this.hasQuery,
     required this.onReset,
   });
 
   final Color ink;
   final Color muted;
   final bool savedOnly;
+  final bool hasQuery;
   final VoidCallback onReset;
 
   @override
@@ -780,7 +649,11 @@ class _EmptyResults extends StatelessWidget {
           Icon(CupertinoIcons.search, color: muted, size: 28),
           const SizedBox(height: 10),
           Text(
-            savedOnly ? 'No Saved Medications Yet' : 'No Medications Found',
+            savedOnly
+                ? 'No Saved Medications Yet'
+                : hasQuery
+                ? 'No Medications Found'
+                : 'Search the medication catalog',
             style: TextStyle(
               color: ink,
               fontSize: 15,
@@ -791,13 +664,58 @@ class _EmptyResults extends StatelessWidget {
           Text(
             savedOnly
                 ? 'Save a medication to find it here.'
-                : 'Try another name or category.',
+                : hasQuery
+                ? 'Try another medication name or strength.'
+                : 'Search by name, strength, or dosage form.',
             style: TextStyle(color: muted, fontSize: 12),
           ),
           ResponsiveCupertinoButton(
             onPressed: onReset,
             semanticLabel: 'Show all medications',
-            child: const Text('Show All Medications'),
+            child: Text(savedOnly ? 'Show All Medications' : 'Clear Search'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LibraryError extends StatelessWidget {
+  const _LibraryError({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final rateLimited = message.toLowerCase().contains('rate');
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Column(
+        children: [
+          Icon(
+            rateLimited
+                ? CupertinoIcons.timer
+                : CupertinoIcons.wifi_exclamationmark,
+            color: colors.error,
+            size: 28,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            rateLimited ? 'Catalog limit reached' : 'Catalog unavailable',
+            style: TextStyle(
+              color: colors.onSurface,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            rateLimited
+                ? 'Please wait a moment and try again.'
+                : 'Check your connection and try again.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
           ),
         ],
       ),
@@ -808,12 +726,16 @@ class _EmptyResults extends StatelessWidget {
 class MedicationDetailScreen extends StatefulWidget {
   const MedicationDetailScreen({
     super.key,
+    required this.medication,
+    this.catalogClient,
     this.onBack,
     this.onAdded,
     this.initialBookmarked = false,
     this.onBookmarkChanged,
   });
 
+  final MedicationCatalogRecord medication;
+  final MedicationCatalogClient? catalogClient;
   final VoidCallback? onBack;
   final VoidCallback? onAdded;
   final bool initialBookmarked;
@@ -824,10 +746,10 @@ class MedicationDetailScreen extends StatefulWidget {
 }
 
 class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
-  static const _heroImage = 'assets/images/medication_auth_background.jpg';
-
   late bool _isBookmarked = widget.initialBookmarked;
   bool _isAdded = false;
+  late MedicationCatalogRecord _medication = widget.medication;
+  var _isLoadingDetails = false;
 
   bool get _isDark => Theme.of(context).brightness == Brightness.dark;
   Color get _background =>
@@ -851,13 +773,34 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
     if (_isAdded) widget.onAdded?.call();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _loadDetails();
+  }
+
+  Future<void> _loadDetails() async {
+    final client = widget.catalogClient;
+    if (client == null) return;
+    setState(() => _isLoadingDetails = true);
+    try {
+      final details = await client.getDetails(widget.medication.rxcui);
+      if (mounted) setState(() => _medication = details);
+    } catch (_) {
+      // The RxNorm result is still useful when label enrichment is offline.
+    } finally {
+      if (mounted) setState(() => _isLoadingDetails = false);
+    }
+  }
+
   Future<void> _showSideEffects() async {
+    final body = _medication.warnings.isEmpty
+        ? 'No structured warning information was returned for this label. Review the current label and ask your pharmacist or care team about side effects.'
+        : _medication.warnings.join('\n\n');
     await pushInAppPage<void>(
       context,
-      builder: (context) => const _InformationPage(
-        title: 'Common Side Effects',
-        body: 'Nausea\nDiarrhea\nRash\nHeadache\nChanges in taste\n\nSeek urgent care for swelling, trouble breathing, or a severe rash.',
-      ),
+      builder: (context) =>
+          _InformationPage(title: 'Common Side Effects', body: body),
     );
   }
 
@@ -878,7 +821,6 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
             right: 0,
             height: heroHeight,
             child: _DetailHero(
-              imageAsset: _heroImage,
               topPadding: media.padding.top,
               bookmarked: _isBookmarked,
               onBack: _goBack,
@@ -905,10 +847,12 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
                         118 + media.padding.bottom,
                       ),
                       child: _DetailContent(
+                        medication: _medication,
                         ink: _ink,
                         muted: _muted,
                         line: _line,
                         onViewAllSideEffects: _showSideEffects,
+                        loading: _isLoadingDetails,
                       ),
                     ),
                   ),
@@ -945,14 +889,12 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
 
 class _DetailHero extends StatelessWidget {
   const _DetailHero({
-    required this.imageAsset,
     required this.topPadding,
     required this.bookmarked,
     required this.onBack,
     required this.onBookmark,
   });
 
-  final String imageAsset;
   final double topPadding;
   final bool bookmarked;
   final VoidCallback onBack;
@@ -964,7 +906,7 @@ class _DetailHero extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         _MedicationArtwork(
-          assetPath: imageAsset,
+          assetPath: '',
           fallbackColor: const Color(0xFFDDE4EB),
           fallbackIcon: CupertinoIcons.capsule_fill,
           borderRadius: BorderRadius.zero,
@@ -1041,16 +983,20 @@ class _HeroButton extends StatelessWidget {
 
 class _DetailContent extends StatelessWidget {
   const _DetailContent({
+    required this.medication,
     required this.ink,
     required this.muted,
     required this.line,
     required this.onViewAllSideEffects,
+    required this.loading,
   });
 
+  final MedicationCatalogRecord medication;
   final Color ink;
   final Color muted;
   final Color line;
   final VoidCallback onViewAllSideEffects;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -1066,7 +1012,7 @@ class _DetailContent extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Amoxicillin',
+                    medication.name,
                     style: TextStyle(
                       color: ink,
                       fontSize: 28,
@@ -1077,7 +1023,11 @@ class _DetailContent extends StatelessWidget {
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    'Penicillin antibiotic · Prescription only',
+                    [
+                      medication.genericName,
+                      medication.doseDescription,
+                      medication.route,
+                    ].where((value) => value.isNotEmpty).join(' · '),
                     style: TextStyle(color: muted, fontSize: 12),
                   ),
                 ],
@@ -1102,16 +1052,54 @@ class _DetailContent extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 17),
-        _MedicationFacts(ink: ink, muted: muted, line: line),
+        if (loading) const LinearProgressIndicator(minHeight: 2),
+        _MedicationFacts(
+          medication: medication,
+          ink: ink,
+          muted: muted,
+          line: line,
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'Source: RxNorm ${medication.sourceVersion.isEmpty ? 'current' : medication.sourceVersion}',
+          style: TextStyle(color: muted, fontSize: 11),
+        ),
+        if (medication.warnings.isNotEmpty ||
+            medication.indications.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Label enrichment: openFDA',
+            style: TextStyle(color: muted, fontSize: 11),
+          ),
+        ],
+        if (medication.labelUrl != null) ...[
+          const SizedBox(height: 4),
+          TextButton.icon(
+            onPressed: () => launchUrl(
+              Uri.parse(medication.labelUrl!),
+              mode: LaunchMode.externalApplication,
+            ),
+            icon: const Icon(CupertinoIcons.link, size: 13),
+            label: const Text('Open the current label'),
+            style: TextButton.styleFrom(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(44, 32),
+              alignment: Alignment.centerLeft,
+              textStyle: const TextStyle(fontSize: 11),
+            ),
+          ),
+        ],
         _CopySection(
           title: 'What It Treats',
-          body: 'Treats bacterial infections of the ear, nose, throat, urinary tract, and skin.',
+          body: medication.indications.isEmpty
+              ? 'Review the current label for indications and usage.'
+              : medication.indications.join('\n\n'),
           ink: ink,
           muted: muted,
           line: line,
         ),
         const SizedBox(height: 16),
-        const _SafetyCallout(),
+        _SafetyCallout(warnings: medication.warnings),
         const SizedBox(height: 20),
         Row(
           children: [
@@ -1147,7 +1135,10 @@ class _DetailContent extends StatelessWidget {
           spacing: 10,
           runSpacing: 8,
           children: [
-            for (final effect in ['Nausea', 'Diarrhea', 'Rash'])
+            for (final effect
+                in medication.warnings.isEmpty
+                    ? ['See label for side effects']
+                    : medication.warnings.take(3))
               Text(
                 effect,
                 style: TextStyle(
@@ -1165,11 +1156,13 @@ class _DetailContent extends StatelessWidget {
 
 class _MedicationFacts extends StatelessWidget {
   const _MedicationFacts({
+    required this.medication,
     required this.ink,
     required this.muted,
     required this.line,
   });
 
+  final MedicationCatalogRecord medication;
   final Color ink;
   final Color muted;
   final Color line;
@@ -1177,10 +1170,10 @@ class _MedicationFacts extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
-    const facts = [
-      (CupertinoIcons.capsule, 'Common Form', 'Capsule'),
-      (CupertinoIcons.gauge, 'Strengths', '250–500 mg'),
-      (CupertinoIcons.clock, 'Typical Use', '5–14 days'),
+    final facts = [
+      (CupertinoIcons.capsule, 'Dosage form', medication.form),
+      (CupertinoIcons.gauge, 'Strength', medication.strength),
+      (CupertinoIcons.location, 'Route', medication.route),
     ];
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -1276,15 +1269,15 @@ class _CopySection extends StatelessWidget {
 }
 
 class _SafetyCallout extends StatelessWidget {
-  const _SafetyCallout();
+  const _SafetyCallout({required this.warnings});
+
+  final List<String> warnings;
 
   @override
   Widget build(BuildContext context) {
-    const warnings = [
-      'Do not use with a penicillin allergy',
-      'Finish the full prescribed course',
-      'Seek help for swelling or breathing trouble',
-    ];
+    final visibleWarnings = warnings.isEmpty
+        ? const ['Verify the current label with your pharmacist or care team.']
+        : warnings.take(3).toList(growable: false);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -1304,7 +1297,7 @@ class _SafetyCallout extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 9),
-          for (final warning in warnings)
+          for (final warning in visibleWarnings)
             Padding(
               padding: const EdgeInsets.only(bottom: 7),
               child: Row(
@@ -1407,87 +1400,6 @@ class _StickyAddAction extends StatelessWidget {
   }
 }
 
-class _MedicationPreviewPage extends StatelessWidget {
-  const _MedicationPreviewPage({required this.medication, required this.saved});
-
-  final _Medication medication;
-  final bool saved;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return InAppPageScaffold(
-      title: 'Medication Preview',
-      child: ListView(
-        key: const Key('medicationPreviewPage'),
-        padding: EdgeInsets.zero,
-        children: [
-          Row(
-            children: [
-              SizedBox.square(
-                dimension: 64,
-                child: _MedicationArtwork(
-                  assetPath: medication.imageAsset,
-                  cacheWidth: 256,
-                  fallbackColor: medication.fallbackColor,
-                  fallbackIcon: medication.fallbackIcon,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      medication.name,
-                      style: TextStyle(
-                        color: colors.onSurface,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      medication.description,
-                      style: TextStyle(
-                        color: colors.onSurfaceVariant,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'Check the label and follow advice from your pharmacist or care team.',
-            style: TextStyle(
-              color: colors.onSurfaceVariant,
-              fontSize: 14,
-              height: 1.45,
-            ),
-          ),
-          const SizedBox(height: 22),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              key: Key('save${medication.name}Button'),
-              onPressed: () => Navigator.pop(context, !saved),
-              icon: Icon(
-                saved ? CupertinoIcons.bookmark_fill : CupertinoIcons.bookmark,
-              ),
-              label: Text(saved ? 'Remove From Saved' : 'Save Medication'),
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-      ),
-    );
-  }
-}
-
 class _InformationPage extends StatelessWidget {
   const _InformationPage({required this.title, required this.body});
 
@@ -1552,6 +1464,9 @@ class _MedicationArtwork extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (assetPath.isEmpty) {
+      return ClipRRect(borderRadius: borderRadius, child: _fallback());
+    }
     return ClipRRect(
       borderRadius: borderRadius,
       child: Image.asset(
@@ -1574,17 +1489,20 @@ class _Medication {
     required this.id,
     required this.name,
     required this.description,
-    required this.category,
-    required this.imageAsset,
-    required this.fallbackColor,
-    required this.fallbackIcon,
+    this.catalogRecord,
   });
+
+  factory _Medication.fromCatalog(MedicationCatalogRecord record) {
+    return _Medication(
+      id: record.rxcui,
+      name: record.name,
+      description: record.description,
+      catalogRecord: record,
+    );
+  }
 
   final String id;
   final String name;
   final String description;
-  final String category;
-  final String imageAsset;
-  final Color fallbackColor;
-  final IconData fallbackIcon;
+  final MedicationCatalogRecord? catalogRecord;
 }

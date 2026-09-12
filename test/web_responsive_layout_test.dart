@@ -113,9 +113,9 @@ void main() {
       await renderWidth(
         tester,
         screen: const AddMedicationScreen(),
-        content: find.byKey(const Key('medicationOptionsList')),
+        content: find.byKey(const Key('medicationSearchField')),
       ),
-      760,
+      726,
     );
     expect(
       await renderWidth(
