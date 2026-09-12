@@ -94,28 +94,13 @@ class _LiquidGlassSearchFieldState extends State<LiquidGlassSearchField> {
       height: 52,
       decoration: BoxDecoration(
         borderRadius: radius,
-        color: useGlass ? null : colors.surfaceContainerHighest,
-        gradient: useGlass
-            ? LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: dark
-                    ? [
-                        Colors.white.withValues(
-                          alpha: highContrast ? .24 : .13,
-                        ),
-                        const Color(0xFF3C4653).withValues(alpha: .22),
-                        const Color(0xFF111318).withValues(alpha: .33),
-                      ]
-                    : [
-                        Colors.white.withValues(
-                          alpha: highContrast ? .64 : .36,
-                        ),
-                        const Color(0xFFF2F8FF).withValues(alpha: .19),
-                        const Color(0xFFD8E8F7).withValues(alpha: .11),
-                      ],
-              )
-            : null,
+        // A restrained solid tint keeps the field glassy without the
+        // decorative shading that made it feel overly synthetic.
+        color: useGlass
+            ? (dark
+                  ? const Color(0xFF2C2C2E).withValues(alpha: .90)
+                  : const Color(0xFFF2F3F6).withValues(alpha: .90))
+            : colors.surfaceContainerHighest,
         border: Border.all(
           color: _focused
               ? colors.primary.withValues(alpha: highContrast ? .9 : .56)
@@ -127,84 +112,36 @@ class _LiquidGlassSearchFieldState extends State<LiquidGlassSearchField> {
           width: _focused ? 1.25 : 1,
         ),
       ),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (useGlass) ...[
-            IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: radius,
-                  gradient: RadialGradient(
-                    center: const Alignment(-.82, -1.05),
-                    radius: 1.35,
-                    colors: [
-                      Colors.white.withValues(
-                        alpha: dark
-                            ? (highContrast ? .22 : .15)
-                            : (highContrast ? .58 : .38),
-                      ),
-                      Colors.white.withValues(alpha: dark ? .04 : .08),
-                      Colors.transparent,
-                    ],
-                    stops: const [0, .38, 1],
-                  ),
-                ),
-              ),
-            ),
-            IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: radius,
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.transparent,
-                      Colors.black.withValues(alpha: dark ? .12 : .055),
-                    ],
-                    stops: const [0, .52, 1],
-                  ),
-                ),
-              ),
-            ),
-          ],
-          TextField(
-            key: widget.textFieldKey,
-            controller: widget.controller,
-            focusNode: _focusNode,
-            autofocus: widget.autofocus,
-            onChanged: widget.onChanged,
-            textInputAction: TextInputAction.search,
-            cursorColor: colors.primary,
-            style: TextStyle(color: colors.onSurface, fontSize: 16),
-            decoration: InputDecoration(
-              hintText: widget.hintText,
-              hintStyle: TextStyle(
-                color: colors.onSurfaceVariant,
-                fontSize: 15,
-              ),
-              prefixIcon: Icon(
-                CupertinoIcons.search,
-                color: colors.onSurfaceVariant,
-                size: 20,
-              ),
-              prefixIconConstraints: const BoxConstraints(
-                minWidth: 52,
-                minHeight: 52,
-              ),
-              suffixIcon: _buildActions(colors),
-              suffixIconConstraints: const BoxConstraints(minHeight: 52),
-              contentPadding: const EdgeInsets.symmetric(vertical: 15),
-              isDense: true,
-              filled: false,
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-            ),
+      child: TextField(
+        key: widget.textFieldKey,
+        controller: widget.controller,
+        focusNode: _focusNode,
+        autofocus: widget.autofocus,
+        onChanged: widget.onChanged,
+        textInputAction: TextInputAction.search,
+        cursorColor: colors.primary,
+        style: TextStyle(color: colors.onSurface, fontSize: 16),
+        decoration: InputDecoration(
+          hintText: widget.hintText,
+          hintStyle: TextStyle(color: colors.onSurfaceVariant, fontSize: 15),
+          prefixIcon: Icon(
+            CupertinoIcons.search,
+            color: colors.onSurfaceVariant,
+            size: 20,
           ),
-        ],
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 52,
+            minHeight: 52,
+          ),
+          suffixIcon: _buildActions(colors),
+          suffixIconConstraints: const BoxConstraints(minHeight: 52),
+          contentPadding: const EdgeInsets.symmetric(vertical: 15),
+          isDense: true,
+          filled: false,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+        ),
       ),
     );
 

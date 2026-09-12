@@ -23,6 +23,14 @@ abstract final class AppColors {
   static const darkError = Color(0xFFFFB4AB);
 }
 
+/// Shared corner radii for rectangular surfaces. Circular controls and
+/// capsule controls intentionally keep their own geometry.
+abstract final class AppRadii {
+  static const standard = 14.0;
+  static const small = 8.0;
+  static const pill = 32.0;
+}
+
 /// User-selectable accent palettes. Blue remains Mediary's default.
 enum AppAccentColor {
   blue(

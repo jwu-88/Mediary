@@ -1,4 +1,3 @@
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -322,45 +321,9 @@ class _LiquidGlassAddButton extends StatelessWidget {
     final enabledAccent = highContrast
         ? Color.lerp(colors.primary, dark ? Colors.white : Colors.black, .18)!
         : colors.primary;
-    final gradientColors = enabled
-        ? dark
-              ? [
-                  Color.lerp(
-                    enabledAccent,
-                    Colors.white,
-                    .18,
-                  )!.withValues(alpha: highContrast ? .94 : .76),
-                  enabledAccent.withValues(alpha: highContrast ? .98 : .88),
-                  Color.lerp(
-                    enabledAccent,
-                    Colors.black,
-                    .20,
-                  )!.withValues(alpha: highContrast ? .96 : .84),
-                ]
-              : [
-                  Color.lerp(
-                    enabledAccent,
-                    Colors.white,
-                    .12,
-                  )!.withValues(alpha: highContrast ? .98 : .84),
-                  enabledAccent.withValues(alpha: highContrast ? .98 : .94),
-                  Color.lerp(
-                    enabledAccent,
-                    Colors.black,
-                    .16,
-                  )!.withValues(alpha: highContrast ? .96 : .90),
-                ]
-        : dark
-        ? [
-            Colors.white.withValues(alpha: .10),
-            colors.onSurface.withValues(alpha: .08),
-            colors.onSurface.withValues(alpha: .05),
-          ]
-        : [
-            Colors.white.withValues(alpha: .38),
-            colors.onSurface.withValues(alpha: .08),
-            colors.onSurface.withValues(alpha: .05),
-          ];
+    final buttonColor = enabled
+        ? enabledAccent.withValues(alpha: highContrast ? .98 : .92)
+        : (dark ? const Color(0xFF292A2F) : const Color(0xFFE1E3E8));
 
     return AppPressable(
       onPressed: onPressed,
@@ -401,59 +364,19 @@ class _LiquidGlassAddButton extends StatelessWidget {
                 curve: Curves.easeOut,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(25),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: gradientColors,
-                    stops: const [0, .46, 1],
-                  ),
+                  color: buttonColor,
                 ),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: RadialGradient(
-                          center: const Alignment(-.82, -1),
-                          radius: 1.25,
-                          colors: [
-                            Colors.white.withValues(
-                              alpha: enabled
-                                  ? (dark ? .14 : .22)
-                                  : (dark ? .08 : .20),
-                            ),
-                            Colors.transparent,
-                          ],
-                        ),
-                      ),
+                child: Center(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: enabled
+                          ? colors.onPrimary
+                          : colors.onSurfaceVariant.withValues(alpha: .68),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
                     ),
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.transparent,
-                            Colors.black.withValues(alpha: enabled ? .08 : .02),
-                          ],
-                          stops: const [0, .58, 1],
-                        ),
-                      ),
-                    ),
-                    Center(
-                      child: Text(
-                        label,
-                        style: TextStyle(
-                          color: enabled
-                              ? colors.onPrimary
-                              : colors.onSurfaceVariant.withValues(alpha: .68),
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),

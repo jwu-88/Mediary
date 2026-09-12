@@ -95,6 +95,10 @@ void main() {
       300,
       scrollable: settingsScrollable(),
     );
+    expect(
+      tester.getSize(find.byKey(const Key('appleHealthIcon'))),
+      const Size.square(24),
+    );
     await tester.tap(find.text('Apple Health'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('appleHealthInformationPage')), findsOneWidget);

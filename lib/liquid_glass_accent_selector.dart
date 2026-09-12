@@ -40,21 +40,11 @@ class LiquidGlassAccentSelector extends StatelessWidget {
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(34),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: dark
-              ? [
-                  Colors.white.withValues(alpha: highContrast ? .20 : .11),
-                  const Color(0xFF3C4653).withValues(alpha: .18),
-                  const Color(0xFF111318).withValues(alpha: .27),
-                ]
-              : [
-                  Colors.white.withValues(alpha: highContrast ? .72 : .43),
-                  const Color(0xFFF2F8FF).withValues(alpha: .24),
-                  const Color(0xFFD8E8F7).withValues(alpha: .13),
-                ],
-        ),
+        color: dark
+            ? const Color(0xFF25272B)
+                  .withValues(alpha: highContrast ? .96 : .90)
+            : const Color(0xFFF3F5F8)
+                  .withValues(alpha: highContrast ? .98 : .92),
         border: Border.all(
           color: dark
               ? Colors.white.withValues(alpha: highContrast ? .38 : .19)
@@ -128,8 +118,6 @@ class _AccentOption extends StatelessWidget {
   Widget build(BuildContext context) {
     final dark = brightness == Brightness.dark;
     final swatch = accent.resolve(brightness);
-    final lightenedSwatch = Color.lerp(swatch, Colors.white, dark ? .12 : .20)!;
-
     return Semantics(
       container: true,
       button: true,
@@ -194,11 +182,7 @@ class _AccentOption extends StatelessWidget {
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [lightenedSwatch, swatch],
-                      ),
+                      color: swatch,
                       border: Border.all(
                         color: Colors.white.withValues(alpha: dark ? .32 : .64),
                         width: .8,

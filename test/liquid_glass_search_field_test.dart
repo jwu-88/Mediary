@@ -32,7 +32,6 @@ void main() {
       find.byKey(const Key('liquidGlassSearchSurface')),
     );
     final decoration = surface.decoration! as BoxDecoration;
-    final gradient = decoration.gradient! as LinearGradient;
     final border = decoration.border! as Border;
 
     expect(
@@ -40,7 +39,8 @@ void main() {
       52,
     );
     expect(decoration.borderRadius, BorderRadius.circular(32));
-    expect(gradient.colors.every((color) => color.a < 1), isTrue);
+    expect(decoration.gradient, isNull);
+    expect(decoration.color, isNotNull);
     expect(border.top, border.right);
     expect(border.right, border.bottom);
     expect(border.bottom, border.left);
