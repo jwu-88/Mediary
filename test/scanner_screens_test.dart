@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mediary/data/medication_catalog_client.dart';
 import 'package:mediary/scanner_screens.dart';
 
 void main() {
-  testWidgets('scanner uses a black camera and icon-only controls', (
+  testWidgets('scanner uses a black camera and platform controls', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(402, 874);
@@ -17,7 +19,6 @@ void main() {
         home: MedicationScannerScreen(
           accessState: ScannerAccessState.granted,
           onRequestAccess: () async {},
-          onClose: () {},
           onCapture: () => captures++,
           bottomNavigationInset: 0,
         ),
@@ -28,11 +29,18 @@ void main() {
       find.byKey(const Key('scannerCameraBackground')),
     );
     expect(background.color, Colors.black);
-    expect(find.text('Scan Medication'), findsOneWidget);
+    expect(find.text('Scan Medication'), findsNothing);
     expect(find.text('LABEL'), findsNothing);
     expect(find.text('PILL'), findsNothing);
     expect(find.text('BARCODE'), findsNothing);
     expect(find.byKey(const Key('scannerTorchButton')), findsNothing);
+    expect(find.byKey(const Key('scannerScanFrame')), findsNothing);
+    expect(find.byKey(const Key('closeScannerButton')), findsNothing);
+    if (kIsWeb) {
+      expect(find.text('Choose Photo'), findsOneWidget);
+      expect(find.text('Capture'), findsOneWidget);
+      expect(find.text('Scan Barcode'), findsOneWidget);
+    }
 
     final cameraSurface = tester.widget<DecoratedBox>(
       find.byKey(const Key('scannerCameraPanel')),
@@ -49,7 +57,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('scannerBarcodeButton')));
     await tester.pump(const Duration(milliseconds: 200));
-    expect(find.text('Scan Barcode'), findsOneWidget);
+    expect(find.text('Scan Barcode'), findsNothing);
     expect(find.text('Center the barcode'), findsNothing);
 
     await tester.tap(find.byKey(const Key('openScannerPhotosButton')));
@@ -71,6 +79,12 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: ScanResultScreen(
+          medication: const MedicationCatalogRecord(
+            rxcui: '723',
+            name: 'Amoxicillin',
+            strength: '500 mg',
+            form: 'capsule',
+          ),
           onBack: () => backs++,
           onScanAgain: () => rescans++,
           onAdded: () => additions++,

@@ -64,6 +64,14 @@ class _WebCameraPreviewState extends State<WebCameraPreview> {
     if (_mountedFactory) return;
     _mountedFactory = true;
     ui_web.platformViewRegistry.registerViewFactory(_viewType, (int _) {
+      final wrapper = web.HTMLDivElement()
+        ..style.width = '100%'
+        ..style.height = '100%'
+        ..style.display = 'block'
+        ..style.overflow = 'hidden'
+        ..style.borderRadius = '28px'
+        ..style.backgroundColor = '#000000'
+        ..style.pointerEvents = 'none';
       final video = web.HTMLVideoElement()
         ..autoplay = true
         ..muted = true
@@ -71,13 +79,19 @@ class _WebCameraPreviewState extends State<WebCameraPreview> {
       video.setAttribute('playsinline', 'true');
       video.style.width = '100%';
       video.style.height = '100%';
-      video.style.objectFit = 'cover';
+      // Show the full camera feed instead of cropping the sides to fill the
+      // wide desktop preview. The surrounding camera panel supplies the
+      // rounded frame and black letterbox area when aspect ratios differ.
+      video.style.objectFit = 'contain';
+      video.style.objectPosition = 'center center';
+      video.style.borderRadius = '0';
       video.style.display = 'block';
       video.style.backgroundColor = '#000000';
       video.style.pointerEvents = 'none';
+      wrapper.append(video);
       _video = video;
       _attachStream();
-      return video;
+      return wrapper;
     });
   }
 

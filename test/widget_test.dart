@@ -552,9 +552,10 @@ void main() {
       expect(cameraRequests, 1);
       expect(find.byKey(const Key('liquidGlassTabBar')), findsOneWidget);
       expect(toolbar().currentIndex, 2);
-      expect(find.text('Scan Medication'), findsOneWidget);
+      expect(find.text('Scan Medication'), findsNothing);
       expect(find.byKey(const Key('scannerCameraPanel')), findsOneWidget);
       expect(find.byKey(const Key('captureMedicationButton')), findsOneWidget);
+      expect(find.byKey(const Key('closeScannerButton')), findsNothing);
 
       await tester.tap(find.byKey(const Key('captureMedicationButton')));
       await tester.pump();
@@ -562,14 +563,12 @@ void main() {
       expect(find.byKey(const Key('liquidGlassTabBar')), findsOneWidget);
       expect(toolbar().currentIndex, 2);
       expect(find.text('Review Medication'), findsOneWidget);
-      expect(find.text('98% match'), findsOneWidget);
+      expect(find.text('Manual review required'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('scanResultBackButton')));
       await tester.pump();
-      await tester.tap(find.byKey(const Key('closeScannerButton')));
-      await tester.pump();
       expect(find.byKey(const Key('liquidGlassTabBar')), findsOneWidget);
-      expect(toolbar().currentIndex, 0);
+      expect(toolbar().currentIndex, 2);
 
       await tester.tap(find.text('Calendar'));
       await tester.pumpAndSettle();
