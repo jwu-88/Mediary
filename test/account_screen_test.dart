@@ -33,7 +33,7 @@ void main() {
     expect(find.text('Jayden Wu'), findsOneWidget);
     expect(find.text('jayden@example.com'), findsOneWidget);
     expect(find.text('Health Details'), findsOneWidget);
-    expect(find.text('3 active'), findsOneWidget);
+    expect(find.text('0 active'), findsOneWidget);
     expect(find.text('Care Team'), findsOneWidget);
     expect(find.text('Health Report'), findsOneWidget);
     expect(find.text('Emergency Profile'), findsOneWidget);

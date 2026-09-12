@@ -21,6 +21,8 @@ class DashboardScreen extends StatefulWidget {
     this.onAddMedication,
     this.onOpenAccount,
     this.initialDoses = const [],
+    this.weeklyTaken = 0,
+    this.weeklyScheduled = 0,
     this.onDoseStatusChanged,
   });
 
@@ -33,6 +35,8 @@ class DashboardScreen extends StatefulWidget {
   final Future<List<String>?> Function()? onAddMedication;
   final VoidCallback? onOpenAccount;
   final List<DashboardDoseData> initialDoses;
+  final int weeklyTaken;
+  final int weeklyScheduled;
   final Future<void> Function(
     String doseId,
     String status, {
@@ -99,26 +103,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isAddingMedication = false;
   String? _announcement;
 
-  late List<_DashboardDose> _doses = [
-    const _DashboardDose(
-      name: 'Vitamin D3',
-      details: '1000 IU · 8:00 AM',
-      status: 'Taken',
-      tone: _DoseTone.taken,
-    ),
-    const _DashboardDose(
-      name: 'Amoxicillin',
-      details: '500 mg · 10:30 AM',
-      status: 'Up Next',
-      tone: _DoseTone.primary,
-    ),
-    const _DashboardDose(
-      name: 'Cetirizine',
-      details: '10 mg · 8:00 PM',
-      status: 'Tonight',
-      tone: _DoseTone.warning,
-    ),
-  ];
+  late List<_DashboardDose> _doses = const [];
 
   @override
   void initState() {
@@ -133,7 +118,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _syncInitialDoses() {
-    if (widget.initialDoses.isEmpty) return;
     _doses = [
       for (final dose in widget.initialDoses)
         _DashboardDose(
@@ -161,44 +145,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _showWeeklyReport() async {
     final prepared = await pushInAppPage<bool>(
       context,
-      builder: (context) => const _DashboardReportPage(),
+      builder: (context) => _DashboardReportPage(
+        taken: widget.weeklyTaken,
+        scheduled: widget.weeklyScheduled,
+      ),
     );
     if (prepared == true && mounted) _showConfirmation('Report Ready');
   }
 
   Future<void> _showAddMedication() async {
-    final medication = await pushInAppPage<_DashboardDose>(
+    await pushInAppPage<void>(
       context,
-      builder: (context) => const InAppOptionPage<_DashboardDose>(
-        title: 'Add Medication',
-        subtitle: 'Choose a medication for today.',
-        options: [
-          InAppPageOption(
-            label: 'Ibuprofen',
-            detail: '200 mg · 2:00 PM',
-            value: _DashboardDose(
-              name: 'Ibuprofen',
-              details: '200 mg · 2:00 PM',
-              status: 'Today',
-              tone: _DoseTone.primary,
-            ),
-          ),
-          InAppPageOption(
-            label: 'Vitamin C',
-            detail: '500 mg · 6:00 PM',
-            value: _DashboardDose(
-              name: 'Vitamin C',
-              details: '500 mg · 6:00 PM',
-              status: 'Tonight',
-              tone: _DoseTone.warning,
-            ),
-          ),
-        ],
-      ),
+      builder: (context) => const _CatalogUnavailablePage(),
     );
-    if (!mounted || medication == null) return;
-    setState(() => _doses.add(medication));
-    _showConfirmation('${medication.name} Added');
   }
 
   Future<void> _handleAddMedication() async {
@@ -249,28 +208,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  _DashboardDose _doseForSelection(String name) {
-    return switch (name) {
-      'Ibuprofen' => const _DashboardDose(
-        name: 'Ibuprofen',
-        details: '200 mg · 2:00 PM',
-        status: 'Today',
-        tone: _DoseTone.primary,
-      ),
-      'Vitamin C' => const _DashboardDose(
-        name: 'Vitamin C',
-        details: '500 mg · 6:00 PM',
-        status: 'Tonight',
-        tone: _DoseTone.warning,
-      ),
-      _ => _DashboardDose(
-        name: name,
-        details: 'Dose Not Set · Today',
-        status: 'Today',
-        tone: _DoseTone.primary,
-      ),
-    };
-  }
+  _DashboardDose _doseForSelection(String name) => _DashboardDose(
+    name: name,
+    details: 'Dose not set · Today',
+    status: 'Today',
+    tone: _DoseTone.primary,
+  );
 
   Future<void> _showDoseActions(int index) async {
     final dose = _doses[index];
@@ -442,7 +385,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   onPressed: _handleViewReport,
                 ),
                 const SizedBox(height: 6),
-                const _AdherenceSummary(),
+                _AdherenceSummary(
+                  taken: widget.weeklyTaken,
+                  scheduled: widget.weeklyScheduled,
+                ),
                 const SizedBox(height: 28),
                 _SectionHeader(
                   title: 'Today’s Schedule',
@@ -560,12 +506,35 @@ class _DashboardProfilePage extends StatelessWidget {
   }
 }
 
-class _DashboardReportPage extends StatelessWidget {
-  const _DashboardReportPage();
+class _CatalogUnavailablePage extends StatelessWidget {
+  const _CatalogUnavailablePage();
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    return InAppPageScaffold(
+      title: 'Add Medication',
+      child: Center(
+        child: Text(
+          'Search the medication catalog to add a medication.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: colors.onSurfaceVariant, fontSize: 15),
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardReportPage extends StatelessWidget {
+  const _DashboardReportPage({required this.taken, required this.scheduled});
+
+  final int taken;
+  final int scheduled;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final adherence = scheduled == 0 ? 0 : ((taken / scheduled) * 100).round();
     return InAppPageScaffold(
       title: 'Weekly Report',
       actions: [
@@ -578,7 +547,7 @@ class _DashboardReportPage extends StatelessWidget {
       child: ListView(
         children: [
           Text(
-            '92%',
+            '$adherence%',
             style: TextStyle(
               color: colors.primary,
               fontSize: 48,
@@ -589,7 +558,9 @@ class _DashboardReportPage extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '11 of 12 scheduled doses completed',
+            scheduled == 0
+                ? 'No scheduled doses yet'
+                : '$taken of $scheduled scheduled doses completed',
             style: TextStyle(
               color: colors.onSurfaceVariant,
               fontSize: 16,
@@ -823,23 +794,27 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _AdherenceSummary extends StatelessWidget {
-  const _AdherenceSummary();
+  const _AdherenceSummary({required this.taken, required this.scheduled});
+
+  final int taken;
+  final int scheduled;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final ratio = scheduled == 0 ? 0.0 : (taken / scheduled).clamp(0.0, 1.0);
     return Padding(
       padding: const EdgeInsets.fromLTRB(2, 8, 2, 0),
       child: Row(
         children: [
-          const _ProgressRing(value: .92),
+          _ProgressRing(value: ratio),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'You’re right on track!',
+                  scheduled == 0 ? 'No doses scheduled yet' : 'Weekly progress',
                   style: TextStyle(
                     color: colors.onSurface,
                     fontSize: 15,
@@ -848,7 +823,9 @@ class _AdherenceSummary extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '11 of 12 doses taken this week',
+                  scheduled == 0
+                      ? 'Add a medication and schedule a dose to begin.'
+                      : '$taken of $scheduled doses taken this week',
                   style: TextStyle(
                     color: colors.onSurfaceVariant,
                     fontSize: 12,

@@ -40,6 +40,8 @@ class ProfileScreen extends StatefulWidget {
     this.initialBloodType,
     this.initialAllergies,
     this.initialCareTeam,
+    this.activeMedicationCount = 0,
+    this.activeMedicationNames = const [],
     this.onOpenLibrary,
     this.onOpenSettings,
     this.onBack,
@@ -55,6 +57,8 @@ class ProfileScreen extends StatefulWidget {
   final String? initialBloodType;
   final List<String>? initialAllergies;
   final String? initialCareTeam;
+  final int activeMedicationCount;
+  final List<String> activeMedicationNames;
   final VoidCallback? onOpenLibrary;
 
   /// Retained for callers that have not yet migrated to the Settings shell.
@@ -88,7 +92,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late String _savedCareTeam;
 
   String _draftBloodType = 'O+';
-  List<String> _draftAllergies = ['Penicillin'];
+  List<String> _draftAllergies = [];
   String? _draftPhotoUrl;
   bool _isEditing = false;
   bool _isSaving = false;
@@ -121,10 +125,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _savedEmail = widget.email;
     _savedPhotoUrl = widget.photoUrl;
     _savedBloodType = widget.initialBloodType ?? 'O+';
-    _savedAllergies = [
-      ...(widget.initialAllergies ?? const ['Penicillin']),
-    ];
-    _savedCareTeam = widget.initialCareTeam ?? 'Dr. Hannah Lee · City Health';
+    _savedAllergies = [...(widget.initialAllergies ?? const [])];
+    _savedCareTeam = widget.initialCareTeam ?? '';
     _draftPhotoUrl = _savedPhotoUrl;
     _nameController = TextEditingController(text: _savedName);
     _emailController = TextEditingController(text: _savedEmail);
@@ -196,7 +198,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   bool _validateCareTeam() {
-    final error = _careTeamController.text.trim().length < 2
+    final value = _careTeamController.text.trim();
+    final error = value.isNotEmpty && value.length < 2
         ? 'Enter a care team or provider.'
         : null;
     setState(() => _careTeamError = error);
@@ -536,7 +539,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'Name: $_savedName\n'
         'Blood Type: $_savedBloodType\n'
         'Allergies: ${_savedAllergies.isEmpty ? 'None' : _savedAllergies.join(', ')}\n'
-        'Active Medications: 3\n'
+        'Active Medications: ${widget.activeMedicationCount}\n'
         'Care Team: $_savedCareTeam';
     return _openInfoPage(
       title: 'Health Report',
@@ -565,7 +568,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     await _openInfoPage(
       title: 'Active Medications',
-      body: 'Amoxicillin\nVitamin D3\nCetirizine',
+      body: widget.activeMedicationNames.isEmpty
+          ? 'No active medications.'
+          : widget.activeMedicationNames.join('\n'),
     );
   }
 
@@ -938,14 +943,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   onPressed: _openActiveMedications,
-                  child: const FittedBox(
+                  child: FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('3 active'),
-                        SizedBox(width: 3),
-                        Icon(CupertinoIcons.chevron_right, size: 10),
+                        Text('${widget.activeMedicationCount} active'),
+                        const SizedBox(width: 3),
+                        const Icon(CupertinoIcons.chevron_right, size: 10),
                       ],
                     ),
                   ),

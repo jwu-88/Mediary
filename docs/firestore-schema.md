@@ -78,9 +78,45 @@ private.
 | `notes` | string | yes | Private notes. |
 | `active` | boolean | yes | Whether it appears in active medication lists. |
 | `source` | string | yes | `manual`, `scanner`, or `library`. |
+| `catalogId` | string | no | RxNorm RxCUI when this medication was selected from the live catalog. |
+| `catalogSource` | string | no | External catalog identifier, currently `rxnorm`. |
+| `catalogVersion` | string | no | Source version observed when the user selected the medication. |
 | `createdAt` | timestamp | yes | Server timestamp. |
 | `updatedAt` | timestamp | yes | Server timestamp. |
 | `archivedAt` | timestamp | no | Set instead of deleting historical medication data. |
+
+Catalog fields are a snapshot of the public source at the time the user
+selected the medication. They are not a cache of the public catalog and must
+never be used as a substitute for the user's private instructions or schedule:
+
+- `catalogId` is the RxNorm RxCUI, normalized as a non-empty string.
+- `catalogSource` is currently `rxnorm`; keep this field so another catalog
+  can be added without changing the document shape.
+- `catalogVersion` is the RxNorm/API version observed during selection. It is
+  metadata for provenance, not a promise that the public record remains
+  unchanged.
+- The copied `name`, `genericName`, `strength`, `form`, and `route` fields are
+  the user's selected snapshot. Refreshing RxNorm must not silently overwrite
+  a user's private edits.
+
+For records created manually or by the scanner, omit the catalog fields. A
+scanner result is still unverified until the user searches the catalog and
+confirms a record; unresolved scanner entries remain valid manual medications.
+
+### Selecting and updating a catalog medication
+
+The client searches RxNorm at runtime and writes only the selected snapshot to
+`users/{uid}/medications/{medicationId}`. The public RxNorm/openFDA APIs remain
+read-only from the app's perspective; no user profile, notes, dosage schedule,
+or other health data is sent to those APIs. Each schedule and dose log stores
+the generated private `medicationId`, never an RxCUI. Editing instructions,
+prescriber, pharmacy, notes, dose, timing, or schedule therefore changes only
+the user's document.
+
+When a catalog item is saved to `savedMedications`, use the RxCUI plus source
+metadata as the stable public identity. Existing documents that only have a
+static library ID or `libraryVersion` remain readable during migration and
+should be upgraded the next time the user opens or saves that item.
 
 ## `users/{uid}/schedules/{scheduleId}`
 
@@ -133,10 +169,16 @@ Stores the user's saved items from the medication library.
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `savedAt` | timestamp | yes | Server timestamp. |
-| `libraryVersion` | string | yes | Version of the public library item. |
+| `catalogId` | string | yes for live catalog items | RxNorm RxCUI. |
+| `catalogSource` | string | yes for live catalog items | Currently `rxnorm`. |
+| `catalogVersion` | string | yes for live catalog items | RxNorm/API version observed when saved. |
+| `libraryVersion` | string | legacy/no | Version of the old static library item; retain while migrating existing documents. |
 
-The document ID is the public library medication ID, making save/unsave
-idempotent.
+For new live catalog saves, the document ID should be the RxCUI (or a
+deterministic source-qualified form such as `rxnorm_{rxcui}`), making
+save/unsave idempotent without inventing a static slug. Do not put a user's
+medication document ID here: this collection represents a public catalog
+bookmark, while `medications/{medicationId}` represents the private record.
 
 ## `users/{uid}/reports/{reportId}`
 
@@ -165,7 +207,7 @@ images or image URLs.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `status` | string | yes | `uploaded`, `processing`, `complete`, or `failed`. |
+| `status` | string | yes | `uploaded`, `processing`, `complete`, `failed`, or `needsReview`. |
 | `detectedMedicationName` | string | no | Text extracted by the scanner. |
 | `extractedText` | string | no | OCR text from the label. |
 | `confidence` | number | no | Extraction confidence from `0` to `1`. |
@@ -192,6 +234,37 @@ Create these composite indexes only when the corresponding queries are added:
 - Keep scan results as text and numeric confidence values only.
 - Prefer archive fields over deleting medications or dose history.
 - Treat scanner output as unverified until the user confirms it.
+- Keep public catalog data read-only and store only user-selected snapshots;
+  never mirror the entire RxNorm or openFDA catalog into Firestore.
+- Preserve existing medication, schedule, dose-log, and saved-item document
+  IDs during migration. Static medication IDs (for example,
+  `amoxicillin-500-capsule`) may be recorded as aliases, but an alias that
+  cannot be resolved to an RxCUI remains a valid manual medication.
 - Use Firestore server timestamps for audit fields.
 - Store dates separately from instants: use ISO dates for calendar grouping and
   timestamps for events.
+
+## One-time migration from the static catalog
+
+The migration is intentionally lazy and idempotent:
+
+1. Enumerate existing user medication documents and detect known static IDs or
+   `source == "library"` records without `catalogId`.
+2. Resolve an alias against RxNorm using the stored name, generic name,
+   strength, form, and route. Require an unambiguous match; do not guess when
+   multiple clinical drug concepts are returned.
+3. For an unambiguous match, add `catalogId`, `catalogSource: "rxnorm"`, and
+   the observed `catalogVersion`, while preserving the document ID and all
+   private fields. Schedules and dose logs continue to reference that same ID.
+4. If no safe match exists, leave the record in place as a manual medication
+   and record the unresolved alias in migration telemetry only (never in the
+   user's health data document).
+5. Convert saved static library entries to RxCUI-keyed saved documents only
+   after a successful resolution. Keep legacy `libraryVersion` documents
+   readable until the user has had an opportunity to re-save them.
+
+The migration must run with the user's authentication boundary in effect (or
+as a tightly scoped server-side job with equivalent per-user authorization).
+It must not bulk-download RxNorm/openFDA or write public catalog records into
+Firestore. A retry must produce the same result and must not create duplicate
+medications or schedules.

@@ -29,6 +29,9 @@ class MedicationWrite {
     required this.form,
     required this.source,
     this.id,
+    this.catalogId,
+    this.catalogSource,
+    this.catalogVersion,
     this.route = '',
     this.instructions = '',
     this.prescriber = '',
@@ -38,6 +41,9 @@ class MedicationWrite {
   });
 
   final String? id;
+  final String? catalogId;
+  final String? catalogSource;
+  final String? catalogVersion;
   final String name;
   final String genericName;
   final String strength;
@@ -341,6 +347,9 @@ class MediaryRepository {
       'notes': medication.notes,
       'active': medication.active,
       'source': medication.source,
+      'catalogId': ?medication.catalogId,
+      'catalogSource': ?medication.catalogSource,
+      'catalogVersion': ?medication.catalogVersion,
       'updatedAt': FieldValue.serverTimestamp(),
     };
     if (!exists) data['createdAt'] = FieldValue.serverTimestamp();
@@ -354,6 +363,35 @@ class MediaryRepository {
       'archivedAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  /// Annotates legacy private medication documents with live catalog aliases.
+  ///
+  /// The document IDs are intentionally preserved so schedules and dose logs
+  /// keep their existing references. Callers should build [catalogIdsByLegacyId]
+  /// by resolving legacy names through [MedicationCatalogClient], and omit any
+  /// unresolved IDs so those records remain valid manual medications.
+  Future<int> migrateLegacyMedicationAliases({
+    required Map<String, String> catalogIdsByLegacyId,
+    required String catalogVersion,
+  }) async {
+    if (catalogIdsByLegacyId.isEmpty) return 0;
+    final snapshot = await _medications.get();
+    final batch = firestore.batch();
+    var migrated = 0;
+    for (final document in snapshot.docs) {
+      final catalogId = catalogIdsByLegacyId[document.id];
+      if (catalogId == null || catalogId.trim().isEmpty) continue;
+      batch.update(document.reference, {
+        'catalogId': catalogId.trim(),
+        'catalogSource': 'rxnorm',
+        'catalogVersion': catalogVersion,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      migrated++;
+    }
+    if (migrated > 0) await batch.commit();
+    return migrated;
   }
 
   Future<String> upsertSchedule(ScheduleWrite schedule) async {
@@ -437,10 +475,16 @@ class MediaryRepository {
   Future<void> saveLibraryMedication({
     required String medicationId,
     String libraryVersion = 'current',
+    String? catalogId,
+    String? catalogSource,
+    String? catalogVersion,
   }) async {
     await _savedMedications.doc(medicationId).set({
       'savedAt': FieldValue.serverTimestamp(),
       'libraryVersion': libraryVersion,
+      'catalogId': ?catalogId,
+      'catalogSource': ?catalogSource,
+      'catalogVersion': ?catalogVersion,
     });
   }
 
@@ -506,6 +550,9 @@ class MediaryRepository {
       'notes': medication.notes,
       'active': medication.active,
       'source': medication.source,
+      'catalogId': ?medication.catalogId,
+      'catalogSource': ?medication.catalogSource,
+      'catalogVersion': ?medication.catalogVersion,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
