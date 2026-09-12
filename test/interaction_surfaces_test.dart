@@ -18,7 +18,21 @@ void main() {
     tester,
   ) async {
     usePhoneSize(tester);
-    await tester.pumpWidget(const MaterialApp(home: AddMedicationScreen()));
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: AddMedicationScreen(
+          medications: [
+            MedicationOption(
+              id: 'amoxicillin-500-capsule',
+              name: 'Amoxicillin',
+              genericName: 'amoxicillin',
+              strength: '500 mg',
+              form: 'Capsule',
+            ),
+          ],
+        ),
+      ),
+    );
 
     final row = find.byKey(
       const Key('medicationOption_amoxicillin-500-capsule'),
@@ -40,30 +54,15 @@ void main() {
     );
   });
 
-  testWidgets('library categories and medication rows use native feedback', (
-    tester,
-  ) async {
+  testWidgets('library starts with a search-first surface', (tester) async {
     usePhoneSize(tester);
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(body: MedicationLibraryScreen(bottomPadding: 0)),
       ),
     );
-
-    expect(
-      tester
-          .widget<AppPressable>(
-            find.byKey(const Key('medicationCategoryPopular')),
-          )
-          .haptic,
-      AppHapticKind.selection,
-    );
-    expect(
-      tester
-          .widget<AppPressable>(find.byKey(const Key('medicationAmoxicillin')))
-          .haptic,
-      AppHapticKind.selection,
-    );
+    expect(find.byKey(const Key('medicationSearchField')), findsOneWidget);
+    expect(find.text('Search the medication catalog'), findsOneWidget);
   });
 
   testWidgets('calendar dates and dose rows use native feedback', (
@@ -74,6 +73,15 @@ void main() {
       MaterialApp(
         home: CalendarScreen(
           initialDate: DateTime(2026, 8, 23),
+          initialDoses: const [
+            CalendarDoseData(
+              id: 'dose-1',
+              localDate: '2026-08-23',
+              name: 'Amoxicillin',
+              details: '500 mg · 10:30 AM',
+              status: 'due',
+            ),
+          ],
           bottomPadding: 0,
         ),
       ),

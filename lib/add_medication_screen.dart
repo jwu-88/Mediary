@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import 'app_interactions.dart';
 import 'app_layout.dart';
+import 'data/medication_catalog_client.dart';
 import 'liquid_glass_back_button.dart';
 import 'liquid_glass_search_field.dart';
 
@@ -15,9 +18,10 @@ class MedicationOption {
     required this.genericName,
     required this.strength,
     required this.form,
-    required this.imageUrl,
-    required this.fallbackColor,
+    this.imageUrl = '',
+    this.fallbackColor = const Color(0xFFDDE4EB),
     this.fallbackIcon = CupertinoIcons.capsule_fill,
+    this.catalogVersion = '',
   });
 
   final String id;
@@ -28,84 +32,44 @@ class MedicationOption {
   final String imageUrl;
   final Color fallbackColor;
   final IconData fallbackIcon;
+  final String catalogVersion;
 
   String get doseDescription => '$strength · $form';
-}
 
-/// Realistic sample data used until the medication catalog is connected.
-const defaultMedicationOptions = <MedicationOption>[
-  MedicationOption(
-    id: 'amoxicillin-500-capsule',
-    name: 'Amoxicillin',
-    genericName: 'Amoxicillin',
-    strength: '500 mg',
-    form: 'Capsule',
-    imageUrl: 'assets/images/medication_auth_background.jpg',
-    fallbackColor: Color(0xFFF5DDE6),
-  ),
-  MedicationOption(
-    id: 'ibuprofen-200-tablet',
-    name: 'Ibuprofen',
-    genericName: 'Ibuprofen',
-    strength: '200 mg',
-    form: 'Tablet',
-    imageUrl: 'assets/images/ibuprofen.jpg',
-    fallbackColor: Color(0xFFDDEBF5),
-    fallbackIcon: CupertinoIcons.bandage_fill,
-  ),
-  MedicationOption(
-    id: 'cetirizine-10-tablet',
-    name: 'Cetirizine',
-    genericName: 'Cetirizine Hydrochloride',
-    strength: '10 mg',
-    form: 'Tablet',
-    imageUrl: 'assets/images/cetirizine.jpg',
-    fallbackColor: Color(0xFFE2E9DF),
-    fallbackIcon: CupertinoIcons.drop_fill,
-  ),
-  MedicationOption(
-    id: 'vitamin-d3-1000-softgel',
-    name: 'Vitamin D3',
-    genericName: 'Cholecalciferol',
-    strength: '1000 IU',
-    form: 'Softgel',
-    imageUrl: 'assets/images/vitamin_d3.jpg',
-    fallbackColor: Color(0xFFFFE8C2),
-    fallbackIcon: CupertinoIcons.sun_max_fill,
-  ),
-  MedicationOption(
-    id: 'atorvastatin-20-tablet',
-    name: 'Atorvastatin',
-    genericName: 'Atorvastatin Calcium',
-    strength: '20 mg',
-    form: 'Tablet',
-    imageUrl: 'assets/images/atorvastatin.jpg',
-    fallbackColor: Color(0xFFE1E5F4),
-    fallbackIcon: CupertinoIcons.heart_fill,
-  ),
-  MedicationOption(
-    id: 'metformin-500-tablet',
-    name: 'Metformin',
-    genericName: 'Metformin Hydrochloride',
-    strength: '500 mg',
-    form: 'Tablet',
-    imageUrl: 'assets/images/metformin.jpg',
-    fallbackColor: Color(0xFFDCEDEA),
-    fallbackIcon: CupertinoIcons.circle_grid_hex_fill,
-  ),
-];
+  MedicationCatalogRecord toCatalogRecord() => MedicationCatalogRecord(
+    rxcui: id,
+    name: name,
+    genericName: genericName,
+    strength: strength,
+    form: form,
+    sourceVersion: catalogVersion,
+  );
+
+  factory MedicationOption.fromCatalog(MedicationCatalogRecord record) {
+    return MedicationOption(
+      id: record.rxcui,
+      name: record.name,
+      genericName: record.genericName,
+      strength: record.strength,
+      form: record.form,
+      catalogVersion: record.sourceVersion,
+    );
+  }
+}
 
 /// Pushes the medication picker and returns its selected medications.
 ///
 /// A `null` result means that the person cancelled the picker.
 Future<List<MedicationOption>?> showAddMedicationScreen(
   BuildContext context, {
-  List<MedicationOption> medications = defaultMedicationOptions,
+  MedicationCatalogClient? catalogClient,
+  List<MedicationOption> medications = const [],
   Set<String> initiallySelectedIds = const {},
 }) {
   return Navigator.of(context).push<List<MedicationOption>>(
     CupertinoPageRoute(
       builder: (_) => AddMedicationScreen(
+        catalogClient: catalogClient,
         medications: medications,
         initiallySelectedIds: initiallySelectedIds,
       ),
@@ -116,10 +80,12 @@ Future<List<MedicationOption>?> showAddMedicationScreen(
 class AddMedicationScreen extends StatefulWidget {
   const AddMedicationScreen({
     super.key,
-    this.medications = defaultMedicationOptions,
+    this.catalogClient,
+    this.medications = const [],
     this.initiallySelectedIds = const {},
   });
 
+  final MedicationCatalogClient? catalogClient;
   final List<MedicationOption> medications;
   final Set<String> initiallySelectedIds;
 
@@ -129,38 +95,94 @@ class AddMedicationScreen extends StatefulWidget {
 
 class _AddMedicationScreenState extends State<AddMedicationScreen> {
   final _searchController = TextEditingController();
-  late final Set<String> _selectedIds = {
-    for (final id in widget.initiallySelectedIds)
-      if (widget.medications.any((medication) => medication.id == id)) id,
+  Timer? _searchDebounce;
+  var _searchRequest = 0;
+  var _isSearching = false;
+  String? _searchError;
+  List<MedicationOption> _results = const [];
+  late final Set<String> _selectedIds = {...widget.initiallySelectedIds};
+  late final Map<String, MedicationOption> _selectedMedications = {
+    for (final medication in widget.medications)
+      if (widget.initiallySelectedIds.contains(medication.id))
+        medication.id: medication,
   };
 
+  bool get _usesLiveCatalog => widget.catalogClient != null;
+
   List<MedicationOption> get _visibleMedications {
+    if (_usesLiveCatalog) return _results;
     final query = _searchController.text.trim().toLowerCase();
-    if (query.isEmpty) return widget.medications;
-    return widget.medications.where((medication) {
-      return medication.name.toLowerCase().contains(query) ||
-          medication.genericName.toLowerCase().contains(query) ||
-          medication.strength.toLowerCase().contains(query) ||
-          medication.form.toLowerCase().contains(query);
-    }).toList();
+    return widget.medications
+        .where((medication) {
+          return query.isEmpty ||
+              medication.name.toLowerCase().contains(query) ||
+              medication.genericName.toLowerCase().contains(query) ||
+              medication.strength.toLowerCase().contains(query) ||
+              medication.form.toLowerCase().contains(query);
+        })
+        .toList(growable: false);
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
-  void _toggleMedication(String id) {
+  void _onSearchChanged(String value) {
+    if (!_usesLiveCatalog) {
+      setState(() {});
+      return;
+    }
+    _searchDebounce?.cancel();
+    final request = ++_searchRequest;
+    final query = value.trim();
     setState(() {
-      if (!_selectedIds.add(id)) _selectedIds.remove(id);
+      _searchError = null;
+      _results = const [];
+      _isSearching = query.length >= 2;
+    });
+    if (query.length < 2) return;
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () async {
+      try {
+        final page = await widget.catalogClient!.search(query);
+        if (!mounted || request != _searchRequest) return;
+        setState(() {
+          _results = [
+            for (final item in page.items) MedicationOption.fromCatalog(item),
+          ];
+          _isSearching = false;
+        });
+      } catch (error) {
+        if (!mounted || request != _searchRequest) return;
+        setState(() {
+          _searchError = error.toString();
+          _isSearching = false;
+        });
+      }
+    });
+  }
+
+  void _toggleMedication(MedicationOption medication) {
+    setState(() {
+      if (!_selectedIds.add(medication.id)) {
+        _selectedMedications.remove(medication.id);
+      } else {
+        _selectedMedications[medication.id] = medication;
+      }
     });
   }
 
   void _completeSelection() {
+    final source = _usesLiveCatalog ? _results : widget.medications;
     final result = [
-      for (final medication in widget.medications)
+      for (final medication in source)
         if (_selectedIds.contains(medication.id)) medication,
+      for (final id in _selectedIds)
+        if (!source.any((medication) => medication.id == id) &&
+            _selectedMedications[id] != null)
+          _selectedMedications[id]!,
     ];
     Navigator.of(context).pop(result);
   }
@@ -210,7 +232,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                   child: LiquidGlassSearchField(
                     controller: _searchController,
                     textFieldKey: const Key('medicationSearchField'),
-                    onChanged: (_) => setState(() {}),
+                    onChanged: _onSearchChanged,
                     hintText: 'Search Medications',
                   ),
                 ),
@@ -245,12 +267,19 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                   ),
                 ),
                 Expanded(
-                  child: medications.isEmpty
+                  child: _isSearching
+                      ? const Center(child: CircularProgressIndicator())
+                      : _searchError != null
+                      ? _CatalogError(message: _searchError!)
+                      : medications.isEmpty
                       ? _EmptyMedicationSearch(
                           onClear: () {
                             _searchController.clear();
-                            setState(() {});
+                            _onSearchChanged('');
                           },
+                          prompt:
+                              _usesLiveCatalog &&
+                              _searchController.text.trim().isEmpty,
                         )
                       : ListView.separated(
                           key: const Key('medicationOptionsList'),
@@ -269,7 +298,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                             return _MedicationOptionRow(
                               medication: medication,
                               selected: _selectedIds.contains(medication.id),
-                              onPressed: () => _toggleMedication(medication.id),
+                              onPressed: () => _toggleMedication(medication),
                             );
                           },
                         ),
@@ -505,6 +534,7 @@ class _MedicationImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (medication.imageUrl.isEmpty) return _fallback();
     return ClipRRect(
       borderRadius: BorderRadius.circular(9),
       child: SizedBox.square(
@@ -526,9 +556,10 @@ class _MedicationImage extends StatelessWidget {
 }
 
 class _EmptyMedicationSearch extends StatelessWidget {
-  const _EmptyMedicationSearch({required this.onClear});
+  const _EmptyMedicationSearch({required this.onClear, this.prompt = false});
 
   final VoidCallback onClear;
+  final bool prompt;
 
   @override
   Widget build(BuildContext context) {
@@ -546,7 +577,7 @@ class _EmptyMedicationSearch extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'No Medications Found',
+              prompt ? 'Search the medication catalog' : 'No Medications Found',
               style: TextStyle(
                 color: colors.onSurface,
                 fontSize: 17,
@@ -555,12 +586,62 @@ class _EmptyMedicationSearch extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'Try a different name or strength.',
+              prompt
+                  ? 'Search by medication name, strength, or form.'
+                  : 'Try a different name or strength.',
               textAlign: TextAlign.center,
               style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14),
             ),
-            const SizedBox(height: 8),
-            TextButton(onPressed: onClear, child: const Text('Clear Search')),
+            if (!prompt) ...[
+              const SizedBox(height: 8),
+              TextButton(onPressed: onClear, child: const Text('Clear Search')),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CatalogError extends StatelessWidget {
+  const _CatalogError({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final rateLimited = message.toLowerCase().contains('rate');
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              rateLimited
+                  ? CupertinoIcons.timer
+                  : CupertinoIcons.wifi_exclamationmark,
+              color: colors.error,
+              size: 28,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              rateLimited ? 'Catalog limit reached' : 'Catalog unavailable',
+              style: TextStyle(
+                color: colors.onSurface,
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              rateLimited
+                  ? 'Please wait a moment and try again.'
+                  : 'Check your connection and try again.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14),
+            ),
           ],
         ),
       ),

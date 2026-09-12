@@ -186,9 +186,15 @@ class MediaryDataStore extends ChangeNotifier {
   Future<void> saveLibraryMedication({
     required String id,
     String libraryVersion = 'current',
+    String? catalogId,
+    String? catalogSource,
+    String? catalogVersion,
   }) => repository.saveLibraryMedication(
     medicationId: id,
     libraryVersion: libraryVersion,
+    catalogId: catalogId,
+    catalogSource: catalogSource,
+    catalogVersion: catalogVersion,
   );
 
   Future<void> unsaveLibraryMedication(String id) =>

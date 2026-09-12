@@ -241,7 +241,7 @@ void main() {
     expect(find.text('Settings'), findsOneWidget);
     expect(find.text('Weekly Progress'), findsOneWidget);
     expect(find.text('Today’s Schedule'), findsOneWidget);
-    expect(find.text('Amoxicillin'), findsOneWidget);
+    expect(find.text('No medications scheduled'), findsOneWidget);
   });
 
   testWidgets('dashboard falls back to the email username', (tester) async {
@@ -275,16 +275,8 @@ void main() {
       ),
     );
 
-    expect(find.text('You’re right on track!'), findsOneWidget);
-    expect(find.byKey(const Key('dashboardScheduleTable')), findsOneWidget);
-    expect(find.text('Dose & Time'), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byKey(const Key('dashboardScheduleTable')),
-        matching: find.byType(Divider),
-      ),
-      findsNWidgets(3),
-    );
+    expect(find.text('No doses scheduled yet'), findsOneWidget);
+    expect(find.text('No medications scheduled'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('dashboardViewReportButton')));
     await tester.pumpAndSettle();
@@ -294,19 +286,6 @@ void main() {
 
     await tester.tap(find.byKey(const Key('weeklyReportBackButton')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('dashboardAddButton')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('addMedicationScreen')), findsOneWidget);
-
-    await tester.tap(
-      find.byKey(const Key('medicationOption_ibuprofen-200-tablet')),
-    );
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('addSelectedMedicationsButton')));
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('dashboardScheduleTable')), findsOneWidget);
-    expect(find.text('Ibuprofen'), findsOneWidget);
   });
 
   testWidgets('web shell uses an opaque hover sidebar instead of glass', (
@@ -445,8 +424,8 @@ void main() {
     expect(find.text('Account'), findsOneWidget);
     expect(find.text('Taylor Morgan'), findsOneWidget);
     expect(find.text('Health Details'), findsOneWidget);
-    expect(find.text('Penicillin'), findsOneWidget);
-    expect(find.text('3 active'), findsOneWidget);
+    expect(find.text('None recorded'), findsOneWidget);
+    expect(find.text('0 active'), findsOneWidget);
     expect(find.text('Emergency Profile'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('editProfileButton')));
@@ -601,13 +580,7 @@ void main() {
       3,
     );
     expect(find.text('Medication Library'), findsOneWidget);
-    expect(find.text('Antibiotics 101'), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('medicationAmoxicillin')));
-    await tester.pumpAndSettle();
-    expect(find.text('What It Treats'), findsOneWidget);
-    expect(find.text('Important Safety'), findsOneWidget);
-    expect(find.text('Add to My Schedule'), findsOneWidget);
+    expect(find.text('Search the medication catalog'), findsOneWidget);
   });
 
   testWidgets('opens settings and selects dark appearance', (tester) async {

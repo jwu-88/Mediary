@@ -2,17 +2,32 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/app_theme.dart';
+import 'package:mediary/data/medication_catalog_client.dart';
 import 'package:mediary/library_screens.dart';
 import 'package:mediary/profile_screen.dart';
 import 'package:mediary/settings_screen.dart';
 
 void main() {
+  const amoxicillin = MedicationCatalogRecord(
+    rxcui: '123',
+    name: 'Amoxicillin',
+    genericName: 'amoxicillin',
+    strength: '500 mg',
+    form: 'capsule',
+  );
+  final catalogClient = _TestCatalogClient();
+
   testWidgets('library search filters medications and uses glass styling', (
     tester,
   ) async {
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(body: MedicationLibraryScreen(bottomPadding: 0)),
+      MaterialApp(
+        home: Scaffold(
+          body: MedicationLibraryScreen(
+            catalogClient: catalogClient,
+            bottomPadding: 0,
+          ),
+        ),
       ),
     );
     await tester.pump();
@@ -22,6 +37,7 @@ void main() {
       find.byKey(const Key('medicationSearchField')),
       'ibuprofen',
     );
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.pump();
 
     expect(find.text('Ibuprofen'), findsOneWidget);
@@ -29,36 +45,39 @@ void main() {
 
     await tester.tap(find.byKey(const Key('liquidGlassSearchClearButton')));
     await tester.pump();
-    expect(find.text('Amoxicillin'), findsOneWidget);
+    expect(find.text('Search the medication catalog'), findsOneWidget);
   });
 
   testWidgets('library previews, saves, and filters medications', (
     tester,
   ) async {
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(body: MedicationLibraryScreen(bottomPadding: 0)),
+      MaterialApp(
+        home: Scaffold(
+          body: MedicationLibraryScreen(
+            catalogClient: catalogClient,
+            bottomPadding: 0,
+          ),
+        ),
       ),
     );
     await tester.pump();
 
-    await tester.drag(
-      find.byKey(const Key('medicationLibraryScrollView')),
-      const Offset(0, -360),
+    await tester.enterText(
+      find.byKey(const Key('medicationSearchField')),
+      'ibuprofen',
     );
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
     await tester.tap(find.byKey(const Key('medicationIbuprofen')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('medicationPreviewPage')), findsOneWidget);
+    expect(find.byKey(const Key('medicationDetailScrollView')), findsOneWidget);
     expect(find.byType(BottomSheet), findsNothing);
-    expect(find.text('Save Medication'), findsOneWidget);
+    expect(find.text('Source: RxNorm test'), findsOneWidget);
 
-    await tester.tap(find.text('Save Medication'));
+    await tester.tap(find.byKey(const Key('medicationDetailBookmarkButton')));
     await tester.pumpAndSettle();
-    await tester.drag(
-      find.byKey(const Key('medicationLibraryScrollView')),
-      const Offset(0, 500),
-    );
+    await tester.tap(find.byKey(const Key('medicationDetailBackButton')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('savedMedicationsButton')));
     await tester.pumpAndSettle();
@@ -71,7 +90,15 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      const MaterialApp(home: Scaffold(body: MedicationDetailScreen())),
+      MaterialApp(
+        home: Scaffold(
+          body: MedicationDetailScreen(
+            medication: amoxicillin.copyWith(
+              warnings: const ['Nausea', 'Diarrhea', 'Rash', 'Headache'],
+            ),
+          ),
+        ),
+      ),
     );
     await tester.pump();
 
@@ -89,7 +116,7 @@ void main() {
     );
     expect(find.byType(BottomSheet), findsNothing);
     expect(find.textContaining('Headache'), findsOneWidget);
-    expect(find.textContaining('Seek urgent care'), findsOneWidget);
+    expect(find.textContaining('Nausea'), findsOneWidget);
   });
 
   testWidgets('profile rows open useful summaries', (tester) async {
@@ -169,4 +196,40 @@ void main() {
     expect(find.text('Copied to device clipboard'), findsOneWidget);
     expect(copiedData, contains('Mediary Data Export'));
   });
+}
+
+class _TestCatalogClient implements MedicationCatalogClient {
+  static const _records = [
+    MedicationCatalogRecord(
+      rxcui: '123',
+      name: 'Amoxicillin',
+      genericName: 'amoxicillin',
+      strength: '500 mg',
+      form: 'Capsule',
+      sourceVersion: 'test',
+    ),
+    MedicationCatalogRecord(
+      rxcui: '456',
+      name: 'Ibuprofen',
+      genericName: 'ibuprofen',
+      strength: '200 mg',
+      form: 'Tablet',
+      sourceVersion: 'test',
+    ),
+  ];
+
+  @override
+  Future<CatalogSearchPage> search(String query) async {
+    final normalized = query.toLowerCase();
+    return CatalogSearchPage(
+      sourceVersion: 'test',
+      items: _records
+          .where((record) => record.name.toLowerCase().contains(normalized))
+          .toList(growable: false),
+    );
+  }
+
+  @override
+  Future<MedicationCatalogRecord> getDetails(String rxcui) async =>
+      _records.firstWhere((record) => record.rxcui == rxcui);
 }

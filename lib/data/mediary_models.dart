@@ -121,6 +121,9 @@ class MedicationRecord {
     required this.notes,
     required this.active,
     required this.source,
+    this.catalogId,
+    this.catalogSource,
+    this.catalogVersion,
     this.createdAt,
     this.updatedAt,
     this.archivedAt,
@@ -138,6 +141,9 @@ class MedicationRecord {
   final String notes;
   final bool active;
   final String source;
+  final String? catalogId;
+  final String? catalogSource;
+  final String? catalogVersion;
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final DateTime? archivedAt;
@@ -159,11 +165,20 @@ class MedicationRecord {
       notes: _string(data['notes']),
       active: _bool(data['active'], true),
       source: _string(data['source'], 'manual'),
+      catalogId: _nullableString(data['catalogId']),
+      catalogSource: _nullableString(data['catalogSource']),
+      catalogVersion: _nullableString(data['catalogVersion']),
       createdAt: firestoreDate(data['createdAt']),
       updatedAt: firestoreDate(data['updatedAt']),
       archivedAt: firestoreDate(data['archivedAt']),
     );
   }
+}
+
+String? _nullableString(Object? value) {
+  if (value is! String) return null;
+  final normalized = value.trim();
+  return normalized.isEmpty ? null : normalized;
 }
 
 class ScheduleRecord {
@@ -273,9 +288,18 @@ class DoseLogRecord {
 }
 
 class SavedMedicationRecord {
-  const SavedMedicationRecord({required this.id, this.libraryVersion = ''});
+  const SavedMedicationRecord({
+    required this.id,
+    this.catalogId,
+    this.catalogSource,
+    this.catalogVersion,
+    this.libraryVersion = '',
+  });
 
   final String id;
+  final String? catalogId;
+  final String? catalogSource;
+  final String? catalogVersion;
   final String libraryVersion;
 
   factory SavedMedicationRecord.fromSnapshot(
@@ -284,6 +308,9 @@ class SavedMedicationRecord {
     final data = snapshot.data() ?? const <String, dynamic>{};
     return SavedMedicationRecord(
       id: snapshot.id,
+      catalogId: _nullableString(data['catalogId']),
+      catalogSource: _nullableString(data['catalogSource']),
+      catalogVersion: _nullableString(data['catalogVersion']),
       libraryVersion: _string(data['libraryVersion']),
     );
   }

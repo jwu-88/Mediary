@@ -16,6 +16,7 @@ import 'dashboard_screen.dart';
 import 'data/mediary_data_store.dart';
 import 'data/mediary_models.dart';
 import 'data/mediary_repository.dart';
+import 'data/medication_catalog_client.dart';
 import 'firebase_options.dart';
 import 'library_screens.dart';
 import 'liquid_glass_tab_bar.dart';
@@ -1105,6 +1106,7 @@ class AuthenticatedHome extends StatefulWidget {
     this.onAccentColorChanged,
     this.onSignOut,
     this.dataStore,
+    this.catalogClient,
     this.now,
     this.cameraPermissionRequester,
     this.onOpenCameraSettings,
@@ -1122,6 +1124,7 @@ class AuthenticatedHome extends StatefulWidget {
   final ValueChanged<AppAccentColor>? onAccentColorChanged;
   final Future<void> Function()? onSignOut;
   final MediaryDataStore? dataStore;
+  final MedicationCatalogClient? catalogClient;
   final DateTime? now;
   final CameraPermissionRequester? cameraPermissionRequester;
   final Future<bool> Function()? onOpenCameraSettings;
@@ -1135,6 +1138,8 @@ class AuthenticatedHome extends StatefulWidget {
 }
 
 class _AuthenticatedHomeState extends State<AuthenticatedHome> {
+  late final MedicationCatalogClient _catalogClient =
+      widget.catalogClient ?? RxNormMedicationCatalogClient();
   int _selectedIndex = 0;
   final Set<int> _visitedDestinations = {0};
   bool _showScanResult = false;
@@ -1160,6 +1165,10 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   @override
   void dispose() {
     widget.dataStore?.removeListener(_onStoreChanged);
+    if (widget.catalogClient == null &&
+        _catalogClient is RxNormMedicationCatalogClient) {
+      _catalogClient.dispose();
+    }
     super.dispose();
   }
 
@@ -1219,6 +1228,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   Widget _buildDashboard(BuildContext context) {
     final store = widget.dataStore;
     final profilePhotoUrl = store?.profile?.photoUrl ?? widget.photoUrl;
+    final series = _reportSeries(store);
     return DashboardScreen(
       email: store?.profile?.email ?? widget.email,
       displayName: store?.profile?.displayName ?? widget.displayName,
@@ -1226,6 +1236,8 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       now: widget.now,
       bottomPadding: _usesSidebarNavigation ? 32 : 120,
       initialDoses: _dashboardDoses(store),
+      weeklyTaken: series.taken.reduce((a, b) => a + b),
+      weeklyScheduled: series.scheduled.reduce((a, b) => a + b),
       onDoseStatusChanged: store == null
           ? null
           : (doseId, status, {snoozedUntil}) => store.updateDoseStatus(
@@ -1251,16 +1263,23 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
         );
       },
       onAddMedication: () async {
-        final selections = await showAddMedicationScreen(context);
+        final selections = await showAddMedicationScreen(
+          context,
+          catalogClient: _catalogClient,
+        );
         if (selections != null && store != null) {
           for (final medication in selections) {
+            final catalog = await _catalogDetailsFor(medication);
             await store.saveMedication(
               MedicationWrite(
-                id: medication.id,
-                name: medication.name,
-                genericName: medication.genericName,
-                strength: medication.strength,
-                form: medication.form,
+                name: catalog.name,
+                genericName: catalog.genericName,
+                strength: catalog.strength,
+                form: catalog.form,
+                route: catalog.route,
+                catalogId: catalog.rxcui,
+                catalogSource: 'rxnorm',
+                catalogVersion: catalog.sourceVersion,
                 source: 'library',
               ),
             );
@@ -1270,6 +1289,16 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       },
       onOpenAccount: () => _openAccount(context),
     );
+  }
+
+  Future<MedicationCatalogRecord> _catalogDetailsFor(
+    MedicationOption medication,
+  ) async {
+    try {
+      return await _catalogClient.getDetails(medication.id);
+    } catch (_) {
+      return medication.toCatalogRecord();
+    }
   }
 
   ({List<int> taken, List<int> scheduled, List<int> offsets, List<int> skipped})
@@ -1332,45 +1361,25 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   Widget _buildLibrary(BuildContext context) {
     final store = widget.dataStore;
     return MedicationLibraryScreen(
+      catalogClient: _catalogClient,
       bottomPadding: _usesSidebarNavigation ? 32 : 128,
       initialSavedMedicationIds: {
         if (store != null) ...store.savedMedications.map((item) => item.id),
       },
       onSavedChanged: store == null
           ? null
-          : (medicationId, saved) async {
+          : (medicationId, saved, {catalogVersion}) async {
               if (saved) {
-                await store.saveLibraryMedication(id: medicationId);
+                await store.saveLibraryMedication(
+                  id: medicationId,
+                  catalogId: medicationId,
+                  catalogSource: 'rxnorm',
+                  catalogVersion: catalogVersion,
+                );
               } else {
                 await store.unsaveLibraryMedication(medicationId);
               }
             },
-      onOpenMedication: () {
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (context) => MedicationDetailScreen(
-              initialBookmarked:
-                  store?.savedMedications.any(
-                    (item) => item.id == 'amoxicillin-500-capsule',
-                  ) ??
-                  false,
-              onBookmarkChanged: store == null
-                  ? null
-                  : (saved) async {
-                      if (saved) {
-                        await store.saveLibraryMedication(
-                          id: 'amoxicillin-500-capsule',
-                        );
-                      } else {
-                        await store.unsaveLibraryMedication(
-                          'amoxicillin-500-capsule',
-                        );
-                      }
-                    },
-            ),
-          ),
-        );
-      },
     );
   }
 
@@ -1390,6 +1399,17 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
           initialBloodType: widget.dataStore?.profile?.bloodType,
           initialAllergies: widget.dataStore?.profile?.allergies,
           initialCareTeam: widget.dataStore?.profile?.careTeam,
+          activeMedicationCount:
+              widget.dataStore?.medications
+                  .where((medication) => medication.active)
+                  .length ??
+              0,
+          activeMedicationNames:
+              widget.dataStore?.medications
+                  .where((medication) => medication.active)
+                  .map((medication) => medication.name)
+                  .toList(growable: false) ??
+              const [],
           pageTitle: 'Account',
           onBack: () => Navigator.of(accountContext).maybePop(),
           onOpenLibrary: () {
@@ -1442,67 +1462,11 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
         onBack: () => setState(() => _showScanResult = false),
         onScanAgain: () => setState(() => _showScanResult = false),
         onScanReady: store?.saveScan,
-        onScheduleConfirmed: store == null
-            ? null
-            : (schedule) async {
-                final doseParts = schedule.dose.split(' ');
-                final doseAmount = schedule.dose.startsWith('½')
-                    ? .5
-                    : double.tryParse(doseParts.first) ?? 1;
-                final doseUnit = doseParts.length > 1
-                    ? doseParts.last
-                    : 'capsule';
-                final frequency = switch (schedule.frequency) {
-                  'Every 8 hours' => 'every8Hours',
-                  'Every 12 hours' => 'every12Hours',
-                  'As needed' => 'asNeeded',
-                  _ => 'daily',
-                };
-                final durationDays =
-                    int.tryParse(schedule.duration.split(' ').first) ?? 7;
-                final endDate = schedule.startDate.add(
-                  Duration(days: durationDays - 1),
-                );
-                final localDate = _dateKey(schedule.startDate);
-                final localTime =
-                    '${schedule.time.hour.toString().padLeft(2, '0')}:${schedule.time.minute.toString().padLeft(2, '0')}';
-                final scheduleId = 'scan_amoxicillin_${localDate}_$localTime';
-                await store.commitScheduleAndDose(
-                  medication: const MedicationWrite(
-                    id: 'amoxicillin-500-capsule',
-                    name: 'Amoxicillin',
-                    genericName: 'Amoxicillin',
-                    strength: '500 mg',
-                    form: 'Capsule',
-                    source: 'scanner',
-                  ),
-                  schedule: ScheduleWrite(
-                    id: scheduleId,
-                    medicationId: 'amoxicillin-500-capsule',
-                    doseAmount: doseAmount,
-                    doseUnit: doseUnit,
-                    times: [localTime],
-                    frequency: frequency,
-                    startDate: localDate,
-                    endDate: _dateKey(endDate),
-                    timezone: 'UTC',
-                  ),
-                  dose: DoseWrite(
-                    id: '${scheduleId}_$localDate',
-                    medicationId: 'amoxicillin-500-capsule',
-                    scheduleId: scheduleId,
-                    scheduledFor: DateTime(
-                      schedule.startDate.year,
-                      schedule.startDate.month,
-                      schedule.startDate.day,
-                      schedule.time.hour,
-                      schedule.time.minute,
-                    ),
-                    localDate: localDate,
-                    localTime: localTime,
-                  ),
-                );
-              },
+        onSearchMedication: () => setState(() {
+          _showScanResult = false;
+          _selectedIndex = 3;
+          _visitedDestinations.add(3);
+        }),
         bottomNavigationInset: _usesSidebarNavigation ? 16 : 106,
       );
     }
@@ -1541,7 +1505,10 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       onAddDose: store == null
           ? null
           : (date) async {
-              final selections = await showAddMedicationScreen(context);
+              final selections = await showAddMedicationScreen(
+                context,
+                catalogClient: _catalogClient,
+              );
               if (selections == null || selections.isEmpty || !mounted) {
                 return;
               }
@@ -1562,15 +1529,19 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
               final localTime =
                   '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
               for (final medication in selections) {
+                final catalog = await _catalogDetailsFor(medication);
                 final scheduleId =
                     'once_${medication.id}_${localDate}_$localTime';
                 await store.commitScheduleAndDose(
                   medication: MedicationWrite(
-                    id: medication.id,
-                    name: medication.name,
-                    genericName: medication.genericName,
-                    strength: medication.strength,
-                    form: medication.form,
+                    name: catalog.name,
+                    genericName: catalog.genericName,
+                    strength: catalog.strength,
+                    form: catalog.form,
+                    route: catalog.route,
+                    catalogId: catalog.rxcui,
+                    catalogSource: 'rxnorm',
+                    catalogVersion: catalog.sourceVersion,
                     source: 'library',
                   ),
                   schedule: ScheduleWrite(

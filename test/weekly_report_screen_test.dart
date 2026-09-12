@@ -10,7 +10,14 @@ void main() {
   Widget buildReport({Widget? home}) {
     return MaterialApp(
       theme: AppTheme.light,
-      home: home ?? WeeklyReportScreen(weekEnding: DateTime(2026, 8, 30)),
+      home:
+          home ??
+          WeeklyReportScreen(
+            weekEnding: DateTime(2026, 8, 30),
+            dailyTaken: const [2, 2, 2, 1, 2, 1, 1],
+            dailyScheduled: const [2, 2, 2, 2, 2, 1, 1],
+            timingOffsetsMinutes: const [2, -1, 5, 12, 4, 8, 9],
+          ),
     );
   }
 

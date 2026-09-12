@@ -38,6 +38,27 @@ void main() {
             email: 'person@example.com',
             displayName: 'Taylor Morgan',
             now: DateTime(2026, 8, 23),
+            initialDoses: const [
+              DashboardDoseData(
+                id: 'dose-1',
+                name: 'Vitamin D3',
+                details: '1000 IU · 8:00 AM',
+                status: 'taken',
+              ),
+              DashboardDoseData(
+                id: 'dose-2',
+                name: 'Amoxicillin',
+                details: '500 mg · 10:30 AM',
+                status: 'due',
+              ),
+              DashboardDoseData(
+                id: 'dose-3',
+                name: 'Cetirizine',
+                details: '10 mg · 8:00 PM',
+                status: 'due',
+              ),
+            ],
+            onAddMedication: () async => const ['Ibuprofen'],
           ),
         ),
       ),
@@ -76,11 +97,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Add'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Ibuprofen'));
-    await tester.pumpAndSettle();
     expect(find.text('Ibuprofen'), findsOneWidget);
-    expect(dashboardRowDividers(), findsNWidgets(3));
-    expect(dashboardVerticalDividers(), findsNWidgets(8));
 
     await tester.tap(find.text('Amoxicillin'));
     await tester.pumpAndSettle();
@@ -96,7 +113,25 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: CalendarScreen(initialDate: DateTime(2026, 8, 23)),
+          body: CalendarScreen(
+            initialDate: DateTime(2026, 8, 23),
+            initialDoses: const [
+              CalendarDoseData(
+                id: 'dose-1',
+                localDate: '2026-08-23',
+                name: 'Vitamin D3',
+                details: '1000 IU · 8:00 AM',
+                status: 'taken',
+              ),
+              CalendarDoseData(
+                id: 'dose-2',
+                localDate: '2026-08-23',
+                name: 'Amoxicillin',
+                details: '500 mg · 10:30 AM',
+                status: 'due',
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -125,14 +160,9 @@ void main() {
 
     await tester.tap(find.byKey(const Key('calendarAddButton')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Cetirizine'));
-    await tester.pumpAndSettle();
-    expect(find.text('Cetirizine'), findsOneWidget);
-
-    await tester.tap(find.text('Cetirizine'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Mark As Taken'));
-    await tester.pumpAndSettle();
-    expect(find.text('Dose Taken'), findsOneWidget);
+    expect(
+      find.text('Search the medication catalog to create a schedule.'),
+      findsOneWidget,
+    );
   });
 }

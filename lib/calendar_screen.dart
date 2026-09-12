@@ -85,7 +85,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _referenceDate = DateUtils.dateOnly(value);
     _selectedDate = _referenceDate;
     _visibleMonth = DateTime(value.year, value.month);
-    if (widget.initialDoses.isEmpty) _seedPreviewDoses(_referenceDate);
     _loadInitialDoses();
   }
 
@@ -95,22 +94,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return '${date.year}-$month-$day';
   }
 
-  void _seedPreviewDoses(DateTime date) {
-    _dosesByDate.putIfAbsent(
-      _dateKey(date),
-      () => [
-        const _CalendarDose(
-          name: 'Vitamin D3',
-          details: '1000 IU · 8:00 AM',
-          status: 'taken',
-        ),
-        const _CalendarDose(name: 'Amoxicillin', details: '500 mg · 10:30 AM'),
-      ],
-    );
-  }
-
   void _loadInitialDoses() {
-    if (widget.initialDoses.isEmpty) return;
     _dosesByDate.clear();
     for (final dose in widget.initialDoses) {
       _dosesByDate
@@ -128,10 +112,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   List<_CalendarDose> _dosesFor(DateTime date) {
     return _dosesByDate[_dateKey(date)] ?? _noDoses;
-  }
-
-  List<_CalendarDose> _editableDosesFor(DateTime date) {
-    return _dosesByDate.putIfAbsent(_dateKey(date), () => <_CalendarDose>[]);
   }
 
   void _moveMonth(int offset) {
@@ -176,34 +156,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
       widget.onAdd!();
       return;
     }
-    final dose = await pushInAppPage<_CalendarDose>(
+    await pushInAppPage<void>(
       context,
-      builder: (context) => InAppOptionPage<_CalendarDose>(
+      builder: (context) => InAppPageScaffold(
         title: 'Add Medication',
-        subtitle: _longDate(_selectedDate),
-        options: const [
-          InAppPageOption(
-            label: 'Cetirizine',
-            detail: '10 mg · 8:00 PM',
-            value: _CalendarDose(
-              name: 'Cetirizine',
-              details: '10 mg · 8:00 PM',
+        child: Center(
+          child: Text(
+            'Search the medication catalog to create a schedule.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
-          InAppPageOption(
-            label: 'Ibuprofen',
-            detail: '200 mg · As Needed',
-            value: _CalendarDose(
-              name: 'Ibuprofen',
-              details: '200 mg · As Needed',
-            ),
-          ),
-        ],
+        ),
       ),
     );
-    if (!mounted || dose == null) return;
-    setState(() => _editableDosesFor(_selectedDate).add(dose));
-    _showConfirmation('${dose.name} Added');
   }
 
   Future<void> _showDoseActions(int index) async {
@@ -319,7 +286,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         ),
                 ),
                 const SizedBox(height: 14),
-                _AdherenceSummary(month: _months[_visibleMonth.month - 1]),
+                _AdherenceSummary(
+                  month: _months[_visibleMonth.month - 1],
+                  taken: _monthTaken,
+                  scheduled: _monthScheduled,
+                ),
                 const SizedBox(height: 18),
                 _CalendarCard(
                   visibleMonth: _visibleMonth,
@@ -329,6 +300,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   onPreviousMonth: () => _moveMonth(-1),
                   onNextMonth: () => _moveMonth(1),
                   onSelectDate: _selectDate,
+                  statusFor: _statusFor,
                 ),
                 const SizedBox(height: 17),
                 _SectionHeader(
@@ -346,6 +318,40 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ),
       ),
     );
+  }
+
+  int get _monthScheduled => _dosesByDate.entries
+      .where((entry) {
+        final date = DateTime.tryParse(entry.key);
+        return date != null &&
+            date.year == _visibleMonth.year &&
+            date.month == _visibleMonth.month;
+      })
+      .expand((entry) => entry.value)
+      .where((dose) => dose.status != 'cancelled')
+      .length;
+
+  int get _monthTaken => _dosesByDate.entries
+      .where((entry) {
+        final date = DateTime.tryParse(entry.key);
+        return date != null &&
+            date.year == _visibleMonth.year &&
+            date.month == _visibleMonth.month;
+      })
+      .expand((entry) => entry.value)
+      .where((dose) => dose.status == 'taken')
+      .length;
+
+  _DoseStatus? _statusFor(DateTime date) {
+    if (date.month != _visibleMonth.month || date.year != _visibleMonth.year) {
+      return null;
+    }
+    final doses = _dosesFor(date);
+    if (doses.any((dose) => dose.status == 'taken')) return _DoseStatus.taken;
+    if (doses.any((dose) => dose.status == 'skipped')) {
+      return _DoseStatus.missed;
+    }
+    return null;
   }
 }
 
@@ -446,13 +452,20 @@ class _CalendarHeader extends StatelessWidget {
 }
 
 class _AdherenceSummary extends StatelessWidget {
-  const _AdherenceSummary({required this.month});
+  const _AdherenceSummary({
+    required this.month,
+    required this.taken,
+    required this.scheduled,
+  });
 
   final String month;
+  final int taken;
+  final int scheduled;
 
   @override
   Widget build(BuildContext context) {
     final palette = _CalendarPalette.of(context);
+    final ratio = scheduled == 0 ? 0.0 : (taken / scheduled).clamp(0.0, 1.0);
     return Container(
       padding: const EdgeInsets.fromLTRB(2, 7, 2, 15),
       decoration: BoxDecoration(
@@ -474,7 +487,9 @@ class _AdherenceSummary extends StatelessWidget {
                 ),
                 const SizedBox(height: 1),
                 Text(
-                  '43 of 50 doses',
+                  scheduled == 0
+                      ? 'No scheduled doses'
+                      : '$taken of $scheduled doses',
                   key: const Key('calendarAdherenceCount'),
                   style: TextStyle(
                     color: palette.ink,
@@ -487,7 +502,7 @@ class _AdherenceSummary extends StatelessWidget {
               ],
             ),
           ),
-          const _AdherenceRing(),
+          _AdherenceRing(value: ratio),
         ],
       ),
     );
@@ -495,20 +510,22 @@ class _AdherenceSummary extends StatelessWidget {
 }
 
 class _AdherenceRing extends StatelessWidget {
-  const _AdherenceRing();
+  const _AdherenceRing({required this.value});
+
+  final double value;
 
   @override
   Widget build(BuildContext context) {
     final palette = _CalendarPalette.of(context);
     return Semantics(
-      label: '86 percent adherence',
+      label: '${(value * 100).round()} percent adherence',
       child: SizedBox.square(
         dimension: 48,
         child: Stack(
           fit: StackFit.expand,
           children: [
             CircularProgressIndicator(
-              value: .86,
+              value: value,
               strokeWidth: 5.5,
               strokeCap: StrokeCap.round,
               color: palette.accent,
@@ -524,7 +541,7 @@ class _AdherenceRing extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: Text(
-                  '86%',
+                  '${(value * 100).round()}%',
                   style: TextStyle(
                     color: palette.ink,
                     fontSize: 9,
@@ -549,6 +566,7 @@ class _CalendarCard extends StatelessWidget {
     required this.onPreviousMonth,
     required this.onNextMonth,
     required this.onSelectDate,
+    required this.statusFor,
   });
 
   final DateTime visibleMonth;
@@ -558,6 +576,7 @@ class _CalendarCard extends StatelessWidget {
   final VoidCallback onPreviousMonth;
   final VoidCallback onNextMonth;
   final ValueChanged<DateTime> onSelectDate;
+  final _DoseStatus? Function(DateTime date) statusFor;
 
   List<DateTime> get _dates {
     final monthStart = DateTime(visibleMonth.year, visibleMonth.month);
@@ -643,7 +662,7 @@ class _CalendarCard extends StatelessWidget {
                         date.month == visibleMonth.month &&
                         date.year == visibleMonth.year,
                     selected: DateUtils.isSameDay(date, selectedDate),
-                    status: _statusFor(date),
+                    status: statusFor(date),
                     onPressed: () => onSelectDate(date),
                   );
                 },
@@ -653,15 +672,6 @@ class _CalendarCard extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  _DoseStatus? _statusFor(DateTime date) {
-    if (date.month != visibleMonth.month || date.year != visibleMonth.year) {
-      return null;
-    }
-    if (DateUtils.dateOnly(date).isAfter(referenceDate)) return null;
-    if (date.day == 10 || date.day == 18) return _DoseStatus.missed;
-    return _DoseStatus.taken;
   }
 }
 
