@@ -1518,11 +1518,6 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
         CameraAccessState.error => ScannerAccessState.error,
       },
       onRequestAccess: _requestCameraAccess,
-      onClose: () => setState(() {
-        stopWebCamera();
-        _selectedIndex = 0;
-        _showScanResult = false;
-      }),
       onCapture: () => setState(() => _showScanResult = true),
       onOpenSettings: widget.onOpenCameraSettings ?? openAppSettings,
       isActive: _selectedIndex == 2,

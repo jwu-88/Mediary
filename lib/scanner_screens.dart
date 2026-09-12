@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'app_interactions.dart';
 import 'app_layout.dart';
 import 'data/mediary_repository.dart';
+import 'data/medication_catalog_client.dart';
 import 'in_app_page.dart';
 import 'liquid_glass_back_button.dart';
 import 'web_camera.dart';
@@ -88,7 +89,6 @@ class MedicationScannerScreen extends StatefulWidget {
     super.key,
     required this.accessState,
     required this.onRequestAccess,
-    required this.onClose,
     required this.onCapture,
     this.onOpenSettings,
     this.isActive = true,
@@ -97,7 +97,6 @@ class MedicationScannerScreen extends StatefulWidget {
 
   final ScannerAccessState accessState;
   final Future<void> Function() onRequestAccess;
-  final VoidCallback onClose;
   final VoidCallback onCapture;
   final Future<bool> Function()? onOpenSettings;
   final bool isActive;
@@ -149,7 +148,6 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
     if (widget.accessState != ScannerAccessState.granted) {
       return _PermissionView(
         accessState: widget.accessState,
-        onClose: widget.onClose,
         onRequestAccess: widget.onRequestAccess,
         onOpenSettings: widget.onOpenSettings,
         bottomNavigationInset: widget.bottomNavigationInset,
@@ -195,186 +193,40 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
                       key: const Key('scannerCameraPanel'),
                       decoration: BoxDecoration(
                         color: Colors.black,
-                        borderRadius: BorderRadius.circular(kIsWeb ? 0 : 28),
+                        borderRadius: BorderRadius.circular(28),
                         border: Border.all(
                           color: Colors.white.withValues(alpha: .16),
                           width: .8,
                         ),
                       ),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(kIsWeb ? 0 : 28),
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            final frameTop = (constraints.maxHeight * .18)
-                                .clamp(102.0, 126.0);
-                            final frameHeight = (constraints.maxHeight * .43)
-                                .clamp(224.0, 292.0);
-                            return Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                const ColoredBox(
-                                  key: Key('scannerCameraBackground'),
-                                  color: Colors.black,
-                                ),
-                                Positioned.fill(
-                                  child: WebCameraPreview(
-                                    key: const Key('scannerWebCameraPreview'),
-                                    active: widget.isActive,
-                                  ),
-                                ),
-                                Positioned(
-                                  left: 42,
-                                  right: 42,
-                                  top: frameTop,
-                                  height: frameHeight,
-                                  child: const _ScanFrame(),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    16,
-                                    14,
-                                    16,
-                                    0,
-                                  ),
-                                  child: Align(
-                                    alignment: Alignment.topCenter,
-                                    child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        LiquidGlassBackButton(
-                                          key: const Key('closeScannerButton'),
-                                          semanticLabel: 'Back from Scanner',
-                                          overImage: true,
-                                          onPressed: widget.onClose,
-                                        ),
-                                        Expanded(
-                                          child: Padding(
-                                            padding: const EdgeInsets.only(
-                                              top: 9,
-                                            ),
-                                            child: Center(
-                                              child: Text(
-                                                _barcodeMode
-                                                    ? 'Scan Barcode'
-                                                    : 'Scan Medication',
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 15,
-                                                  fontWeight: FontWeight.w600,
-                                                  letterSpacing: -.2,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        // Reserve the same width as the back
-                                        // control so the title stays centered.
-                                        const SizedBox.square(dimension: 44),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                Positioned(
-                                  left: 0,
-                                  right: 0,
-                                  bottom: 22,
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: _CaptureSideControl(
-                                          key: const Key(
-                                            'openScannerPhotosButton',
-                                          ),
-                                          icon: CupertinoIcons.photo,
-                                          label: 'Choose a medication photo',
-                                          onPressed: _choosePhoto,
-                                          enabled: !_isAnalyzing,
-                                        ),
-                                      ),
-                                      Tooltip(
-                                        message: _isAnalyzing
-                                            ? 'Analyzing medication'
-                                            : 'Capture medication',
-                                        child: Semantics(
-                                          button: true,
-                                          enabled: !_isAnalyzing,
-                                          label: _isAnalyzing
-                                              ? 'Analyzing medication'
-                                              : 'Capture medication',
-                                          child: AppPressable(
-                                            key: const Key(
-                                              'captureMedicationButton',
-                                            ),
-                                            onPressed: _isAnalyzing
-                                                ? null
-                                                : _capture,
-                                            busy: _isAnalyzing,
-                                            semanticLabel: 'Capture medication',
-                                            borderRadius: BorderRadius.circular(
-                                              99,
-                                            ),
-                                            hoverScale: 1.04,
-                                            pressedScale: .92,
-                                            hoverOffset: Offset.zero,
-                                            haptic: AppHapticKind.primaryAction,
-                                            child: AnimatedScale(
-                                              duration: const Duration(
-                                                milliseconds: 120,
-                                              ),
-                                              scale: _isAnalyzing ? .9 : 1,
-                                              child: Container(
-                                                width: 70,
-                                                height: 70,
-                                                padding: const EdgeInsets.all(
-                                                  5,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  shape: BoxShape.circle,
-                                                  border: Border.all(
-                                                    color: Colors.white,
-                                                    width: 4,
-                                                  ),
-                                                  color: Colors.white
-                                                      .withValues(alpha: .12),
-                                                ),
-                                                child: DecoratedBox(
-                                                  decoration: BoxDecoration(
-                                                    shape: BoxShape.circle,
-                                                    color: _isAnalyzing
-                                                        ? Colors.white
-                                                              .withValues(
-                                                                alpha: .65,
-                                                              )
-                                                        : Colors.white,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: _CaptureSideControl(
-                                          key: const Key(
-                                            'scannerBarcodeButton',
-                                          ),
-                                          icon:
-                                              CupertinoIcons.barcode_viewfinder,
-                                          label: _barcodeMode
-                                              ? 'Scan a medication label'
-                                              : 'Scan a barcode',
-                                          isSelected: _barcodeMode,
-                                          onPressed: _toggleBarcodeMode,
-                                          enabled: !_isAnalyzing,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
+                        borderRadius: BorderRadius.circular(28),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            const ColoredBox(
+                              key: Key('scannerCameraBackground'),
+                              color: Colors.black,
+                            ),
+                            Positioned.fill(
+                              child: WebCameraPreview(
+                                key: const Key('scannerWebCameraPreview'),
+                                active: widget.isActive,
+                              ),
+                            ),
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: 22,
+                              child: _ScannerControlBar(
+                                barcodeMode: _barcodeMode,
+                                isAnalyzing: _isAnalyzing,
+                                onCapture: _capture,
+                                onChoosePhoto: _choosePhoto,
+                                onToggleBarcode: _toggleBarcodeMode,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -392,14 +244,12 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
 class _PermissionView extends StatelessWidget {
   const _PermissionView({
     required this.accessState,
-    required this.onClose,
     required this.onRequestAccess,
     this.onOpenSettings,
     required this.bottomNavigationInset,
   });
 
   final ScannerAccessState accessState;
-  final VoidCallback onClose;
   final Future<void> Function() onRequestAccess;
   final Future<bool> Function()? onOpenSettings;
   final double bottomNavigationInset;
@@ -448,15 +298,6 @@ class _PermissionView extends StatelessWidget {
           padding: EdgeInsets.only(bottom: bottomNavigationInset),
           child: Stack(
             children: [
-              Positioned(
-                top: 4,
-                left: 10,
-                child: LiquidGlassBackButton(
-                  key: const Key('closeScannerButton'),
-                  semanticLabel: 'Back from Scanner',
-                  onPressed: onClose,
-                ),
-              ),
               Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 360),
@@ -564,6 +405,7 @@ class _CaptureSideControl extends StatelessWidget {
     super.key,
     required this.icon,
     required this.label,
+    this.webLabel,
     required this.onPressed,
     this.isSelected = false,
     this.enabled = true,
@@ -571,6 +413,7 @@ class _CaptureSideControl extends StatelessWidget {
 
   final IconData icon;
   final String label;
+  final String? webLabel;
   final VoidCallback onPressed;
   final bool isSelected;
   final bool enabled;
@@ -578,6 +421,7 @@ class _CaptureSideControl extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final displayLabel = kIsWeb ? webLabel ?? label : label;
     return Tooltip(
       message: label,
       child: Semantics(
@@ -587,31 +431,57 @@ class _CaptureSideControl extends StatelessWidget {
         label: label,
         child: ResponsiveCupertinoButton(
           padding: const EdgeInsets.all(8),
-          minimumSize: const Size.square(48),
+          minimumSize: Size(kIsWeb ? 0 : 48, kIsWeb ? 64 : 48),
           onPressed: enabled ? onPressed : null,
           semanticLabel: label,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 160),
-            width: 46,
-            height: 46,
+            width: kIsWeb ? double.infinity : 46,
+            height: kIsWeb ? 60 : 46,
+            padding: EdgeInsets.symmetric(horizontal: kIsWeb ? 18 : 0),
             decoration: BoxDecoration(
               color: isSelected
                   ? colors.primary
                   : Colors.white.withValues(alpha: .14),
-              shape: BoxShape.circle,
+              borderRadius: BorderRadius.circular(kIsWeb ? 16 : 99),
               border: Border.all(
                 color: Colors.white.withValues(alpha: isSelected ? .38 : .14),
                 width: .7,
               ),
             ),
-            child: Icon(
-              icon,
-              color: enabled
-                  ? isSelected
-                        ? colors.onPrimary
-                        : Colors.white
-                  : Colors.white.withValues(alpha: .42),
-              size: 21,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: kIsWeb ? MainAxisSize.max : MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  color: enabled
+                      ? isSelected
+                            ? colors.onPrimary
+                            : Colors.white
+                      : Colors.white.withValues(alpha: .42),
+                  size: kIsWeb ? 23 : 21,
+                ),
+                if (kIsWeb) ...[
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: Text(
+                      displayLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: enabled
+                            ? isSelected
+                                  ? colors.onPrimary
+                                  : Colors.white
+                            : Colors.white.withValues(alpha: .42),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ),
@@ -620,54 +490,135 @@ class _CaptureSideControl extends StatelessWidget {
   }
 }
 
-class _ScanFrame extends StatelessWidget {
-  const _ScanFrame();
+class _ScannerControlBar extends StatelessWidget {
+  const _ScannerControlBar({
+    required this.barcodeMode,
+    required this.isAnalyzing,
+    required this.onCapture,
+    required this.onChoosePhoto,
+    required this.onToggleBarcode,
+  });
+
+  final bool barcodeMode;
+  final bool isAnalyzing;
+  final VoidCallback onCapture;
+  final VoidCallback onChoosePhoto;
+  final VoidCallback onToggleBarcode;
 
   @override
   Widget build(BuildContext context) {
-    return const CustomPaint(painter: _ScanFramePainter());
+    final controls = Row(
+      children: [
+        Expanded(
+          child: _CaptureSideControl(
+            key: const Key('openScannerPhotosButton'),
+            icon: CupertinoIcons.photo,
+            label: 'Choose a medication photo',
+            webLabel: 'Choose Photo',
+            onPressed: onChoosePhoto,
+            enabled: !isAnalyzing,
+          ),
+        ),
+        SizedBox(width: kIsWeb ? 16 : 0),
+        _ScannerCaptureButton(isAnalyzing: isAnalyzing, onPressed: onCapture),
+        SizedBox(width: kIsWeb ? 16 : 0),
+        Expanded(
+          child: _CaptureSideControl(
+            key: const Key('scannerBarcodeButton'),
+            icon: CupertinoIcons.barcode_viewfinder,
+            label: barcodeMode ? 'Scan a medication label' : 'Scan a barcode',
+            webLabel: barcodeMode ? 'Scan Label' : 'Scan Barcode',
+            isSelected: barcodeMode,
+            onPressed: onToggleBarcode,
+            enabled: !isAnalyzing,
+          ),
+        ),
+      ],
+    );
+
+    if (!kIsWeb) return controls;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 900),
+        child: SizedBox(width: double.infinity, child: controls),
+      ),
+    );
   }
 }
 
-class _ScanFramePainter extends CustomPainter {
-  const _ScanFramePainter();
+class _ScannerCaptureButton extends StatelessWidget {
+  const _ScannerCaptureButton({
+    required this.isAnalyzing,
+    required this.onPressed,
+  });
+
+  final bool isAnalyzing;
+  final VoidCallback onPressed;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    const cornerLength = 54.0;
-    const radius = 22.0;
-    final cornerPaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round;
-    final path = Path()
-      ..moveTo(0, cornerLength)
-      ..lineTo(0, radius)
-      ..quadraticBezierTo(0, 0, radius, 0)
-      ..lineTo(cornerLength, 0)
-      ..moveTo(size.width - cornerLength, 0)
-      ..lineTo(size.width - radius, 0)
-      ..quadraticBezierTo(size.width, 0, size.width, radius)
-      ..lineTo(size.width, cornerLength)
-      ..moveTo(size.width, size.height - cornerLength)
-      ..lineTo(size.width, size.height - radius)
-      ..quadraticBezierTo(
-        size.width,
-        size.height,
-        size.width - radius,
-        size.height,
-      )
-      ..lineTo(size.width - cornerLength, size.height)
-      ..moveTo(cornerLength, size.height)
-      ..lineTo(radius, size.height)
-      ..quadraticBezierTo(0, size.height, 0, size.height - radius)
-      ..lineTo(0, size.height - cornerLength);
-    canvas.drawPath(path, cornerPaint);
+  Widget build(BuildContext context) {
+    final label = isAnalyzing ? 'Analyzing' : 'Capture';
+    return Tooltip(
+      message: isAnalyzing ? 'Analyzing medication' : 'Capture medication',
+      child: Semantics(
+        button: true,
+        enabled: !isAnalyzing,
+        label: isAnalyzing ? 'Analyzing medication' : 'Capture medication',
+        child: AppPressable(
+          key: const Key('captureMedicationButton'),
+          onPressed: isAnalyzing ? null : onPressed,
+          busy: isAnalyzing,
+          semanticLabel: 'Capture medication',
+          borderRadius: BorderRadius.circular(kIsWeb ? 16 : 99),
+          hoverScale: 1.04,
+          pressedScale: .92,
+          hoverOffset: Offset.zero,
+          haptic: AppHapticKind.primaryAction,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            width: kIsWeb ? 176 : 70,
+            height: kIsWeb ? 60 : 70,
+            padding: EdgeInsets.symmetric(horizontal: kIsWeb ? 20 : 5),
+            decoration: BoxDecoration(
+              color: kIsWeb
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(kIsWeb ? 16 : 99),
+              border: kIsWeb ? null : Border.all(color: Colors.white, width: 4),
+            ),
+            child: kIsWeb
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        CupertinoIcons.camera,
+                        color: Colors.black,
+                        size: 23,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        label,
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  )
+                : DecoratedBox(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isAnalyzing
+                          ? Colors.white.withValues(alpha: .65)
+                          : Colors.white,
+                    ),
+                  ),
+          ),
+        ),
+      ),
+    );
   }
-
-  @override
-  bool shouldRepaint(covariant _ScanFramePainter oldDelegate) => false;
 }
 
 class ScanResultScreen extends StatefulWidget {
@@ -678,6 +629,8 @@ class ScanResultScreen extends StatefulWidget {
     this.onAdded,
     this.onScanReady,
     this.onScheduleConfirmed,
+    this.medication,
+    this.onSearchMedication,
     this.bottomNavigationInset = 106,
   });
 
@@ -686,6 +639,8 @@ class ScanResultScreen extends StatefulWidget {
   final VoidCallback? onAdded;
   final Future<String> Function(ScanWrite scan)? onScanReady;
   final Future<void> Function(ScanScheduleData schedule)? onScheduleConfirmed;
+  final MedicationCatalogRecord? medication;
+  final VoidCallback? onSearchMedication;
   final double bottomNavigationInset;
 
   @override
@@ -696,24 +651,26 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
   String _dose = '1 capsule';
   String _frequency = 'Every 8 hours';
   String _duration = '7 days';
-  DateTime _startDate = DateTime(2026, 8, 30);
+  late DateTime _startDate;
   TimeOfDay _time = const TimeOfDay(hour: 8, minute: 0);
   bool _isAdded = false;
 
   @override
   void initState() {
     super.initState();
+    _startDate = DateUtils.dateOnly(DateTime.now());
     unawaited(_saveScanResult());
   }
 
   Future<void> _saveScanResult() async {
     await widget.onScanReady?.call(
-      const ScanWrite(
-        status: 'complete',
-        detectedMedicationName: 'Amoxicillin',
-        extractedText:
-            'Amoxicillin 500 mg capsule. Prescription medication label.',
-        confidence: .98,
+      ScanWrite(
+        status: widget.medication == null ? 'needsReview' : 'complete',
+        detectedMedicationName: widget.medication?.name ?? '',
+        extractedText: widget.medication == null
+            ? ''
+            : '${widget.medication!.name} ${widget.medication!.doseDescription}',
+        confidence: widget.medication == null ? 0 : 1,
       ),
     );
   }
@@ -898,111 +855,122 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                           96 + widget.bottomNavigationInset,
                         ),
                         children: [
-                          const _ResultHero(),
+                          _ResultHero(medication: widget.medication),
                           const SizedBox(height: 18),
-                          const _InfoGrid(),
+                          _InfoGrid(medication: widget.medication),
                           const SizedBox(height: 16),
                           const _SafetyNotice(),
                           const SizedBox(height: 16),
-                          Container(
-                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
-                            decoration: BoxDecoration(
-                              color: palette.surface,
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Set Your Schedule',
-                                  style: TextStyle(
-                                    color: palette.primaryText,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: -.25,
-                                  ),
-                                ),
-                                const SizedBox(height: 14),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _ScheduleField(
-                                        label: 'DOSE',
-                                        value: _dose,
-                                        onTap: () => _chooseOption(
-                                          title: 'Dose',
-                                          options: const [
-                                            '½ capsule',
-                                            '1 capsule',
-                                            '2 capsules',
-                                          ],
-                                          onSelected: (value) =>
-                                              setState(() => _dose = value),
-                                        ),
-                                      ),
+                          if (widget.medication != null)
+                            Container(
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                16,
+                                16,
+                                18,
+                              ),
+                              decoration: BoxDecoration(
+                                color: palette.surface,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Set Your Schedule',
+                                    style: TextStyle(
+                                      color: palette.primaryText,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: -.25,
                                     ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: _ScheduleField(
-                                        label: 'FREQUENCY',
-                                        value: _frequency,
-                                        onTap: () => _chooseOption(
-                                          title: 'Frequency',
-                                          options: const [
-                                            'Once daily',
-                                            'Every 8 hours',
-                                            'Every 12 hours',
-                                            'As needed',
-                                          ],
-                                          onSelected: (value) => setState(
-                                            () => _frequency = value,
+                                  ),
+                                  const SizedBox(height: 14),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _ScheduleField(
+                                          label: 'DOSE',
+                                          value: _dose,
+                                          onTap: () => _chooseOption(
+                                            title: 'Dose',
+                                            options: const [
+                                              '½ capsule',
+                                              '1 capsule',
+                                              '2 capsules',
+                                            ],
+                                            onSelected: (value) =>
+                                                setState(() => _dose = value),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 13),
-                                _ScheduleField(
-                                  label: 'TIME',
-                                  value: _time.format(context),
-                                  onTap: _chooseTime,
-                                  icon: CupertinoIcons.time,
-                                ),
-                                const SizedBox(height: 13),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _ScheduleField(
-                                        label: 'START DATE',
-                                        value: _formatDate(_startDate),
-                                        onTap: _chooseStartDate,
-                                        icon: CupertinoIcons.calendar,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: _ScheduleField(
-                                        label: 'DURATION',
-                                        value: _duration,
-                                        onTap: () => _chooseOption(
-                                          title: 'Duration',
-                                          options: const [
-                                            '5 days',
-                                            '7 days',
-                                            '10 days',
-                                            '14 days',
-                                          ],
-                                          onSelected: (value) =>
-                                              setState(() => _duration = value),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _ScheduleField(
+                                          label: 'FREQUENCY',
+                                          value: _frequency,
+                                          onTap: () => _chooseOption(
+                                            title: 'Frequency',
+                                            options: const [
+                                              'Once daily',
+                                              'Every 8 hours',
+                                              'Every 12 hours',
+                                              'As needed',
+                                            ],
+                                            onSelected: (value) => setState(
+                                              () => _frequency = value,
+                                            ),
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              ],
+                                    ],
+                                  ),
+                                  const SizedBox(height: 13),
+                                  _ScheduleField(
+                                    label: 'TIME',
+                                    value: _time.format(context),
+                                    onTap: _chooseTime,
+                                    icon: CupertinoIcons.time,
+                                  ),
+                                  const SizedBox(height: 13),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _ScheduleField(
+                                          label: 'START DATE',
+                                          value: _formatDate(_startDate),
+                                          onTap: _chooseStartDate,
+                                          icon: CupertinoIcons.calendar,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _ScheduleField(
+                                          label: 'DURATION',
+                                          value: _duration,
+                                          onTap: () => _chooseOption(
+                                            title: 'Duration',
+                                            options: const [
+                                              '5 days',
+                                              '7 days',
+                                              '10 days',
+                                              '14 days',
+                                            ],
+                                            onSelected: (value) => setState(
+                                              () => _duration = value,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
+                          if (widget.medication == null)
+                            _PendingReviewCard(
+                              onSearch: widget.onSearchMedication,
+                            ),
                         ],
                       ),
                     ),
@@ -1037,7 +1005,9 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                           height: 48,
                           child: FilledButton.icon(
                             key: const Key('addScanResultButton'),
-                            onPressed: _addToCalendar,
+                            onPressed: widget.medication == null
+                                ? widget.onSearchMedication
+                                : _addToCalendar,
                             style: FilledButton.styleFrom(
                               backgroundColor: _isAdded
                                   ? palette.success
@@ -1054,13 +1024,17 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                               ),
                             ),
                             icon: Icon(
-                              _isAdded
+                              widget.medication == null
+                                  ? CupertinoIcons.search
+                                  : _isAdded
                                   ? CupertinoIcons.check_mark_circled_solid
                                   : CupertinoIcons.calendar_badge_plus,
                               size: 18,
                             ),
                             label: Text(
-                              _isAdded
+                              widget.medication == null
+                                  ? 'Search RxNorm to confirm'
+                                  : _isAdded
                                   ? 'Added to Calendar'
                                   : 'Add to Calendar',
                             ),
@@ -1080,7 +1054,9 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
 }
 
 class _ResultHero extends StatelessWidget {
-  const _ResultHero();
+  const _ResultHero({required this.medication});
+
+  final MedicationCatalogRecord? medication;
 
   @override
   Widget build(BuildContext context) {
@@ -1126,7 +1102,9 @@ class _ResultHero extends StatelessWidget {
                     ),
                     const SizedBox(width: 5),
                     Text(
-                      '98% match',
+                      medication == null
+                          ? 'Manual review required'
+                          : 'Catalog match',
                       style: TextStyle(
                         color: palette.success,
                         fontSize: 11,
@@ -1137,7 +1115,7 @@ class _ResultHero extends StatelessWidget {
                 ),
                 const SizedBox(height: 7),
                 Text(
-                  'Amoxicillin',
+                  medication?.name ?? 'Medication not identified',
                   style: TextStyle(
                     color: palette.primaryText,
                     fontSize: 19,
@@ -1147,7 +1125,9 @@ class _ResultHero extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '500 mg capsule · Prescription',
+                  medication == null
+                      ? 'Search RxNorm to confirm the medication'
+                      : medication!.doseDescription,
                   style: TextStyle(color: palette.secondaryText, fontSize: 12),
                 ),
               ],
@@ -1176,7 +1156,9 @@ class ScanScheduleData {
 }
 
 class _InfoGrid extends StatelessWidget {
-  const _InfoGrid();
+  const _InfoGrid({required this.medication});
+
+  final MedicationCatalogRecord? medication;
 
   @override
   Widget build(BuildContext context) {
@@ -1185,22 +1167,22 @@ class _InfoGrid extends StatelessWidget {
       borderRadius: BorderRadius.circular(14),
       child: ColoredBox(
         color: palette.surface,
-        child: const Column(
+        child: Column(
           children: [
             Row(
               children: [
                 Expanded(
                   child: _InfoTile(
-                    label: 'IMPRINT',
-                    value: 'AMOX 500',
+                    label: 'IDENTIFIER',
+                    value: 'Pending',
                     rightBorder: true,
                     bottomBorder: true,
                   ),
                 ),
                 Expanded(
                   child: _InfoTile(
-                    label: 'MANUFACTURER',
-                    value: 'Sandoz Inc.',
+                    label: 'SOURCE',
+                    value: 'RxNorm',
                     bottomBorder: true,
                   ),
                 ),
@@ -1211,17 +1193,70 @@ class _InfoGrid extends StatelessWidget {
                 Expanded(
                   child: _InfoTile(
                     label: 'FORM',
-                    value: 'Capsule',
+                    value: medication?.form.isNotEmpty == true
+                        ? medication!.form
+                        : 'Not available',
                     rightBorder: true,
                   ),
                 ),
                 Expanded(
-                  child: _InfoTile(label: 'COLOR', value: 'Blue / pink'),
+                  child: _InfoTile(
+                    label: 'STRENGTH',
+                    value: medication?.strength.isNotEmpty == true
+                        ? medication!.strength
+                        : 'Not available',
+                  ),
                 ),
               ],
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PendingReviewCard extends StatelessWidget {
+  const _PendingReviewCard({required this.onSearch});
+
+  final VoidCallback? onSearch;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _ScannerPalette.of(context);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Manual review needed',
+            style: TextStyle(
+              color: palette.primaryText,
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            'The scanner did not identify a medication. Search RxNorm and confirm the exact product before creating a schedule.',
+            style: TextStyle(
+              color: palette.secondaryText,
+              fontSize: 13,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: onSearch,
+            icon: const Icon(CupertinoIcons.search, size: 17),
+            label: const Text('Search medication database'),
+          ),
+        ],
       ),
     );
   }
