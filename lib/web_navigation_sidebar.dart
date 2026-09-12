@@ -89,7 +89,7 @@ class _WebNavigationSidebarState extends State<WebNavigationSidebar> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 18),
-                _BrandHeader(expanded: _expanded, activeColor: active),
+                _BrandHeader(expanded: _expanded, dark: dark),
                 const SizedBox(height: 22),
                 for (var index = 0; index < _items.length; index++) ...[
                   _WebNavigationItem(
@@ -122,7 +122,10 @@ class _WebNavigationSidebarState extends State<WebNavigationSidebar> {
       child: widget.overlayHoverArea
           ? SizedBox(
               width: _expandedWidth,
-              child: Align(child: sidebarVisual),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: sidebarVisual,
+              ),
             )
           : sidebarVisual,
     );
@@ -132,10 +135,10 @@ class _WebNavigationSidebarState extends State<WebNavigationSidebar> {
 }
 
 class _BrandHeader extends StatelessWidget {
-  const _BrandHeader({required this.expanded, required this.activeColor});
+  const _BrandHeader({required this.expanded, required this.dark});
 
   final bool expanded;
-  final Color activeColor;
+  final bool dark;
 
   @override
   Widget build(BuildContext context) {
@@ -147,10 +150,18 @@ class _BrandHeader extends StatelessWidget {
           const SizedBox(width: 16),
           SizedBox(
             width: 44,
-            child: Icon(
-              CupertinoIcons.heart_fill,
-              color: activeColor,
-              size: 25,
+            child: Center(
+              child: ClipRRect(
+                borderRadius: const BorderRadius.all(Radius.circular(8)),
+                child: Image.asset(
+                  dark
+                      ? 'assets/icon/Mediary App Dark.png'
+                      : 'assets/icon/Mediary App.png',
+                  width: 28,
+                  height: 28,
+                  fit: BoxFit.cover,
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -248,11 +259,7 @@ class _WebNavigationItemState extends State<_WebNavigationItem> {
               children: [
                 SizedBox(
                   width: 56,
-                  child: AnimatedScale(
-                    scale: _hovered ? 1.06 : 1,
-                    duration: const Duration(milliseconds: 150),
-                    child: Icon(widget.icon, color: color, size: 23),
-                  ),
+                  child: Icon(widget.icon, color: color, size: 23),
                 ),
                 Expanded(
                   child: AnimatedOpacity(

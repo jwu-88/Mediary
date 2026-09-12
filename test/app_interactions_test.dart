@@ -86,7 +86,7 @@ void main() {
       expect(activations, 0);
     });
 
-    testWidgets('pointer hover lifts and touch press compresses the surface', (
+    testWidgets('pointer hover highlights without changing geometry', (
       tester,
     ) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
@@ -109,7 +109,7 @@ void main() {
         tester
             .widget<AnimatedScale>(find.byKey(const Key('appPressableScale')))
             .scale,
-        1.012,
+        1,
       );
 
       await mouse.moveTo(const Offset(700, 500));
@@ -291,7 +291,7 @@ void main() {
       tester
           .widget<AnimatedScale>(find.byKey(const Key('appPressableScale')))
           .scale,
-      1.018,
+      1,
     );
 
     await tester.tap(button);

@@ -10,7 +10,7 @@ import 'package:flutter/services.dart';
 ///
 /// `BackdropFilter` forces a `saveLayer` + backdrop read every frame. On the
 /// CanvasKit/Skwasm web renderer this is a major source of jank, so web falls
-/// back to the surrounding gradient/tint alone (matching the native design).
+/// back to the surrounding tint alone (matching the native design).
 class WebAwareBlur extends StatelessWidget {
   const WebAwareBlur({super.key, required this.sigma, required this.child});
 
@@ -189,8 +189,14 @@ class AppPressable extends StatefulWidget {
   final AppHapticKind haptic;
   final bool enableHaptics;
   final bool enableHoverEffect;
+
+  /// Retained for source compatibility. Hover feedback no longer changes
+  /// geometry, so this value is intentionally ignored.
   final double hoverScale;
   final double pressedScale;
+
+  /// Retained for source compatibility. Hover feedback no longer changes
+  /// geometry, so this value is intentionally ignored.
   final Offset hoverOffset;
   final Duration motionDuration;
   final Curve motionCurve;
@@ -339,12 +345,12 @@ class _AppPressableState extends State<AppPressable> {
         : _focused
         ? focusOverlay
         : Colors.transparent;
-    final scale = _pressed
-        ? widget.pressedScale
-        : _hovered
-        ? widget.hoverScale
-        : 1.0;
-    final offset = _hovered && !_pressed ? widget.hoverOffset : Offset.zero;
+    // Hover feedback must not change the button's geometry. Scaling or
+    // translating a full-width surface can paint into adjacent UI, especially
+    // beside the expanding web sidebar. Keep motion for the intentional press
+    // response and use the overlay above for hover feedback instead.
+    final scale = _pressed ? widget.pressedScale : 1.0;
+    final offset = Offset.zero;
     final effectiveCursor = !_isInteractive
         ? SystemMouseCursors.forbidden
         : widget.mouseCursor ?? SystemMouseCursors.click;
