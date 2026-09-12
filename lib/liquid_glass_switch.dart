@@ -24,17 +24,9 @@ class LiquidGlassSwitch extends StatelessWidget {
     final dark = theme.brightness == Brightness.dark;
     final primary = theme.colorScheme.primary;
     final enabled = onChanged != null;
-    final inactiveColors = dark
-        ? [
-            Colors.white.withValues(alpha: .16),
-            const Color(0x66151A23),
-            const Color(0x6B080B10),
-          ]
-        : [
-            Colors.white.withValues(alpha: .62),
-            const Color(0xB9E8EDF3),
-            const Color(0x99D4DAE2),
-          ];
+    final trackColor = value
+        ? primary.withValues(alpha: enabled ? .72 : .34)
+        : (dark ? const Color(0xFF2C2D32) : const Color(0xFFD9DDE4));
 
     return Semantics(
       container: true,
@@ -59,17 +51,7 @@ class LiquidGlassSwitch extends StatelessWidget {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(99),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: value
-                        ? [
-                            primary.withValues(alpha: enabled ? .86 : .42),
-                            primary.withValues(alpha: enabled ? .52 : .24),
-                            primary.withValues(alpha: enabled ? .30 : .14),
-                          ]
-                        : inactiveColors,
-                  ),
+                  color: trackColor,
                   border: Border.all(
                     color: Colors.white.withValues(alpha: dark ? .16 : .58),
                     width: .7,

@@ -74,84 +74,78 @@ class LiquidGlassTabBar extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(32),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 34, sigmaY: 34),
-            child: Container(
-              key: const Key('liquidGlassTabBar'),
-              height: 64,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(32),
-                color: surfaceColor,
-                border: Border.all(
-                  color: dark
-                      ? Colors.white.withValues(alpha: highContrast ? .34 : .18)
-                      : Colors.white.withValues(
-                          alpha: highContrast ? .98 : .82,
-                        ),
-                  width: 1,
-                ),
+          // Keep the base surface solid. Blurring the camera canvas behind
+          // the bar creates a visible pixel/grid pattern on some iOS devices.
+          // The selected destination still uses its own glass lens below.
+          child: Container(
+            key: const Key('liquidGlassTabBar'),
+            height: 64,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(32),
+              color: surfaceColor,
+              border: Border.all(
+                color: dark
+                    ? Colors.white.withValues(alpha: highContrast ? .34 : .18)
+                    : Colors.white.withValues(alpha: highContrast ? .98 : .82),
+                width: 1,
               ),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final tabWidth = constraints.maxWidth / _items.length;
-                      final indicatorWidth = (tabWidth - 10)
-                          .clamp(58.0, 66.0)
-                          .toDouble();
-                      final indicatorLeft =
-                          (tabWidth * selectedIndex) +
-                          (tabWidth - indicatorWidth) / 2;
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final tabWidth = constraints.maxWidth / _items.length;
+                    final indicatorWidth = (tabWidth - 10)
+                        .clamp(58.0, 66.0)
+                        .toDouble();
+                    final indicatorLeft =
+                        (tabWidth * selectedIndex) +
+                        (tabWidth - indicatorWidth) / 2;
 
-                      return Stack(
-                        children: [
-                          AnimatedPositioned(
-                            key: const Key('liquidGlassSelectionLens'),
-                            left: indicatorLeft,
-                            top: 8,
-                            width: indicatorWidth,
-                            height: 48,
-                            duration: motionDuration,
-                            curve: Curves.easeOutQuart,
-                            child: IgnorePointer(
-                              child: _SlidingGlassIndicator(
-                                activeColor: active,
-                                dark: dark,
-                                highContrast: highContrast,
-                              ),
+                    return Stack(
+                      children: [
+                        AnimatedPositioned(
+                          key: const Key('liquidGlassSelectionLens'),
+                          left: indicatorLeft,
+                          top: 8,
+                          width: indicatorWidth,
+                          height: 48,
+                          duration: motionDuration,
+                          curve: Curves.easeOutQuart,
+                          child: IgnorePointer(
+                            child: _SlidingGlassIndicator(
+                              activeColor: active,
+                              dark: dark,
+                              highContrast: highContrast,
                             ),
                           ),
-                          Row(
-                            children: [
-                              for (
-                                var index = 0;
-                                index < _items.length;
-                                index++
-                              )
-                                Expanded(
-                                  child: _GlassTabItem(
-                                    icon: selectedIndex == index
-                                        ? _items[index].$2
-                                        : _items[index].$1,
-                                    label: _items[index].$3,
-                                    semanticPosition:
-                                        '${index + 1} of ${_items.length}',
-                                    selected: selectedIndex == index,
-                                    activeColor: active,
-                                    inactiveColor: inactive,
-                                    reduceMotion: reduceMotion,
-                                    onTap: () => onTap(index),
-                                  ),
+                        ),
+                        Row(
+                          children: [
+                            for (var index = 0; index < _items.length; index++)
+                              Expanded(
+                                child: _GlassTabItem(
+                                  icon: selectedIndex == index
+                                      ? _items[index].$2
+                                      : _items[index].$1,
+                                  label: _items[index].$3,
+                                  semanticPosition:
+                                      '${index + 1} of ${_items.length}',
+                                  selected: selectedIndex == index,
+                                  activeColor: active,
+                                  inactiveColor: inactive,
+                                  reduceMotion: reduceMotion,
+                                  onTap: () => onTap(index),
                                 ),
-                            ],
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ],
-              ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ],
             ),
           ),
         ),

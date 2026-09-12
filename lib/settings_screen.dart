@@ -527,8 +527,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _group(key: const Key('settingsConnectedAppsGroup'), [
                     _SettingsRow(
                       icon: CupertinoIcons.heart_fill,
-                      iconWidget: _AppleHealthIcon(color: _success),
-                      iconColor: _success,
+                      // Apple Health uses a white tile with its red heart mark,
+                      // independent of Mediary's current accent color.
+                      iconWidget: const _AppleHealthIcon(
+                        color: Color(0xFFFF2D55),
+                      ),
+                      iconColor: const Color(0xFFFF2D55),
                       title: 'Apple Health',
                       subtitle: _appleHealthConnected
                           ? 'Connected'
@@ -624,30 +628,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _group(List<Widget> rows, {Key? key}) {
-    final glassColors = _dark
-        ? [
-            Colors.white.withValues(alpha: .09),
-            const Color(0xFF34404F).withValues(alpha: .16),
-            Colors.black.withValues(alpha: .16),
-          ]
-        : [
-            Colors.white.withValues(alpha: .78),
-            const Color(0xFFEAF4FF).withValues(alpha: .42),
-            const Color(0xFFDDE8F5).withValues(alpha: .28),
-          ];
     return ClipRRect(
       key: key,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppRadii.standard),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: glassColors,
-            ),
+            borderRadius: BorderRadius.circular(AppRadii.standard),
+            color: _dark
+                ? const Color(0xFF1F2025).withValues(alpha: .92)
+                : Colors.white.withValues(alpha: .88),
             border: Border.all(
               color: _dark
                   ? Colors.white.withValues(alpha: .14)
@@ -807,7 +798,7 @@ class _PrivacyControlsPageState extends State<_PrivacyControlsPage> {
           ),
           const SizedBox(height: 18),
           ClipRRect(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppRadii.standard),
             child: Material(
               color: colors.surface,
               child: Column(
@@ -1045,7 +1036,9 @@ class _SettingsRow extends StatelessWidget {
               children: [
                 SizedBox(
                   width: 28,
-                  child: iconWidget ?? Icon(icon, color: iconColor, size: 18),
+                  child: Center(
+                    child: iconWidget ?? Icon(icon, color: iconColor, size: 18),
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -1092,9 +1085,10 @@ class _AppleHealthIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox.square(
-      dimension: 22,
+      key: const Key('appleHealthIcon'),
+      dimension: 24,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: const BorderRadius.all(Radius.circular(AppRadii.small)),
         child: ColoredBox(
           color: Colors.white,
           child: CustomPaint(painter: _AppleHealthIconPainter(color)),

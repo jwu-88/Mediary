@@ -890,14 +890,7 @@ class _AuthFormState extends State<AuthForm> {
           ),
           DecoratedBox(
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withValues(alpha: isDark ? .62 : .48),
-                  Colors.black.withValues(alpha: isDark ? .76 : .58),
-                ],
-              ),
+              color: Colors.black.withValues(alpha: isDark ? .70 : .54),
             ),
           ),
           SafeArea(

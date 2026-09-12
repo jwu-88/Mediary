@@ -110,7 +110,6 @@ class MedicationScannerScreen extends StatefulWidget {
 
 class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
   bool _isAnalyzing = false;
-  bool _torchEnabled = false;
   bool _barcodeMode = false;
 
   Future<void> _capture() async {
@@ -177,7 +176,11 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
                 16,
                 widget.bottomNavigationInset,
               ),
-              child: Center(
+              // Keep the camera surface centered independently of the
+              // navigation inset so the redesigned Scan destination remains
+              // balanced on both compact phones and wider web viewports.
+              child: Align(
+                alignment: Alignment.center,
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
                     maxWidth: responsiveContentWidth(
@@ -188,189 +191,191 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
                   child: SizedBox(
                     height: availableHeight,
                     width: double.infinity,
-                    child: ClipRRect(
+                    child: DecoratedBox(
                       key: const Key('scannerCameraPanel'),
-                      borderRadius: BorderRadius.circular(kIsWeb ? 0 : 28),
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final frameTop = (constraints.maxHeight * .18).clamp(
-                            102.0,
-                            126.0,
-                          );
-                          final frameHeight = (constraints.maxHeight * .43)
-                              .clamp(224.0, 292.0);
-                          return Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              const ColoredBox(
-                                key: Key('scannerCameraBackground'),
-                                color: Colors.black,
-                              ),
-                              Positioned.fill(
-                                child: WebCameraPreview(
-                                  key: const Key('scannerWebCameraPreview'),
-                                  active: widget.isActive,
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        borderRadius: BorderRadius.circular(kIsWeb ? 0 : 28),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: .16),
+                          width: .8,
+                        ),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(kIsWeb ? 0 : 28),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final frameTop = (constraints.maxHeight * .18)
+                                .clamp(102.0, 126.0);
+                            final frameHeight = (constraints.maxHeight * .43)
+                                .clamp(224.0, 292.0);
+                            return Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                const ColoredBox(
+                                  key: Key('scannerCameraBackground'),
+                                  color: Colors.black,
                                 ),
-                              ),
-                              Positioned(
-                                left: 42,
-                                right: 42,
-                                top: frameTop,
-                                height: frameHeight,
-                                child: const _ScanFrame(),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  16,
-                                  14,
-                                  16,
-                                  0,
+                                Positioned.fill(
+                                  child: WebCameraPreview(
+                                    key: const Key('scannerWebCameraPreview'),
+                                    active: widget.isActive,
+                                  ),
                                 ),
-                                child: Align(
-                                  alignment: Alignment.topCenter,
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      LiquidGlassBackButton(
-                                        key: const Key('closeScannerButton'),
-                                        semanticLabel: 'Back from Scanner',
-                                        overImage: true,
-                                        onPressed: widget.onClose,
-                                      ),
-                                      const Spacer(),
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 9),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text(
-                                              _barcodeMode
-                                                  ? 'Scan Barcode'
-                                                  : 'Scan Medication',
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 15,
-                                                fontWeight: FontWeight.w600,
-                                                letterSpacing: -.2,
+                                Positioned(
+                                  left: 42,
+                                  right: 42,
+                                  top: frameTop,
+                                  height: frameHeight,
+                                  child: const _ScanFrame(),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    14,
+                                    16,
+                                    0,
+                                  ),
+                                  child: Align(
+                                    alignment: Alignment.topCenter,
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        LiquidGlassBackButton(
+                                          key: const Key('closeScannerButton'),
+                                          semanticLabel: 'Back from Scanner',
+                                          overImage: true,
+                                          onPressed: widget.onClose,
+                                        ),
+                                        Expanded(
+                                          child: Padding(
+                                            padding: const EdgeInsets.only(
+                                              top: 9,
+                                            ),
+                                            child: Center(
+                                              child: Text(
+                                                _barcodeMode
+                                                    ? 'Scan Barcode'
+                                                    : 'Scan Medication',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.w600,
+                                                  letterSpacing: -.2,
+                                                ),
                                               ),
                                             ),
-                                          ],
+                                          ),
+                                        ),
+                                        // Reserve the same width as the back
+                                        // control so the title stays centered.
+                                        const SizedBox.square(dimension: 44),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 22,
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: _CaptureSideControl(
+                                          key: const Key(
+                                            'openScannerPhotosButton',
+                                          ),
+                                          icon: CupertinoIcons.photo,
+                                          label: 'Choose a medication photo',
+                                          onPressed: _choosePhoto,
+                                          enabled: !_isAnalyzing,
                                         ),
                                       ),
-                                      const Spacer(),
-                                      _GlassIconButton(
-                                        key: const Key('scannerTorchButton'),
-                                        icon: _torchEnabled
-                                            ? CupertinoIcons.bolt_fill
-                                            : CupertinoIcons.bolt,
-                                        label: _torchEnabled
-                                            ? 'Turn flashlight off'
-                                            : 'Turn flashlight on',
-                                        isSelected: _torchEnabled,
-                                        onPressed: () => setState(
-                                          () => _torchEnabled = !_torchEnabled,
+                                      Tooltip(
+                                        message: _isAnalyzing
+                                            ? 'Analyzing medication'
+                                            : 'Capture medication',
+                                        child: Semantics(
+                                          button: true,
+                                          enabled: !_isAnalyzing,
+                                          label: _isAnalyzing
+                                              ? 'Analyzing medication'
+                                              : 'Capture medication',
+                                          child: AppPressable(
+                                            key: const Key(
+                                              'captureMedicationButton',
+                                            ),
+                                            onPressed: _isAnalyzing
+                                                ? null
+                                                : _capture,
+                                            busy: _isAnalyzing,
+                                            semanticLabel: 'Capture medication',
+                                            borderRadius: BorderRadius.circular(
+                                              99,
+                                            ),
+                                            hoverScale: 1.04,
+                                            pressedScale: .92,
+                                            hoverOffset: Offset.zero,
+                                            haptic: AppHapticKind.primaryAction,
+                                            child: AnimatedScale(
+                                              duration: const Duration(
+                                                milliseconds: 120,
+                                              ),
+                                              scale: _isAnalyzing ? .9 : 1,
+                                              child: Container(
+                                                width: 70,
+                                                height: 70,
+                                                padding: const EdgeInsets.all(
+                                                  5,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  border: Border.all(
+                                                    color: Colors.white,
+                                                    width: 4,
+                                                  ),
+                                                  color: Colors.white
+                                                      .withValues(alpha: .12),
+                                                ),
+                                                child: DecoratedBox(
+                                                  decoration: BoxDecoration(
+                                                    shape: BoxShape.circle,
+                                                    color: _isAnalyzing
+                                                        ? Colors.white
+                                                              .withValues(
+                                                                alpha: .65,
+                                                              )
+                                                        : Colors.white,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: _CaptureSideControl(
+                                          key: const Key(
+                                            'scannerBarcodeButton',
+                                          ),
+                                          icon:
+                                              CupertinoIcons.barcode_viewfinder,
+                                          label: _barcodeMode
+                                              ? 'Scan a medication label'
+                                              : 'Scan a barcode',
+                                          isSelected: _barcodeMode,
+                                          onPressed: _toggleBarcodeMode,
+                                          enabled: !_isAnalyzing,
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                              ),
-                              Positioned(
-                                left: 0,
-                                right: 0,
-                                bottom: 22,
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: _CaptureSideControl(
-                                        key: const Key(
-                                          'openScannerPhotosButton',
-                                        ),
-                                        icon: CupertinoIcons.photo,
-                                        label: 'Choose a medication photo',
-                                        onPressed: _choosePhoto,
-                                        enabled: !_isAnalyzing,
-                                      ),
-                                    ),
-                                    Tooltip(
-                                      message: _isAnalyzing
-                                          ? 'Analyzing medication'
-                                          : 'Capture medication',
-                                      child: Semantics(
-                                        button: true,
-                                        enabled: !_isAnalyzing,
-                                        label: _isAnalyzing
-                                            ? 'Analyzing medication'
-                                            : 'Capture medication',
-                                        child: AppPressable(
-                                          key: const Key(
-                                            'captureMedicationButton',
-                                          ),
-                                          onPressed: _isAnalyzing
-                                              ? null
-                                              : _capture,
-                                          busy: _isAnalyzing,
-                                          semanticLabel: 'Capture medication',
-                                          borderRadius: BorderRadius.circular(
-                                            99,
-                                          ),
-                                          hoverScale: 1.04,
-                                          pressedScale: .92,
-                                          hoverOffset: Offset.zero,
-                                          haptic: AppHapticKind.primaryAction,
-                                          child: AnimatedScale(
-                                            duration: const Duration(
-                                              milliseconds: 120,
-                                            ),
-                                            scale: _isAnalyzing ? .9 : 1,
-                                            child: Container(
-                                              width: 70,
-                                              height: 70,
-                                              padding: const EdgeInsets.all(5),
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                border: Border.all(
-                                                  color: Colors.white,
-                                                  width: 4,
-                                                ),
-                                                color: Colors.white.withValues(
-                                                  alpha: .12,
-                                                ),
-                                              ),
-                                              child: DecoratedBox(
-                                                decoration: BoxDecoration(
-                                                  shape: BoxShape.circle,
-                                                  color: _isAnalyzing
-                                                      ? Colors.white.withValues(
-                                                          alpha: .65,
-                                                        )
-                                                      : Colors.white,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: _CaptureSideControl(
-                                        key: const Key('scannerBarcodeButton'),
-                                        icon: CupertinoIcons.barcode_viewfinder,
-                                        label: _barcodeMode
-                                            ? 'Scan a medication label'
-                                            : 'Scan a barcode',
-                                        isSelected: _barcodeMode,
-                                        onPressed: _toggleBarcodeMode,
-                                        enabled: !_isAnalyzing,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          );
-                        },
+                              ],
+                            );
+                          },
+                        ),
                       ),
                     ),
                   ),
@@ -547,53 +552,6 @@ class _PermissionView extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _GlassIconButton extends StatelessWidget {
-  const _GlassIconButton({
-    super.key,
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-    this.isSelected = false,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onPressed;
-  final bool isSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Tooltip(
-      message: label,
-      child: Semantics(
-        button: true,
-        label: label,
-        child: ClipOval(
-          child: WebAwareBlur(
-            sigma: 12,
-            child: ResponsiveCupertinoButton(
-              padding: EdgeInsets.zero,
-              minimumSize: const Size.square(40),
-              onPressed: onPressed,
-              semanticLabel: label,
-              color: isSelected
-                  ? colors.primary.withValues(alpha: .69)
-                  : const Color(0x7A10141D),
-              borderRadius: BorderRadius.circular(99),
-              child: Icon(
-                icon,
-                color: isSelected ? colors.onPrimary : Colors.white,
-                size: 18,
-              ),
-            ),
           ),
         ),
       ),

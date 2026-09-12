@@ -52,21 +52,11 @@ class LiquidGlassAppearanceSelector extends StatelessWidget {
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(32),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: dark
-              ? [
-                  Colors.white.withValues(alpha: highContrast ? .22 : .12),
-                  const Color(0xFF3C4653).withValues(alpha: .20),
-                  const Color(0xFF111318).withValues(alpha: .29),
-                ]
-              : [
-                  Colors.white.withValues(alpha: highContrast ? .68 : .40),
-                  const Color(0xFFF2F8FF).withValues(alpha: .22),
-                  const Color(0xFFD8E8F7).withValues(alpha: .12),
-                ],
-        ),
+        color: dark
+            ? const Color(0xFF25272B)
+                  .withValues(alpha: highContrast ? .96 : .90)
+            : const Color(0xFFF3F5F8)
+                  .withValues(alpha: highContrast ? .98 : .92),
         border: Border.all(
           color: dark
               ? Colors.white.withValues(alpha: highContrast ? .36 : .19)
@@ -150,46 +140,12 @@ class _AppearanceOption extends StatelessWidget {
         : dark
         ? const Color(0xFFF2F2F7)
         : AppColors.darkSurface.withValues(alpha: .90);
-    final selectedColors = dark
-        ? [
-            Colors.white.withValues(alpha: highContrast ? .18 : .09),
-            Color.lerp(
-              activeColor,
-              Colors.white,
-              .18,
-            )!.withValues(alpha: highContrast ? .34 : .22),
-            Color.lerp(
-              activeColor,
-              Colors.black,
-              .12,
-            )!.withValues(alpha: highContrast ? .29 : .18),
-          ]
-        : [
-            Color.lerp(
-              activeColor,
-              Colors.white,
-              .72,
-            )!.withValues(alpha: highContrast ? .90 : .68),
-            Color.lerp(
-              activeColor,
-              Colors.white,
-              .25,
-            )!.withValues(alpha: highContrast ? .68 : .50),
-            Color.lerp(
-              activeColor,
-              Colors.black,
-              .08,
-            )!.withValues(alpha: highContrast ? .58 : .37),
-          ];
-    final idleColors = dark
-        ? [
-            Colors.white.withValues(alpha: highContrast ? .12 : .055),
-            Colors.white.withValues(alpha: .025),
-          ]
-        : [
-            Colors.white.withValues(alpha: highContrast ? .44 : .20),
-            Colors.white.withValues(alpha: .07),
-          ];
+    final selectedColor = activeColor.withValues(
+      alpha: dark ? (highContrast ? .34 : .22) : (highContrast ? .90 : .68),
+    );
+    final idleColor = dark
+        ? Colors.white.withValues(alpha: highContrast ? .12 : .055)
+        : Colors.white.withValues(alpha: highContrast ? .44 : .20);
 
     return Semantics(
       container: true,
@@ -211,11 +167,7 @@ class _AppearanceOption extends StatelessWidget {
               curve: Curves.easeOutCubic,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(26),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: selected ? selectedColors : idleColors,
-                ),
+                color: selected ? selectedColor : idleColor,
                 border: Border.all(
                   color: selected
                       ? Colors.white.withValues(

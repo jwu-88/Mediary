@@ -672,17 +672,7 @@ class _LibraryGlassSurface extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color.alphaBlend(glassTint, glassBase),
-                Color.alphaBlend(
-                  primary.withValues(alpha: dark ? .018 : .012),
-                  glassBase,
-                ),
-              ],
-            ),
+            color: Color.alphaBlend(glassTint, glassBase),
             border: Border.all(
               color: Colors.white.withValues(alpha: dark ? .10 : .50),
               width: .7,
@@ -979,16 +969,7 @@ class _DetailHero extends StatelessWidget {
           fallbackIcon: CupertinoIcons.capsule_fill,
           borderRadius: BorderRadius.zero,
         ),
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0x6B0A0F19), Color(0x000A0F19), Color(0x160A0F19)],
-              stops: [0, .35, 1],
-            ),
-          ),
-        ),
+        const DecoratedBox(decoration: BoxDecoration(color: Color(0x3D0A0F19))),
         Positioned(
           left: 10,
           right: 10,

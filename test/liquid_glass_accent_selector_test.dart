@@ -11,7 +11,6 @@ void main() {
       find.byKey(const Key('accentColorSelector')),
     );
     final decoration = selector.decoration! as BoxDecoration;
-    final gradient = decoration.gradient! as LinearGradient;
     final optionSizes = [
       'accentOptionBlue',
       'accentOptionIndigo',
@@ -22,7 +21,8 @@ void main() {
 
     expect(selector.constraints!.maxHeight, 68);
     expect(decoration.borderRadius, BorderRadius.circular(34));
-    expect(gradient.colors.every((color) => color.a < 1), isTrue);
+    expect(decoration.gradient, isNull);
+    expect(decoration.color, isNotNull);
     expect(optionSizes.toSet(), hasLength(1));
     expect(optionSizes.first.width, optionSizes.first.height);
     expect(optionSizes.first, const Size.square(50));
@@ -83,9 +83,8 @@ void main() {
       find.byKey(const Key('accentColorSelector')),
     );
     final decoration = selector.decoration! as BoxDecoration;
-    final gradient = decoration.gradient! as LinearGradient;
-
-    expect(gradient.colors.first.a, lessThan(.2));
+    expect(decoration.gradient, isNull);
+    expect(decoration.color, isNotNull);
     expect(find.byKey(const Key('accentOptionTeal')), findsOneWidget);
   });
 }

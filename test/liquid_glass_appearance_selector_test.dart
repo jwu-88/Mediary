@@ -10,7 +10,6 @@ void main() {
       find.byKey(const Key('appearanceModeSelector')),
     );
     final decoration = selector.decoration! as BoxDecoration;
-    final gradient = decoration.gradient! as LinearGradient;
     final lightSize = tester.getSize(
       find.byKey(const Key('appearanceOptionLight')),
     );
@@ -23,7 +22,8 @@ void main() {
 
     expect(selector.constraints!.maxHeight, 64);
     expect(decoration.borderRadius, BorderRadius.circular(32));
-    expect(gradient.colors.every((color) => color.a < 1), isTrue);
+    expect(decoration.gradient, isNull);
+    expect(decoration.color, isNotNull);
     expect(lightSize, darkSize);
     expect(darkSize, systemSize);
     expect(find.byType(BackdropFilter), findsNWidgets(4));

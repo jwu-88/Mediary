@@ -27,7 +27,9 @@ void main() {
     expect(border.bottom, border.left);
     expect(border.top.width, 1);
     expect(border.top.color.a, greaterThan(.75));
-    expect(find.byType(BackdropFilter), findsNWidgets(2));
+    // Only the selected lens may blur; the base surface must stay solid so a
+    // black scanner canvas cannot bleed through as a pixel/grid texture.
+    expect(find.byType(BackdropFilter), findsOneWidget);
   });
 
   testWidgets('selected lens is a translucent accent gradient', (tester) async {

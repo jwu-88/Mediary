@@ -32,6 +32,20 @@ void main() {
     expect(find.text('LABEL'), findsNothing);
     expect(find.text('PILL'), findsNothing);
     expect(find.text('BARCODE'), findsNothing);
+    expect(find.byKey(const Key('scannerTorchButton')), findsNothing);
+
+    final cameraSurface = tester.widget<DecoratedBox>(
+      find.byKey(const Key('scannerCameraPanel')),
+    );
+    final cameraDecoration = cameraSurface.decoration as BoxDecoration;
+    expect(cameraDecoration.border, isNotNull);
+    expect(cameraDecoration.border!.top.width, closeTo(.8, .01));
+
+    final cameraPanel = tester.getRect(
+      find.byKey(const Key('scannerCameraPanel')),
+    );
+    expect(cameraPanel.center.dx, closeTo(201, 1));
+    expect(cameraPanel.bottom, lessThanOrEqualTo(874));
 
     await tester.tap(find.byKey(const Key('scannerBarcodeButton')));
     await tester.pump(const Duration(milliseconds: 200));
