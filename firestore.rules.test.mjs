@@ -137,6 +137,52 @@ describe('Firestore security rules', () => {
     );
   });
 
+  it('validates RxNorm catalog metadata while preserving legacy medications', async () => {
+    const owner = testEnvironment.authenticatedContext('owner').firestore();
+    await assertSucceeds(
+      setDoc(doc(owner, 'users/owner/medications/rxnorm-6809'), {
+        ...validMedication(),
+        catalogId: '6809',
+        catalogSource: 'rxnorm',
+        catalogVersion: '2026-08-01',
+      }),
+    );
+    await assertFails(
+      setDoc(doc(owner, 'users/owner/medications/unknown-catalog'), {
+        ...validMedication(),
+        catalogId: '6809',
+        catalogSource: 'openfda',
+        catalogVersion: '2026-08-01',
+      }),
+    );
+    await assertFails(
+      setDoc(doc(owner, 'users/owner/medications/empty-catalog-id'), {
+        ...validMedication(),
+        catalogId: '',
+        catalogSource: 'rxnorm',
+        catalogVersion: '2026-08-01',
+      }),
+    );
+    await assertSucceeds(
+      setDoc(doc(owner, 'users/owner/savedMedications/rxnorm-6809'), {
+        savedAt: timestamp,
+        libraryVersion: 'current',
+        catalogId: '6809',
+        catalogSource: 'rxnorm',
+        catalogVersion: '2026-08-01',
+      }),
+    );
+    await assertFails(
+      setDoc(doc(owner, 'users/owner/savedMedications/unknown-catalog'), {
+        savedAt: timestamp,
+        libraryVersion: 'current',
+        catalogId: '6809',
+        catalogSource: 'openfda',
+        catalogVersion: '2026-08-01',
+      }),
+    );
+  });
+
   it('rejects historical deletes but permits unsaving a library medication', async () => {
     const owner = testEnvironment.authenticatedContext('owner').firestore();
     await assertFails(deleteDoc(doc(owner, 'users/owner')));
