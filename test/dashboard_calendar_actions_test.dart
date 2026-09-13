@@ -97,7 +97,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Add'));
     await tester.pumpAndSettle();
-    expect(find.text('Ibuprofen'), findsOneWidget);
+    expect(find.textContaining('Ibuprofen Added'), findsOneWidget);
 
     await tester.tap(find.text('Amoxicillin'));
     await tester.pumpAndSettle();
@@ -196,5 +196,43 @@ void main() {
 
     expect(find.text('Metformin'), findsOneWidget);
     expect(find.text('Metformin scheduled'), findsOneWidget);
+  });
+
+  testWidgets('calendar removal cancels the dose and removes its row', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    final statusChanges = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CalendarScreen(
+            initialDate: DateTime(2026, 8, 23),
+            initialDoses: const [
+              CalendarDoseData(
+                id: 'dose-remove',
+                localDate: '2026-08-23',
+                name: 'Metformin',
+                details: '500 mg · 08:00',
+                status: 'due',
+              ),
+            ],
+            onDoseStatusChanged: (id, status) async {
+              statusChanges.add('$id:$status');
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Metformin'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove From Day'));
+    await tester.pumpAndSettle();
+
+    expect(statusChanges, ['dose-remove:cancelled']);
+    expect(find.text('Metformin'), findsNothing);
+    expect(find.text('No medications scheduled'), findsOneWidget);
+    expect(find.text('Metformin Removed'), findsOneWidget);
   });
 }

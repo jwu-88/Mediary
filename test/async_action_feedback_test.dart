@@ -52,7 +52,7 @@ void main() {
     picker.complete(const ['Ibuprofen']);
     await tester.pumpAndSettle();
 
-    expect(find.text('Ibuprofen'), findsOneWidget);
+    expect(find.textContaining('Ibuprofen Added'), findsOneWidget);
     expect(find.byKey(const Key('dashboardAddLoadingIndicator')), findsNothing);
   });
 
