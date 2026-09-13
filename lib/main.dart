@@ -1510,14 +1510,14 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
                 catalogClient: _catalogClient,
               );
               if (selections == null || selections.isEmpty || !mounted) {
-                return;
+                return const <CalendarDoseData>[];
               }
-              if (!context.mounted) return;
+              if (!context.mounted) return const <CalendarDoseData>[];
               final time = await showTimePicker(
                 context: context,
                 initialTime: TimeOfDay.fromDateTime(DateTime.now()),
               );
-              if (time == null || !mounted) return;
+              if (time == null || !mounted) return const <CalendarDoseData>[];
               final scheduledFor = DateTime(
                 date.year,
                 date.month,
@@ -1528,6 +1528,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
               final localDate = _dateKey(date);
               final localTime =
                   '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+              final addedDoses = <CalendarDoseData>[];
               for (final medication in selections) {
                 final catalog = await _catalogDetailsFor(medication);
                 final scheduleId =
@@ -1564,7 +1565,20 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
                     localTime: localTime,
                   ),
                 );
+                addedDoses.add(
+                  CalendarDoseData(
+                    id: scheduleId,
+                    localDate: localDate,
+                    name: catalog.name,
+                    details: [
+                      if (catalog.strength.isNotEmpty) catalog.strength,
+                      localTime,
+                    ].join(' · '),
+                    status: 'due',
+                  ),
+                );
               }
+              return addedDoses;
             },
     );
   }
