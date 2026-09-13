@@ -512,7 +512,7 @@ class _MedicationList extends StatelessWidget {
               onTap: () => onOpenMedication(medications[index]),
             ),
             if (index != medications.length - 1)
-              Divider(height: 1, indent: 77, color: line, thickness: .7),
+              Divider(height: 1, indent: 11, color: line, thickness: .7),
           ],
         ],
       ),
@@ -581,17 +581,6 @@ class _MedicationRow extends StatelessWidget {
         padding: const EdgeInsets.all(11),
         child: Row(
           children: [
-            SizedBox.square(
-              dimension: 54,
-              child: _MedicationArtwork(
-                assetPath: '',
-                cacheWidth: 216,
-                fallbackColor: const Color(0xFFDDE4EB),
-                fallbackIcon: CupertinoIcons.capsule_fill,
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -807,7 +796,7 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final heroHeight = (media.size.height * .332).clamp(250.0, 290.0);
+    final heroHeight = (media.size.height * .24).clamp(170.0, 210.0);
     final contentWidth = media.size.width >= 900
         ? responsiveContentWidth(context, nativeMaxWidth: 760)
         : 520.0;
@@ -902,16 +891,11 @@ class _DetailHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Stack(
       fit: StackFit.expand,
       children: [
-        _MedicationArtwork(
-          assetPath: '',
-          fallbackColor: const Color(0xFFDDE4EB),
-          fallbackIcon: CupertinoIcons.capsule_fill,
-          borderRadius: BorderRadius.zero,
-        ),
-        const DecoratedBox(decoration: BoxDecoration(color: Color(0x3D0A0F19))),
+        ColoredBox(color: colors.surfaceContainerHighest),
         Positioned(
           left: 10,
           right: 10,
@@ -922,7 +906,6 @@ class _DetailHero extends StatelessWidget {
               LiquidGlassBackButton(
                 key: const Key('medicationDetailBackButton'),
                 semanticLabel: 'Back to Library',
-                overImage: true,
                 onPressed: onBack,
               ),
               _HeroButton(
@@ -957,6 +940,7 @@ class _HeroButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Semantics(
       button: true,
       label: semanticLabel,
@@ -967,13 +951,13 @@ class _HeroButton extends StatelessWidget {
         semanticLabel: semanticLabel,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: const Color(0x33000000),
+            color: colors.surface.withValues(alpha: .86),
             shape: BoxShape.circle,
-            border: Border.all(color: const Color(0x55FFFFFF), width: .7),
+            border: Border.all(color: colors.outlineVariant, width: .7),
           ),
           child: SizedBox.square(
             dimension: 38,
-            child: Icon(icon, color: Colors.white, size: 20),
+            child: Icon(icon, color: colors.onSurface, size: 20),
           ),
         ),
       ),
@@ -1433,52 +1417,6 @@ class _InformationPage extends StatelessWidget {
           ),
           const SizedBox(height: 12),
         ],
-      ),
-    );
-  }
-}
-
-class _MedicationArtwork extends StatelessWidget {
-  const _MedicationArtwork({
-    required this.assetPath,
-    required this.fallbackColor,
-    required this.fallbackIcon,
-    required this.borderRadius,
-    this.cacheWidth = 1200,
-  });
-
-  final String assetPath;
-  final Color fallbackColor;
-  final IconData fallbackIcon;
-  final BorderRadius borderRadius;
-  final int cacheWidth;
-
-  Widget _fallback() {
-    return ColoredBox(
-      color: fallbackColor,
-      child: Center(
-        child: Icon(fallbackIcon, color: const Color(0xAA6E4A52), size: 28),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (assetPath.isEmpty) {
-      return ClipRRect(borderRadius: borderRadius, child: _fallback());
-    }
-    return ClipRRect(
-      borderRadius: borderRadius,
-      child: Image.asset(
-        assetPath,
-        fit: BoxFit.cover,
-        cacheWidth: cacheWidth,
-        filterQuality: FilterQuality.medium,
-        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-          if (wasSynchronouslyLoaded || frame != null) return child;
-          return _fallback();
-        },
-        errorBuilder: (context, error, stackTrace) => _fallback(),
       ),
     );
   }

@@ -118,6 +118,7 @@ class RxNormMedicationCatalogClient implements MedicationCatalogClient {
   static const _defaultVersion = 'current';
   static const _requestTimeout = Duration(seconds: 10);
   static const _maxResults = 20;
+  static const _openFdaPrefixLimit = 100;
 
   final http.Client _client;
   final Map<String, CatalogSearchPage> _searchCache = {};
@@ -147,13 +148,100 @@ class RxNormMedicationCatalogClient implements MedicationCatalogClient {
     final response = await _get(uri);
     final data = _decodeObject(response.body, 'RxNorm');
     final version = await _loadVersion();
-    final records = _parseRxNormResults(data, version);
+    var records = _parseRxNormResults(data, version);
+    if (records.isEmpty && normalized.length >= 3) {
+      records = await _searchOpenFdaBrandPrefix(normalized, version);
+    }
     final page = CatalogSearchPage(
       items: records.take(_maxResults).toList(growable: false),
       sourceVersion: version,
     );
     _searchCache[cacheKey] = page;
     return page;
+  }
+
+  Future<List<MedicationCatalogRecord>> _searchOpenFdaBrandPrefix(
+    String query,
+    String sourceVersion,
+  ) async {
+    final prefix = query
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .first
+        .replaceAll(RegExp(r'[^a-z0-9-]'), '');
+    if (prefix.length < 3) return const [];
+
+    final uri = Uri.https(_openFdaHost, '/drug/label.json', {
+      'search':
+          '(openfda.brand_name:$prefix* OR openfda.generic_name:$prefix*)',
+      'limit': '$_openFdaPrefixLimit',
+      'sort': 'openfda.brand_name.exact:asc',
+    });
+    final response = await _get(uri, allowNotFound: true);
+    if (response.statusCode != 200) return const [];
+    final data = _decodeObject(response.body, 'openFDA');
+    final results = data['results'];
+    if (results is! Iterable) return const [];
+
+    final records = <String, MedicationCatalogRecord>{};
+    for (final item in results) {
+      if (item is! Map) continue;
+      final result = Map<String, dynamic>.from(item);
+      final openFda = result['openfda'];
+      if (openFda is! Map) continue;
+      final metadata = Map<String, dynamic>.from(openFda);
+      final brandNames = _stringList(metadata['brand_name'])
+          .where((brand) => brand.toLowerCase().startsWith(prefix))
+          .toList(growable: false);
+      final genericNames = _stringList(metadata['generic_name'])
+          .where((generic) => generic.toLowerCase().startsWith(prefix))
+          .toList(growable: false);
+      if (brandNames.isEmpty && genericNames.isEmpty) continue;
+      brandNames.sort((first, second) {
+        final length = first.length.compareTo(second.length);
+        return length == 0 ? first.compareTo(second) : length;
+      });
+      genericNames.sort((first, second) {
+        final length = first.length.compareTo(second.length);
+        return length == 0 ? first.compareTo(second) : length;
+      });
+      final displayName = brandNames.isNotEmpty
+          ? brandNames.first
+          : genericNames.first;
+      final genericName = _firstListString(metadata['generic_name']);
+      final form = _firstListString(metadata['dosage_form']);
+      final route = _firstListString(metadata['route']);
+      final strength = _firstListString(result['dosage_forms_and_strengths']);
+      final setId = _firstListString(metadata['spl_set_id']);
+      final labelUrl = setId.isEmpty
+          ? null
+          : 'https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=$setId';
+      for (final rxcui in _stringList(metadata['rxcui'])) {
+        if (rxcui.isEmpty) continue;
+        final base = _recordFromName(
+          rxcui: rxcui,
+          name: displayName,
+          synonym: displayName,
+          tty: 'SBD',
+          sourceVersion: sourceVersion,
+        );
+        final record = base.copyWith(
+          genericName: genericName.isEmpty ? base.genericName : genericName,
+          strength: strength.isEmpty ? base.strength : strength,
+          form: form.isEmpty ? base.form : form,
+          route: route.isEmpty ? base.route : route,
+          labelUrl: labelUrl,
+        );
+        final existing = records[rxcui];
+        if (existing == null || record.name.length < existing.name.length) {
+          records[rxcui] = record;
+        }
+      }
+    }
+    return records.values.toList()..sort((first, second) {
+      final length = first.name.length.compareTo(second.name.length);
+      return length == 0 ? first.name.compareTo(second.name) : length;
+    });
   }
 
   @override

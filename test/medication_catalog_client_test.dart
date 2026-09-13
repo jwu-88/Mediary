@@ -127,6 +127,72 @@ void main() {
   );
 
   test(
+    'falls back to openFDA brand prefixes when RxNorm has no exact results',
+    () async {
+      var openFdaRequests = 0;
+      final client = RxNormMedicationCatalogClient(
+        client: MockClient((request) async {
+          if (request.url.host == 'api.fda.gov') {
+            openFdaRequests++;
+            expect(
+              request.url.queryParameters['search'],
+              '(openfda.brand_name:adv* OR openfda.generic_name:adv*)',
+            );
+            return http.Response(
+              jsonEncode({
+                'results': [
+                  {
+                    'openfda': {
+                      'brand_name': ['Advanced Relief'],
+                      'rxcui': ['888'],
+                    },
+                  },
+                  {
+                    'openfda': {
+                      'brand_name': ['Advil'],
+                      'generic_name': ['ibuprofen'],
+                      'dosage_form': ['TABLET'],
+                      'route': ['ORAL'],
+                      'rxcui': ['153008'],
+                      'spl_set_id': ['advil-label'],
+                    },
+                    'dosage_forms_and_strengths': ['200 mg tablet'],
+                  },
+                ],
+              }),
+              200,
+            );
+          }
+          if (request.url.path.endsWith('/version.json')) {
+            return http.Response(jsonEncode({'version': '2026.09'}), 200);
+          }
+          return http.Response(
+            jsonEncode({
+              'drugGroup': {'name': null},
+            }),
+            200,
+          );
+        }),
+      );
+      addTearDown(client.dispose);
+
+      final first = await client.search('adv');
+      final second = await client.search('ADV');
+
+      expect(first.items.map((item) => item.name), contains('Advil'));
+      final advil = first.items.firstWhere((item) => item.name == 'Advil');
+      expect(advil.rxcui, '153008');
+      expect(advil.genericName, 'ibuprofen');
+      expect(advil.strength, '200 mg tablet');
+      expect(advil.form, 'TABLET');
+      expect(advil.route, 'ORAL');
+      expect(advil.labelUrl, contains('advil-label'));
+      expect(identical(first, second), isTrue);
+      expect(openFdaRequests, 1);
+    },
+  );
+
+  test(
     'rate limits are surfaced and malformed responses fail clearly',
     () async {
       final limited = RxNormMedicationCatalogClient(

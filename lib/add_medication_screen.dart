@@ -18,9 +18,6 @@ class MedicationOption {
     required this.genericName,
     required this.strength,
     required this.form,
-    this.imageUrl = '',
-    this.fallbackColor = const Color(0xFFDDE4EB),
-    this.fallbackIcon = CupertinoIcons.capsule_fill,
     this.catalogVersion = '',
   });
 
@@ -29,9 +26,6 @@ class MedicationOption {
   final String genericName;
   final String strength;
   final String form;
-  final String imageUrl;
-  final Color fallbackColor;
-  final IconData fallbackIcon;
   final String catalogVersion;
 
   String get doseDescription => '$strength · $form';
@@ -450,8 +444,6 @@ class _MedicationOptionRow extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  _MedicationImage(medication: medication),
-                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -508,47 +500,6 @@ class _MedicationOptionRow extends StatelessWidget {
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MedicationImage extends StatelessWidget {
-  const _MedicationImage({required this.medication});
-
-  final MedicationOption medication;
-
-  Widget _fallback() {
-    return ColoredBox(
-      color: medication.fallbackColor,
-      child: Center(
-        child: Icon(
-          medication.fallbackIcon,
-          color: const Color(0xAA4E5158),
-          size: 24,
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (medication.imageUrl.isEmpty) return _fallback();
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(9),
-      child: SizedBox.square(
-        dimension: 54,
-        child: Image.asset(
-          medication.imageUrl,
-          fit: BoxFit.cover,
-          cacheWidth: 216,
-          filterQuality: FilterQuality.medium,
-          frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-            if (wasSynchronouslyLoaded || frame != null) return child;
-            return _fallback();
-          },
-          errorBuilder: (_, _, _) => _fallback(),
         ),
       ),
     );
