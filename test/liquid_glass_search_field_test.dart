@@ -70,6 +70,12 @@ void main() {
       ),
     );
 
+    final textField = tester.widget<TextField>(
+      find.byKey(const Key('searchField')),
+    );
+    expect(textField.textAlign, TextAlign.center);
+    expect(textField.textAlignVertical, TextAlignVertical.center);
+
     await tester.enterText(find.byKey(const Key('searchField')), 'amoxicillin');
     await tester.pump();
     expect(controller.text, 'amoxicillin');

@@ -155,4 +155,29 @@ void main() {
     expect(find.text('Sample Medication'), findsOneWidget);
     expect(find.byType(Image), findsNothing);
   });
+
+  testWidgets('uses readable title casing and larger medication rows', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    const medication = MedicationOption(
+      id: 'advil',
+      name: 'ADVIL',
+      genericName: 'ibuprofen',
+      strength: '200 MG',
+      form: 'oral tablet',
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(home: AddMedicationScreen(medications: [medication])),
+    );
+    await tester.pump();
+
+    expect(find.text('Advil'), findsOneWidget);
+    expect(find.text('Ibuprofen · 200 MG · Oral Tablet'), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const Key('medicationOption_advil'))).height,
+      92,
+    );
+  });
 }

@@ -28,6 +28,7 @@ import 'settings_screen.dart';
 import 'web_camera.dart';
 import 'web_navigation_sidebar.dart';
 import 'weekly_report_screen.dart';
+import 'text_formatting.dart';
 
 final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 Future<void>? _googleSignInInitialization;
@@ -1987,11 +1988,11 @@ class _ScheduleDetailsPage extends StatefulWidget {
 class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
   static const _frequencyOptions = [
     ('once', 'Once', 'Only on the selected calendar day'),
-    ('daily', 'Every day', 'Repeat daily at this time'),
-    ('weekly', 'Every week', 'Repeat weekly at this time'),
-    ('every8Hours', 'Every 8 hours', 'Repeat every 8 hours'),
-    ('every12Hours', 'Every 12 hours', 'Repeat every 12 hours'),
-    ('asNeeded', 'As needed', 'Use when needed; keep the schedule active'),
+    ('daily', 'Every Day', 'Repeat daily at this time'),
+    ('weekly', 'Every Week', 'Repeat weekly at this time'),
+    ('every8Hours', 'Every 8 Hours', 'Repeat every 8 hours'),
+    ('every12Hours', 'Every 12 Hours', 'Repeat every 12 hours'),
+    ('asNeeded', 'As Needed', 'Use when needed; keep the schedule active'),
   ];
 
   late final TextEditingController _doseController;
@@ -2072,7 +2073,10 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
   }
 
   Future<void> _chooseTime() async {
-    final selected = await showTimePicker(context: context, initialTime: _time);
+    final selected = await pushInAppPage<TimeOfDay>(
+      context,
+      builder: (context) => MedicationTimeSelectionPage(initialTime: _time),
+    );
     if (selected != null && mounted) setState(() => _time = selected);
   }
 
@@ -2115,7 +2119,7 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
             controller: _doseController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(
-              labelText: 'Dose amount',
+              labelText: 'Dose Amount',
               hintText: '1',
               border: OutlineInputBorder(),
             ),
@@ -2131,16 +2135,15 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
             onTap: _chooseFrequency,
           ),
           const SizedBox(height: 10),
-          _ScheduleChoiceTile(
+          _TimeSelectionCard(
             key: const Key('scheduleTimeChoice'),
-            label: 'Time',
-            value: timeLabel,
+            time: timeLabel,
             onTap: _chooseTime,
           ),
           const SizedBox(height: 10),
           _ScheduleChoiceTile(
             key: const Key('scheduleTimezoneChoice'),
-            label: 'Time zone',
+            label: 'Time Zone',
             value: _timezone,
             onTap: _chooseTimezone,
           ),
@@ -2162,6 +2165,215 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class MedicationTimeSelectionPage extends StatefulWidget {
+  const MedicationTimeSelectionPage({super.key, required this.initialTime});
+
+  final TimeOfDay initialTime;
+
+  @override
+  State<MedicationTimeSelectionPage> createState() =>
+      _MedicationTimeSelectionPageState();
+}
+
+class _MedicationTimeSelectionPageState
+    extends State<MedicationTimeSelectionPage> {
+  static const _presets = [
+    ('Morning', TimeOfDay(hour: 8, minute: 0)),
+    ('Noon', TimeOfDay(hour: 12, minute: 0)),
+    ('Evening', TimeOfDay(hour: 18, minute: 0)),
+    ('Bedtime', TimeOfDay(hour: 21, minute: 0)),
+  ];
+
+  late TimeOfDay _time = widget.initialTime;
+
+  bool _isSelected(TimeOfDay time) =>
+      time.hour == _time.hour && time.minute == _time.minute;
+
+  Future<void> _chooseCustomTime() async {
+    final selected = await showTimePicker(
+      context: context,
+      initialTime: _time,
+      helpText: 'Choose Medication Time',
+      cancelText: 'Cancel',
+      confirmText: 'Use Time',
+    );
+    if (selected != null && mounted) setState(() => _time = selected);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return InAppPageScaffold(
+      title: 'Choose Time',
+      actions: [
+        TextButton(
+          key: const Key('confirmScheduleTimeButton'),
+          onPressed: () => Navigator.of(context).pop(_time),
+          child: const Text('Done'),
+        ),
+      ],
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          Text(
+            'Choose when you want a reminder. Pick a common time or set an exact time.',
+            style: TextStyle(
+              color: colors.onSurfaceVariant,
+              fontSize: 14,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+            decoration: BoxDecoration(
+              color: colors.primaryContainer.withValues(alpha: .42),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: colors.primary.withValues(alpha: .22)),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.notifications_active_outlined,
+                  color: colors.primary,
+                  size: 26,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _time.format(context),
+                  key: const Key('selectedScheduleTime'),
+                  style: TextStyle(
+                    color: colors.onPrimaryContainer,
+                    fontSize: 34,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -.8,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Medication Reminder Time',
+                  style: TextStyle(
+                    color: colors.onPrimaryContainer.withValues(alpha: .78),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 22),
+          Text(
+            'Quick Choices',
+            style: TextStyle(
+              color: colors.onSurface,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final preset in _presets)
+                ChoiceChip(
+                  key: Key('scheduleTimePreset_${preset.$1}'),
+                  label: Text('${preset.$1} · ${preset.$2.format(context)}'),
+                  selected: _isSelected(preset.$2),
+                  onSelected: (_) => setState(() => _time = preset.$2),
+                ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          OutlinedButton.icon(
+            key: const Key('customScheduleTimeButton'),
+            onPressed: _chooseCustomTime,
+            icon: const Icon(Icons.access_time),
+            label: const Text('Choose Custom Time'),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'You can change this reminder later from the Calendar.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimeSelectionCard extends StatelessWidget {
+  const _TimeSelectionCard({
+    super.key,
+    required this.time,
+    required this.onTap,
+  });
+
+  final String time;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: colors.primaryContainer.withValues(alpha: .35),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: colors.primary.withValues(alpha: .22)),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+          child: Row(
+            children: [
+              Icon(Icons.access_time, color: colors.primary, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Time',
+                      style: TextStyle(
+                        color: colors.onSurface,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      time,
+                      key: const Key('scheduleTimeValue'),
+                      style: TextStyle(
+                        color: colors.onSurfaceVariant,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Tap to choose a quick option or custom time',
+                      style: TextStyle(
+                        color: colors.onSurfaceVariant,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.edit_outlined, color: colors.onSurfaceVariant),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2190,7 +2402,7 @@ class _ScheduleChoiceTile extends StatelessWidget {
       ),
       child: ListTile(
         onTap: onTap,
-        title: Text(label),
+        title: Text(titleCaseDisplay(label)),
         subtitle: Text(value),
         trailing: Icon(Icons.chevron_right, color: colors.onSurfaceVariant),
       ),

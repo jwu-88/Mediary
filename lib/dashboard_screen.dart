@@ -9,6 +9,7 @@ import 'app_layout.dart';
 import 'dose_action_error.dart';
 import 'in_app_page.dart';
 import 'profile_image_policy.dart';
+import 'text_formatting.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
@@ -1044,7 +1045,7 @@ class _DoseRow extends StatelessWidget {
                 Expanded(
                   flex: 5,
                   child: Text(
-                    name,
+                    titleCaseDisplay(name),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -1066,7 +1067,7 @@ class _DoseRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        details.replaceFirst(' · ', '\n'),
+                        titleCaseDisplay(details.replaceFirst(' · ', '\n')),
                         maxLines: 2,
                         style: TextStyle(
                           color: colors.onSurfaceVariant,

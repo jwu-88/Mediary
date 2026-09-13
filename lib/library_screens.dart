@@ -13,6 +13,7 @@ import 'in_app_page.dart';
 import 'liquid_glass_back_button.dart';
 import 'liquid_glass_search_field.dart';
 import 'medication_artwork.dart';
+import 'text_formatting.dart';
 
 class MedicationLibraryScreen extends StatefulWidget {
   const MedicationLibraryScreen({
@@ -579,31 +580,31 @@ class _MedicationRow extends StatelessWidget {
       hoverOffset: Offset.zero,
       pressedScale: .99,
       child: Padding(
-        padding: const EdgeInsets.all(11),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         child: Row(
           children: [
             MedicationArtwork(
               seed: medication.id,
               label: medication.name,
-              size: 42,
+              size: 50,
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    medication.name,
+                    titleCaseDisplay(medication.name),
                     style: TextStyle(
                       color: ink,
-                      fontSize: 15,
+                      fontSize: 16,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    medication.description,
-                    style: TextStyle(color: muted, fontSize: 11),
+                    titleCaseDisplay(medication.description),
+                    style: TextStyle(color: muted, fontSize: 12),
                   ),
                 ],
               ),
@@ -1019,7 +1020,7 @@ class _DetailContent extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    medication.name,
+                    titleCaseDisplay(medication.name),
                     style: TextStyle(
                       color: ink,
                       fontSize: 28,
@@ -1030,11 +1031,13 @@ class _DetailContent extends StatelessWidget {
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    [
-                      medication.genericName,
-                      medication.doseDescription,
-                      medication.route,
-                    ].where((value) => value.isNotEmpty).join(' · '),
+                    titleCaseDisplay(
+                      [
+                        medication.genericName,
+                        medication.doseDescription,
+                        medication.route,
+                      ].where((value) => value.isNotEmpty).join(' · '),
+                    ),
                     style: TextStyle(color: muted, fontSize: 12),
                   ),
                 ],
