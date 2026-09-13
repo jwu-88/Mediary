@@ -119,7 +119,6 @@ class _LiquidGlassSearchFieldState extends State<LiquidGlassSearchField> {
         autofocus: widget.autofocus,
         onChanged: widget.onChanged,
         textInputAction: TextInputAction.search,
-        textAlign: TextAlign.center,
         textAlignVertical: TextAlignVertical.center,
         cursorColor: colors.primary,
         style: TextStyle(color: colors.onSurface, fontSize: 16),

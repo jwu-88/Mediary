@@ -101,6 +101,16 @@ void main() {
 
     expect(find.text('2 Selected'), findsOneWidget);
     expect(find.text('Add Selected (2)'), findsOneWidget);
+    expect(
+      find.byKey(const Key('selectedMedicationArtwork_ibuprofen-200-tablet')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const Key('selectedMedicationArtwork_amoxicillin-500-capsule'),
+      ),
+      findsOneWidget,
+    );
     await tester.tap(find.byKey(const Key('addSelectedMedicationsButton')));
     await tester.pumpAndSettle();
 
@@ -175,6 +185,7 @@ void main() {
 
     expect(find.text('Advil'), findsOneWidget);
     expect(find.text('Ibuprofen · 200 MG · Oral Tablet'), findsOneWidget);
+    expect(find.byKey(const Key('medicationArtwork_advil')), findsOneWidget);
     expect(
       tester.getSize(find.byKey(const Key('medicationOption_advil'))).height,
       92,

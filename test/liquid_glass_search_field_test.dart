@@ -73,7 +73,7 @@ void main() {
     final textField = tester.widget<TextField>(
       find.byKey(const Key('searchField')),
     );
-    expect(textField.textAlign, TextAlign.center);
+    expect(textField.textAlign, TextAlign.start);
     expect(textField.textAlignVertical, TextAlignVertical.center);
 
     await tester.enterText(find.byKey(const Key('searchField')), 'amoxicillin');

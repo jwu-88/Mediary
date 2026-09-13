@@ -4,6 +4,7 @@ import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../data/mediary_models.dart';
+import '../text_formatting.dart';
 
 /// A due dose that can be presented by a native notification or the web UI.
 class MedicationDueNotification {
@@ -19,7 +20,7 @@ class MedicationDueNotification {
 
   String get title => 'Medication reminder';
 
-  String get body => 'Time to take $medicationName';
+  String get body => 'Time to take ${titleCaseDisplay(medicationName)}';
 }
 
 /// Platform-independent notification contract used by the authenticated shell.
@@ -222,7 +223,8 @@ class DefaultMedicationNotificationService
     await _plugin.zonedSchedule(
       id: notificationId,
       title: 'Medication reminder',
-      body: 'Time to take ${medicationName ?? 'your medication'}',
+      body:
+          'Time to take ${titleCaseDisplay(medicationName ?? 'your medication')}',
       scheduledDate: tz.TZDateTime.from(scheduledDate, tz.local),
       notificationDetails: _notificationDetails,
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,

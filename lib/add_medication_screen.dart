@@ -516,6 +516,12 @@ class _SelectedMedicationSummary extends StatelessWidget {
                   for (final medication in medications)
                     InputChip(
                       key: Key('selectedMedicationChip_${medication.id}'),
+                      avatar: MedicationArtwork(
+                        key: Key('selectedMedicationArtwork_${medication.id}'),
+                        seed: medication.id,
+                        label: titleCaseDisplay(medication.name),
+                        size: 24,
+                      ),
                       label: Text(
                         titleCaseDisplay(medication.name),
                         maxLines: 1,
@@ -554,7 +560,9 @@ class _MedicationOptionRow extends StatelessWidget {
       child: AppPressable(
         key: Key('medicationOption_${medication.id}'),
         onPressed: onPressed,
-        semanticLabel: '${medication.name}, ${medication.doseDescription}',
+        semanticLabel:
+            '${titleCaseDisplay(medication.name)}, '
+            '${titleCaseDisplay(medication.doseDescription)}',
         borderRadius: BorderRadius.zero,
         hoverScale: 1,
         hoverOffset: Offset.zero,
@@ -579,8 +587,9 @@ class _MedicationOptionRow extends StatelessWidget {
               child: Row(
                 children: [
                   MedicationArtwork(
+                    key: Key('medicationArtwork_${medication.id}'),
                     seed: medication.id,
-                    label: medication.name,
+                    label: titleCaseDisplay(medication.name),
                     size: 50,
                   ),
                   const SizedBox(width: 14),

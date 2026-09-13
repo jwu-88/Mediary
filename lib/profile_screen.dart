@@ -10,6 +10,7 @@ import 'in_app_page.dart';
 import 'liquid_glass_back_button.dart';
 import 'medication_artwork.dart';
 import 'profile_image_policy.dart';
+import 'text_formatting.dart';
 
 String? validateProfilePhotoUrl(String? value) =>
     validateProfileImageUrl(value);
@@ -122,8 +123,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       : _visibleActiveMedications.length;
   List<String> get _visibleActiveMedicationNames =>
       widget.activeMedications.isEmpty
-      ? widget.activeMedicationNames
-      : _visibleActiveMedications.map((medication) => medication.name).toList();
+      ? widget.activeMedicationNames.map(titleCaseDisplay).toList()
+      : _visibleActiveMedications
+            .map((medication) => titleCaseDisplay(medication.name))
+            .toList();
   Color get _background =>
       _isDark ? AppColors.darkBackground : const Color(0xFFF2F2F7);
   Color get _surface => _isDark ? AppColors.darkSurface : Colors.white;
@@ -1517,7 +1520,7 @@ class _ActiveMedicationManagementPageState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Remove ${medication.name}?'),
+        title: Text('Remove ${titleCaseDisplay(medication.name)}?'),
         content: const Text(
           'This removes it from your active medications and cancels future doses. Your past dose history is kept.',
         ),
@@ -1586,21 +1589,24 @@ class _ActiveMedicationManagementPageState
                     vertical: 4,
                   ),
                   leading: MedicationArtwork(
+                    key: Key('profileMedicationArtwork_${medication.id}'),
                     seed: medication.catalogId ?? medication.id,
-                    label: medication.name,
+                    label: titleCaseDisplay(medication.name),
                     size: 44,
                   ),
-                  title: Text(medication.name),
+                  title: Text(titleCaseDisplay(medication.name)),
                   subtitle: Text(
-                    [
-                      medication.genericName,
-                      medication.strength,
-                      medication.form,
-                    ].where((value) => value.isNotEmpty).join(' · '),
+                    titleCaseDisplay(
+                      [
+                        medication.genericName,
+                        medication.strength,
+                        medication.form,
+                      ].where((value) => value.isNotEmpty).join(' · '),
+                    ),
                   ),
                   trailing: IconButton(
                     key: Key('removeMedication_${medication.id}'),
-                    tooltip: 'Remove ${medication.name}',
+                    tooltip: 'Remove ${titleCaseDisplay(medication.name)}',
                     onPressed: _removingId == medication.id
                         ? null
                         : () => _removeMedication(medication),

@@ -8,6 +8,7 @@ import 'app_interactions.dart';
 import 'app_layout.dart';
 import 'dose_action_error.dart';
 import 'in_app_page.dart';
+import 'medication_artwork.dart';
 import 'profile_image_policy.dart';
 import 'text_formatting.dart';
 
@@ -46,8 +47,6 @@ class DashboardScreen extends StatefulWidget {
 
   static const _lightTaken = Color(0xFF279F49);
   static const _darkTaken = Color(0xFF30D158);
-  static const _lightOrange = Color(0xFFE77B00);
-  static const _darkOrange = Color(0xFFFF9F0A);
 
   String get _name {
     final name = displayName?.trim();
@@ -177,8 +176,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final action = await pushInAppPage<_DoseAction>(
       context,
       builder: (context) => InAppOptionPage<_DoseAction>(
-        title: dose.name,
-        subtitle: dose.details,
+        title: titleCaseDisplay(dose.name),
+        subtitle: titleCaseDisplay(dose.details),
         options: [
           InAppPageOption(
             label: dose.status == 'Taken' ? 'Mark As Due' : 'Mark As Taken',
@@ -253,7 +252,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           setState(() {
             _doses.removeWhere((item) => item.id == dose.id);
           });
-          _showConfirmation('${dose.name} Removed');
+          _showConfirmation('${titleCaseDisplay(dose.name)} Removed');
         } catch (error) {
           if (kDebugMode) debugPrint('Dose removal failed: $error');
           _showConfirmation(doseActionErrorMessage(error, action: 'remove'));
@@ -831,9 +830,6 @@ class _ScheduleTable extends StatelessWidget {
     final taken = theme.brightness == Brightness.dark
         ? DashboardScreen._darkTaken
         : DashboardScreen._lightTaken;
-    final orange = theme.brightness == Brightness.dark
-        ? DashboardScreen._darkOrange
-        : DashboardScreen._lightOrange;
     if (doses.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 18),
@@ -862,14 +858,11 @@ class _ScheduleTable extends StatelessWidget {
           for (var index = 0; index < doses.length; index++) ...[
             _DoseRow(
               rowIndex: index,
+              artworkSeed: doses[index].id,
+              artworkLabel: titleCaseDisplay(doses[index].name),
               name: doses[index].name,
               details: doses[index].details,
               status: doses[index].status,
-              iconColor: switch (doses[index].tone) {
-                _DoseTone.taken => taken,
-                _DoseTone.primary => colors.primary,
-                _DoseTone.warning => orange,
-              },
               statusColor: doses[index].tone == _DoseTone.taken ? taken : null,
               onTap: () => onTapDose(index),
             ),
@@ -947,7 +940,7 @@ class _ScheduleHeader extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 2),
         child: Row(
           children: [
-            const SizedBox(width: 28),
+            const SizedBox(width: 38),
             Expanded(
               flex: 5,
               child: Text('Medication', style: style.copyWith(color: color)),
@@ -1000,19 +993,21 @@ class _ScheduleVerticalDivider extends StatelessWidget {
 class _DoseRow extends StatelessWidget {
   const _DoseRow({
     required this.rowIndex,
+    required this.artworkSeed,
+    required this.artworkLabel,
     required this.name,
     required this.details,
     required this.status,
-    required this.iconColor,
     this.statusColor,
     required this.onTap,
   });
 
   final int rowIndex;
+  final String artworkSeed;
+  final String artworkLabel;
   final String name;
   final String details;
   final String status;
-  final Color iconColor;
   final Color? statusColor;
   final VoidCallback onTap;
 
@@ -1022,12 +1017,16 @@ class _DoseRow extends StatelessWidget {
     final resolvedStatusColor = statusColor ?? colors.onSurfaceVariant;
     return Semantics(
       button: true,
-      label: '$name, $details, $status',
+      label:
+          '${titleCaseDisplay(name)}, ${titleCaseDisplay(details)}, '
+          '${titleCaseDisplay(status)}',
       child: ResponsiveCupertinoButton(
         onPressed: onTap,
         minimumSize: Size.zero,
         padding: EdgeInsets.zero,
-        semanticLabel: '$name, $details, $status',
+        semanticLabel:
+            '${titleCaseDisplay(name)}, ${titleCaseDisplay(details)}, '
+            '${titleCaseDisplay(status)}',
         child: SizedBox(
           height: 62,
           child: Padding(
@@ -1035,11 +1034,12 @@ class _DoseRow extends StatelessWidget {
             child: Row(
               children: [
                 SizedBox(
-                  width: 28,
-                  child: Icon(
-                    Icons.medication_rounded,
-                    color: iconColor,
-                    size: 18,
+                  width: 38,
+                  child: MedicationArtwork(
+                    key: Key('dashboardMedicationArtwork_$artworkSeed'),
+                    seed: artworkSeed,
+                    label: artworkLabel,
+                    size: 30,
                   ),
                 ),
                 Expanded(
