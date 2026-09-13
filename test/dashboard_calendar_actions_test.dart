@@ -58,7 +58,6 @@ void main() {
                 status: 'due',
               ),
             ],
-            onAddMedication: () async => const ['Ibuprofen'],
           ),
         ),
       ),
@@ -95,9 +94,8 @@ void main() {
 
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Add'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Ibuprofen Added'), findsOneWidget);
+    expect(find.byKey(const Key('dashboardAddButton')), findsNothing);
+    expect(find.byKey(const Key('dashboardCalendarGuidance')), findsOneWidget);
 
     await tester.tap(find.text('Amoxicillin'));
     await tester.pumpAndSettle();

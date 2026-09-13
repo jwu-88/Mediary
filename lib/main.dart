@@ -1366,31 +1366,6 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
           ),
         );
       },
-      onAddMedication: () async {
-        final selections = await showAddMedicationScreen(
-          context,
-          catalogClient: _catalogClient,
-        );
-        if (selections != null && store != null) {
-          for (final medication in selections) {
-            final catalog = await _catalogDetailsFor(medication);
-            await store.saveMedication(
-              MedicationWrite(
-                name: catalog.name,
-                genericName: catalog.genericName,
-                strength: catalog.strength,
-                form: catalog.form,
-                route: catalog.route,
-                catalogId: catalog.rxcui,
-                catalogSource: 'rxnorm',
-                catalogVersion: catalog.sourceVersion,
-                source: 'library',
-              ),
-            );
-          }
-        }
-        return selections?.map((medication) => medication.name).toList();
-      },
       onOpenAccount: () => _openAccount(context),
     );
   }
