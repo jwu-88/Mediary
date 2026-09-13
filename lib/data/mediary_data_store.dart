@@ -180,6 +180,8 @@ class MediaryDataStore extends ChangeNotifier {
 
   Future<void> archiveMedication(String id) => repository.archiveMedication(id);
 
+  Future<void> removeMedication(String id) => repository.removeMedication(id);
+
   Future<void> deactivateSchedule(String id) =>
       repository.deactivateSchedule(id);
 

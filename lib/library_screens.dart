@@ -12,6 +12,7 @@ import 'data/medication_catalog_client.dart';
 import 'in_app_page.dart';
 import 'liquid_glass_back_button.dart';
 import 'liquid_glass_search_field.dart';
+import 'medication_artwork.dart';
 
 class MedicationLibraryScreen extends StatefulWidget {
   const MedicationLibraryScreen({
@@ -581,6 +582,12 @@ class _MedicationRow extends StatelessWidget {
         padding: const EdgeInsets.all(11),
         child: Row(
           children: [
+            MedicationArtwork(
+              seed: medication.id,
+              label: medication.name,
+              size: 42,
+            ),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -811,6 +818,8 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
             height: heroHeight,
             child: _DetailHero(
               topPadding: media.padding.top,
+              artworkSeed: _medication.rxcui,
+              artworkLabel: _medication.name,
               bookmarked: _isBookmarked,
               onBack: _goBack,
               onBookmark: _toggleBookmark,
@@ -879,12 +888,16 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
 class _DetailHero extends StatelessWidget {
   const _DetailHero({
     required this.topPadding,
+    required this.artworkSeed,
+    required this.artworkLabel,
     required this.bookmarked,
     required this.onBack,
     required this.onBookmark,
   });
 
   final double topPadding;
+  final String artworkSeed;
+  final String artworkLabel;
   final bool bookmarked;
   final VoidCallback onBack;
   final VoidCallback onBookmark;
@@ -896,6 +909,16 @@ class _DetailHero extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         ColoredBox(color: colors.surfaceContainerHighest),
+        Center(
+          child: Padding(
+            padding: EdgeInsets.only(top: topPadding + 30),
+            child: MedicationArtwork(
+              seed: artworkSeed,
+              label: artworkLabel,
+              size: 78,
+            ),
+          ),
+        ),
         Positioned(
           left: 10,
           right: 10,

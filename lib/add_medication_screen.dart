@@ -8,6 +8,7 @@ import 'app_layout.dart';
 import 'data/medication_catalog_client.dart';
 import 'liquid_glass_back_button.dart';
 import 'liquid_glass_search_field.dart';
+import 'medication_artwork.dart';
 
 /// A medication that can be added to the user's schedule.
 @immutable
@@ -444,6 +445,12 @@ class _MedicationOptionRow extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
+                  MedicationArtwork(
+                    seed: medication.id,
+                    label: medication.name,
+                    size: 42,
+                  ),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,

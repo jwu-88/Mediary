@@ -98,6 +98,7 @@ class DefaultMedicationNotificationService
       await _plugin.initialize(
         settings: const InitializationSettings(android: android, iOS: darwin),
       );
+      await _clearOwnedPendingNotifications();
     } catch (_) {
       // Flutter widget tests and desktop hosts do not register a native
       // notifications platform implementation. Keep the web/in-app portion
@@ -266,6 +267,16 @@ class DefaultMedicationNotificationService
     }
   }
 
+  Future<void> _clearOwnedPendingNotifications() async {
+    final pending = await _plugin.pendingNotificationRequests();
+    for (final request in pending) {
+      if (request.payload?.startsWith(_payloadPrefix) ?? false) {
+        await _plugin.cancel(id: request.id);
+      }
+    }
+    _scheduledDoseIds.clear();
+  }
+
   NotificationDetails get _notificationDetails => const NotificationDetails(
     android: AndroidNotificationDetails(
       'medication_reminders',
@@ -289,6 +300,16 @@ class DefaultMedicationNotificationService
 
   @override
   Future<void> dispose() async {
+    if (_disposed) return;
+    if (_supportsNativeNotifications) {
+      for (final doseId in _scheduledDoseIds) {
+        try {
+          await _plugin.cancel(id: notificationIdForDose(doseId));
+        } catch (_) {
+          // Sign-out should not be blocked by a native cancellation failure.
+        }
+      }
+    }
     _disposed = true;
     _notifiedDoseIds.clear();
     _scheduledDoseIds.clear();

@@ -1514,6 +1514,12 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
                   .map((medication) => medication.name)
                   .toList(growable: false) ??
               const [],
+          activeMedications:
+              widget.dataStore?.medications
+                  .where((medication) => medication.active)
+                  .toList(growable: false) ??
+              const [],
+          onRemoveMedication: widget.dataStore?.removeMedication,
           pageTitle: 'Account',
           onBack: () => Navigator.of(accountContext).maybePop(),
           onOpenLibrary: () {
