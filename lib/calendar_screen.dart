@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'app_interactions.dart';
 import 'app_layout.dart';
+import 'dose_action_error.dart';
 import 'in_app_page.dart';
 
 /// A native, interactive medication calendar based on the calendar prototype.
@@ -230,19 +231,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
         try {
           await widget.onDoseStatusChanged?.call(dose.id, nextStatus);
           if (!mounted) return;
-          setState(() => doses[index] = dose.copyWith(status: nextStatus));
+          final currentIndex = doses.indexWhere((item) => item.id == dose.id);
+          if (currentIndex < 0) return;
+          setState(
+            () => doses[currentIndex] = dose.copyWith(status: nextStatus),
+          );
           _showConfirmation(dose.isTaken ? 'Dose Marked Due' : 'Dose Taken');
-        } catch (_) {
-          _showConfirmation('Dose could not be updated');
+        } catch (error) {
+          _showConfirmation(doseActionErrorMessage(error, action: 'update'));
         }
       case _CalendarDoseAction.remove:
         try {
           await widget.onDoseStatusChanged?.call(dose.id, 'cancelled');
           if (!mounted) return;
-          setState(() => doses[index] = dose.copyWith(status: 'cancelled'));
+          final currentIndex = doses.indexWhere((item) => item.id == dose.id);
+          if (currentIndex < 0) return;
+          setState(
+            () => doses[currentIndex] = dose.copyWith(status: 'cancelled'),
+          );
           _showConfirmation('${dose.name} Removed');
-        } catch (_) {
-          _showConfirmation('Dose could not be removed');
+        } catch (error) {
+          _showConfirmation(doseActionErrorMessage(error, action: 'remove'));
         }
     }
   }

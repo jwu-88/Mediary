@@ -19,6 +19,8 @@ class MedicationOption {
     required this.genericName,
     required this.strength,
     required this.form,
+    this.route = '',
+    this.synonym = '',
     this.catalogVersion = '',
   });
 
@@ -27,9 +29,15 @@ class MedicationOption {
   final String genericName;
   final String strength;
   final String form;
+  final String route;
+  final String synonym;
   final String catalogVersion;
 
-  String get doseDescription => '$strength · $form';
+  String get doseDescription => [
+    if (strength.isNotEmpty) strength,
+    if (form.isNotEmpty) form,
+    if (route.isNotEmpty) route,
+  ].join(' · ');
 
   MedicationCatalogRecord toCatalogRecord() => MedicationCatalogRecord(
     rxcui: id,
@@ -37,6 +45,8 @@ class MedicationOption {
     genericName: genericName,
     strength: strength,
     form: form,
+    route: route,
+    synonym: synonym,
     sourceVersion: catalogVersion,
   );
 
@@ -47,6 +57,8 @@ class MedicationOption {
       genericName: record.genericName,
       strength: record.strength,
       form: record.form,
+      route: record.route,
+      synonym: record.synonym,
       catalogVersion: record.sourceVersion,
     );
   }
@@ -261,9 +273,44 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                     ],
                   ),
                 ),
+                if (selectionCount > 0)
+                  _SelectedMedicationSummary(
+                    medications: [
+                      for (final id in _selectedIds)
+                        if (_selectedMedications[id] != null)
+                          _selectedMedications[id]!,
+                    ],
+                    onRemove: (medication) => _toggleMedication(medication),
+                    onClear: () => setState(() {
+                      _selectedIds.clear();
+                      _selectedMedications.clear();
+                    }),
+                  )
+                else
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                    child: Text(
+                      _usesLiveCatalog
+                          ? 'Search at least 2 characters, then tap a result to select it.'
+                          : 'Tap a medication to select it. You can choose more than one.',
+                      style: TextStyle(
+                        color: colors.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
                 Expanded(
                   child: _isSearching
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircularProgressIndicator(),
+                              SizedBox(height: 12),
+                              Text('Searching the live medication catalog…'),
+                            ],
+                          ),
+                        )
                       : _searchError != null
                       ? _CatalogError(message: _searchError!)
                       : medications.isEmpty
@@ -411,6 +458,82 @@ class _LiquidGlassAddButton extends StatelessWidget {
   }
 }
 
+class _SelectedMedicationSummary extends StatelessWidget {
+  const _SelectedMedicationSummary({
+    required this.medications,
+    required this.onRemove,
+    required this.onClear,
+  });
+
+  final List<MedicationOption> medications;
+  final ValueChanged<MedicationOption> onRemove;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.primaryContainer.withValues(alpha: .42),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: colors.primary.withValues(alpha: .22)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${medications.length} selected',
+                      style: TextStyle(
+                        color: colors.onPrimaryContainer,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    key: const Key('clearMedicationSelectionButton'),
+                    onPressed: onClear,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(44, 32),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    child: const Text('Clear'),
+                  ),
+                ],
+              ),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final medication in medications)
+                    InputChip(
+                      key: Key('selectedMedicationChip_${medication.id}'),
+                      label: Text(
+                        medication.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onDeleted: () => onRemove(medication),
+                      deleteIcon: const Icon(Icons.close, size: 15),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _MedicationOptionRow extends StatelessWidget {
   const _MedicationOptionRow({
     required this.medication,
@@ -435,10 +558,19 @@ class _MedicationOptionRow extends StatelessWidget {
         hoverScale: 1,
         hoverOffset: Offset.zero,
         pressedScale: .99,
-        child: Material(
-          color: selected
-              ? colors.primary.withValues(alpha: .055)
-              : Colors.transparent,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          decoration: BoxDecoration(
+            color: selected
+                ? colors.primary.withValues(alpha: .055)
+                : Colors.transparent,
+            border: Border(
+              left: BorderSide(
+                color: selected ? colors.primary : Colors.transparent,
+                width: 3,
+              ),
+            ),
+          ),
           child: SizedBox(
             height: 78,
             child: Padding(
@@ -468,7 +600,8 @@ class _MedicationOptionRow extends StatelessWidget {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          medication.genericName == medication.name
+                          medication.genericName == medication.name ||
+                                  medication.genericName.isEmpty
                               ? medication.doseDescription
                               : '${medication.genericName} · ${medication.doseDescription}',
                           maxLines: 1,

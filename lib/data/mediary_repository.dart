@@ -526,7 +526,14 @@ class MediaryRepository {
           ? FieldValue.delete()
           : Timestamp.fromDate(snoozedUntil),
     };
-    await _doseLogs.doc(doseId).update(data);
+    try {
+      await _doseLogs.doc(doseId).update(data);
+    } on FirebaseException catch (error) {
+      // A stale dashboard can outlive a dose that was removed on another
+      // device. Treat that idempotent case as success so the UI can reconcile
+      // on the next Firestore snapshot; surface permission/network failures.
+      if (error.code != 'not-found') rethrow;
+    }
   }
 
   Future<void> saveLibraryMedication({

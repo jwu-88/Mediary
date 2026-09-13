@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'app_interactions.dart';
 import 'app_layout.dart';
+import 'dose_action_error.dart';
 import 'in_app_page.dart';
 import 'profile_image_policy.dart';
 
@@ -251,8 +252,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         try {
           await widget.onDoseStatusChanged?.call(dose.id, nextStatus);
           if (!mounted) return;
+          final currentIndex = _doses.indexWhere((item) => item.id == dose.id);
+          if (currentIndex < 0) return;
           setState(() {
-            _doses[index] = dose.copyWith(
+            _doses[currentIndex] = dose.copyWith(
               status: nextStatus == 'taken' ? 'Taken' : 'Due',
               firestoreStatus: nextStatus,
               tone: nextStatus == 'taken' ? _DoseTone.taken : _DoseTone.primary,
@@ -261,8 +264,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _showConfirmation(
             nextStatus == 'taken' ? 'Dose Taken' : 'Dose Marked Due',
           );
-        } catch (_) {
-          _showConfirmation('Dose could not be updated');
+        } catch (error) {
+          if (kDebugMode) debugPrint('Dose update failed: $error');
+          _showConfirmation(doseActionErrorMessage(error, action: 'update'));
         }
       case _DoseAction.snooze:
         try {
@@ -272,25 +276,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
             snoozedUntil: DateTime.now().add(const Duration(minutes: 15)),
           );
           if (!mounted) return;
+          final currentIndex = _doses.indexWhere((item) => item.id == dose.id);
+          if (currentIndex < 0) return;
           setState(() {
-            _doses[index] = dose.copyWith(
+            _doses[currentIndex] = dose.copyWith(
               status: 'Later',
               firestoreStatus: 'snoozed',
               tone: _DoseTone.warning,
             );
           });
           _showConfirmation('Reminder Moved');
-        } catch (_) {
-          _showConfirmation('Reminder could not be saved');
+        } catch (error) {
+          if (kDebugMode) debugPrint('Dose snooze failed: $error');
+          _showConfirmation(doseActionErrorMessage(error, action: 'update'));
         }
       case _DoseAction.remove:
         try {
           await widget.onDoseStatusChanged?.call(dose.id, 'cancelled');
           if (!mounted) return;
-          setState(() => _doses.removeAt(index));
+          setState(() {
+            _doses.removeWhere((item) => item.id == dose.id);
+          });
           _showConfirmation('${dose.name} Removed');
-        } catch (_) {
-          _showConfirmation('Dose could not be removed');
+        } catch (error) {
+          if (kDebugMode) debugPrint('Dose removal failed: $error');
+          _showConfirmation(doseActionErrorMessage(error, action: 'remove'));
         }
     }
   }
