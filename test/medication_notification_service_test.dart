@@ -142,4 +142,41 @@ void main() {
       await service.dispose();
     },
   );
+
+  test('deduplicates a large dose set and forgets cancelled doses', () async {
+    final service = DefaultMedicationNotificationService();
+    final now = DateTime(2026, 9, 13, 9, 1);
+    final doses = [
+      for (var index = 0; index < 1000; index++)
+        dose(
+          id: 'dose-$index',
+          scheduledFor: now.subtract(const Duration(minutes: 1)),
+        ),
+    ];
+    final names = <String, String>{'medication-1': 'Medication'};
+
+    final first = await service.syncDueDoses(
+      doses: doses,
+      medicationNames: names,
+      now: now,
+    );
+    final duplicate = await service.syncDueDoses(
+      doses: doses,
+      medicationNames: names,
+      now: now.add(const Duration(seconds: 15)),
+    );
+    final next = await service.syncDueDoses(
+      doses: [
+        for (final item in doses)
+          if (item.id != 'dose-0') item,
+      ],
+      medicationNames: names,
+      now: now.add(const Duration(seconds: 30)),
+    );
+
+    expect(first, hasLength(1000));
+    expect(duplicate, isEmpty);
+    expect(next, isEmpty);
+    await service.dispose();
+  });
 }

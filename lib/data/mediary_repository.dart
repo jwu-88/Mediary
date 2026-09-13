@@ -358,11 +358,68 @@ class MediaryRepository {
   }
 
   Future<void> archiveMedication(String medicationId) async {
-    await _medications.doc(medicationId).update({
-      'active': false,
-      'archivedAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+    await removeMedication(medicationId);
+  }
+
+  /// Removes a medication from the user's active regimen without deleting
+  /// history. Firestore rules intentionally disallow destructive deletes, so
+  /// the medication is archived, its schedules are deactivated, and its dose
+  /// logs are marked cancelled in the same write set.
+  Future<void> removeMedication(String medicationId) async {
+    final medicationRef = _medications.doc(medicationId);
+    final medicationSnapshot = await medicationRef.get();
+    final schedules = await _schedules
+        .where('medicationId', isEqualTo: medicationId)
+        .get();
+    final doses = await _doseLogs
+        .where('medicationId', isEqualTo: medicationId)
+        .get();
+
+    final operations = <void Function(WriteBatch)>[];
+    if (medicationSnapshot.exists) {
+      operations.add(
+        (batch) => batch.update(medicationRef, {
+          'active': false,
+          'archivedAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }),
+      );
+    }
+    for (final schedule in schedules.docs) {
+      operations.add(
+        (batch) => batch.update(schedule.reference, {
+          'active': false,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }),
+      );
+    }
+    for (final dose in doses.docs) {
+      operations.add(
+        (batch) => batch.update(dose.reference, {
+          'status': 'cancelled',
+          'takenAt': FieldValue.delete(),
+          'snoozedUntil': FieldValue.delete(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }),
+      );
+    }
+
+    // Keep each commit below Firestore's 500-write batch limit. This is
+    // normally one batch, but the chunking makes cleanup safe for users with a
+    // long medication history as well.
+    const maxOperationsPerBatch = 450;
+    for (
+      var start = 0;
+      start < operations.length;
+      start += maxOperationsPerBatch
+    ) {
+      final end = (start + maxOperationsPerBatch).clamp(0, operations.length);
+      final batch = firestore.batch();
+      for (final operation in operations.sublist(start, end)) {
+        operation(batch);
+      }
+      await batch.commit();
+    }
   }
 
   /// Annotates legacy private medication documents with live catalog aliases.

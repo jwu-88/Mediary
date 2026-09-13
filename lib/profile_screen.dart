@@ -5,8 +5,10 @@ import 'package:flutter/services.dart';
 import 'app_interactions.dart';
 import 'app_layout.dart';
 import 'app_theme.dart';
+import 'data/mediary_models.dart';
 import 'in_app_page.dart';
 import 'liquid_glass_back_button.dart';
+import 'medication_artwork.dart';
 import 'profile_image_policy.dart';
 
 String? validateProfilePhotoUrl(String? value) =>
@@ -42,6 +44,8 @@ class ProfileScreen extends StatefulWidget {
     this.initialCareTeam,
     this.activeMedicationCount = 0,
     this.activeMedicationNames = const [],
+    this.activeMedications = const [],
+    this.onRemoveMedication,
     this.onOpenLibrary,
     this.onOpenSettings,
     this.onBack,
@@ -59,6 +63,8 @@ class ProfileScreen extends StatefulWidget {
   final String? initialCareTeam;
   final int activeMedicationCount;
   final List<String> activeMedicationNames;
+  final List<MedicationRecord> activeMedications;
+  final Future<void> Function(String medicationId)? onRemoveMedication;
   final VoidCallback? onOpenLibrary;
 
   /// Retained for callers that have not yet migrated to the Settings shell.
@@ -104,8 +110,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _inlineFeedback;
   bool _inlineFeedbackIsError = false;
   String _announcement = '';
+  final Set<String> _removedMedicationIds = <String>{};
 
   bool get _isDark => Theme.of(context).brightness == Brightness.dark;
+  List<MedicationRecord> get _visibleActiveMedications => widget
+      .activeMedications
+      .where((medication) => !_removedMedicationIds.contains(medication.id))
+      .toList(growable: false);
+  int get _visibleActiveMedicationCount => widget.activeMedications.isEmpty
+      ? widget.activeMedicationCount
+      : _visibleActiveMedications.length;
+  List<String> get _visibleActiveMedicationNames =>
+      widget.activeMedications.isEmpty
+      ? widget.activeMedicationNames
+      : _visibleActiveMedications.map((medication) => medication.name).toList();
   Color get _background =>
       _isDark ? AppColors.darkBackground : const Color(0xFFF2F2F7);
   Color get _surface => _isDark ? AppColors.darkSurface : Colors.white;
@@ -539,7 +557,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'Name: $_savedName\n'
         'Blood Type: $_savedBloodType\n'
         'Allergies: ${_savedAllergies.isEmpty ? 'None' : _savedAllergies.join(', ')}\n'
-        'Active Medications: ${widget.activeMedicationCount}\n'
+        'Active Medications: $_visibleActiveMedicationCount\n'
         'Care Team: $_savedCareTeam';
     return _openInfoPage(
       title: 'Health Report',
@@ -562,15 +580,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _openActiveMedications() async {
+    final medications = _visibleActiveMedications;
+    if (medications.isNotEmpty && widget.onRemoveMedication != null) {
+      await pushInAppPage<void>(
+        context,
+        builder: (context) => _ActiveMedicationManagementPage(
+          medications: medications,
+          onRemove: (medication) async {
+            await widget.onRemoveMedication!(medication.id);
+            if (mounted) {
+              setState(() => _removedMedicationIds.add(medication.id));
+            }
+          },
+        ),
+      );
+      return;
+    }
     if (widget.onOpenLibrary != null) {
       widget.onOpenLibrary!();
       return;
     }
     await _openInfoPage(
       title: 'Active Medications',
-      body: widget.activeMedicationNames.isEmpty
+      body: _visibleActiveMedicationNames.isEmpty
           ? 'No active medications.'
-          : widget.activeMedicationNames.join('\n'),
+          : _visibleActiveMedicationNames.join('\n'),
     );
   }
 
@@ -948,7 +982,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('${widget.activeMedicationCount} active'),
+                        Text('$_visibleActiveMedicationCount active'),
                         const SizedBox(width: 3),
                         const Icon(CupertinoIcons.chevron_right, size: 10),
                       ],
@@ -1455,6 +1489,132 @@ class _ProfileRow extends StatelessWidget {
               child: row,
             )
           : row,
+    );
+  }
+}
+
+class _ActiveMedicationManagementPage extends StatefulWidget {
+  const _ActiveMedicationManagementPage({
+    required this.medications,
+    required this.onRemove,
+  });
+
+  final List<MedicationRecord> medications;
+  final Future<void> Function(MedicationRecord medication) onRemove;
+
+  @override
+  State<_ActiveMedicationManagementPage> createState() =>
+      _ActiveMedicationManagementPageState();
+}
+
+class _ActiveMedicationManagementPageState
+    extends State<_ActiveMedicationManagementPage> {
+  late final List<MedicationRecord> _medications = [...widget.medications];
+  String? _removingId;
+  String? _error;
+
+  Future<void> _removeMedication(MedicationRecord medication) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Remove ${medication.name}?'),
+        content: const Text(
+          'This removes it from your active medications and cancels future doses. Your past dose history is kept.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _removingId = medication.id;
+      _error = null;
+    });
+    try {
+      await widget.onRemove(medication);
+      if (!mounted) return;
+      setState(() {
+        _medications.removeWhere((item) => item.id == medication.id);
+        _removingId = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _removingId = null;
+        _error = 'Could not remove this medication. Check your connection and try again.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return InAppPageScaffold(
+      title: 'Active Medications',
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          Text(
+            'Manage the medications in your private regimen. Removing one cancels future reminders but preserves your history.',
+            style: TextStyle(color: colors.onSurfaceVariant, height: 1.45),
+          ),
+          const SizedBox(height: 18),
+          if (_error != null) ...[
+            Text(_error!, style: TextStyle(color: colors.error, fontSize: 13)),
+            const SizedBox(height: 12),
+          ],
+          if (_medications.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 32),
+              child: Center(child: Text('No active medications.')),
+            )
+          else
+            for (final medication in _medications)
+              Card(
+                margin: const EdgeInsets.only(bottom: 10),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
+                  leading: MedicationArtwork(
+                    seed: medication.catalogId ?? medication.id,
+                    label: medication.name,
+                    size: 44,
+                  ),
+                  title: Text(medication.name),
+                  subtitle: Text(
+                    [
+                      medication.genericName,
+                      medication.strength,
+                      medication.form,
+                    ].where((value) => value.isNotEmpty).join(' · '),
+                  ),
+                  trailing: IconButton(
+                    key: Key('removeMedication_${medication.id}'),
+                    tooltip: 'Remove ${medication.name}',
+                    onPressed: _removingId == medication.id
+                        ? null
+                        : () => _removeMedication(medication),
+                    icon: _removingId == medication.id
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.delete_outline),
+                  ),
+                ),
+              ),
+        ],
+      ),
     );
   }
 }

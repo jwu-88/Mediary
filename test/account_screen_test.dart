@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mediary/data/mediary_models.dart';
 import 'package:mediary/profile_screen.dart';
 
 void main() {
@@ -74,5 +75,51 @@ void main() {
     await tester.tap(signOut);
     await tester.pumpAndSettle();
     expect(signOutCount, 1);
+  });
+
+  testWidgets('active medication removal archives the selected regimen', (
+    tester,
+  ) async {
+    final medication = MedicationRecord(
+      id: 'med-1',
+      name: 'Ibuprofen 200 MG Oral Tablet',
+      genericName: 'ibuprofen',
+      strength: '200 mg',
+      form: 'tablet',
+      route: 'oral',
+      instructions: '',
+      prescriber: '',
+      pharmacy: '',
+      notes: '',
+      active: true,
+      source: 'library',
+      catalogId: '5640',
+      catalogSource: 'rxnorm',
+      catalogVersion: 'test',
+    );
+    String? removedId;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProfileScreen(
+          email: 'jayden@example.com',
+          displayName: 'Jayden Wu',
+          bottomPadding: 0,
+          activeMedications: [medication],
+          onRemoveMedication: (id) async => removedId = id,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('activeMedicationsButton')));
+    await tester.pumpAndSettle();
+    expect(find.text('Ibuprofen 200 MG Oral Tablet'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('removeMedication_med-1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Remove Ibuprofen 200 MG Oral Tablet?'), findsOneWidget);
+    await tester.tap(find.text('Remove', skipOffstage: false).last);
+    await tester.pumpAndSettle();
+
+    expect(removedId, 'med-1');
+    expect(find.text('Ibuprofen 200 MG Oral Tablet'), findsNothing);
   });
 }
