@@ -21,7 +21,8 @@ class CalendarScreen extends StatefulWidget {
 
   final DateTime? initialDate;
   final VoidCallback? onAdd;
-  final Future<void> Function(DateTime selectedDate)? onAddDose;
+  final Future<List<CalendarDoseData>?> Function(DateTime selectedDate)?
+  onAddDose;
   final List<CalendarDoseData> initialDoses;
   final Future<void> Function(String doseId, String status)?
   onDoseStatusChanged;
@@ -149,7 +150,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Future<void> _addDose() async {
     if (widget.onAddDose != null) {
-      await widget.onAddDose!(_selectedDate);
+      final addedDoses = await widget.onAddDose!(_selectedDate);
+      if (!mounted || addedDoses == null || addedDoses.isEmpty) return;
+      setState(() {
+        for (final dose in addedDoses) {
+          final doses = _dosesByDate.putIfAbsent(
+            dose.localDate,
+            () => <_CalendarDose>[],
+          );
+          doses.removeWhere((existing) => existing.id == dose.id);
+          doses.add(
+            _CalendarDose(
+              id: dose.id,
+              name: dose.name,
+              details: dose.details,
+              status: dose.status,
+            ),
+          );
+        }
+      });
+      _showConfirmation(
+        addedDoses.length == 1
+            ? '${addedDoses.single.name} scheduled'
+            : '${addedDoses.length} medications scheduled',
+      );
       return;
     }
     if (widget.onAdd != null) {

@@ -165,4 +165,36 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('calendar renders a newly committed dose on its scheduled day', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CalendarScreen(
+            initialDate: DateTime(2026, 8, 23),
+            onAddDose: (date) async => [
+              CalendarDoseData(
+                id: 'dose-new',
+                localDate:
+                    '${date.year}-${date.month.toString().padLeft(2, '0')}-'
+                    '${date.day.toString().padLeft(2, '0')}',
+                name: 'Metformin',
+                details: '500 mg · 08:00',
+                status: 'due',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('calendarAddButton')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Metformin'), findsOneWidget);
+    expect(find.text('Metformin scheduled'), findsOneWidget);
+  });
 }
