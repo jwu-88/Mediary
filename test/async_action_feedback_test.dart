@@ -16,12 +16,10 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
   }
 
-  testWidgets('dashboard add action shows progress and ignores repeat taps', (
+  testWidgets('dashboard directs medication changes to the Calendar', (
     tester,
   ) async {
     usePhoneSize(tester);
-    final picker = Completer<List<String>?>();
-    var pickerCalls = 0;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -29,31 +27,17 @@ void main() {
           body: DashboardScreen(
             email: 'person@example.com',
             now: DateTime(2026, 8, 30),
-            onAddMedication: () {
-              pickerCalls += 1;
-              return picker.future;
-            },
           ),
         ),
       ),
     );
 
-    final addButton = find.byKey(const Key('dashboardAddButton'));
-    await tester.tap(addButton);
-    await tester.tap(addButton);
-    await tester.pump();
-
-    expect(pickerCalls, 1);
+    expect(find.byKey(const Key('dashboardAddButton')), findsNothing);
+    expect(find.byKey(const Key('dashboardCalendarGuidance')), findsOneWidget);
     expect(
-      find.byKey(const Key('dashboardAddLoadingIndicator')),
+      find.text('To add or manage medications, go to the Calendar page.'),
       findsOneWidget,
     );
-
-    picker.complete(const ['Ibuprofen']);
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('Ibuprofen Added'), findsOneWidget);
-    expect(find.byKey(const Key('dashboardAddLoadingIndicator')), findsNothing);
   });
 
   testWidgets('dashboard report action cannot push twice during transition', (

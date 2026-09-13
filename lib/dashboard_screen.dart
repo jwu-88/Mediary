@@ -19,7 +19,6 @@ class DashboardScreen extends StatefulWidget {
     this.now,
     this.bottomPadding = 120,
     this.onViewReport,
-    this.onAddMedication,
     this.onOpenAccount,
     this.initialDoses = const [],
     this.weeklyTaken = 0,
@@ -33,7 +32,6 @@ class DashboardScreen extends StatefulWidget {
   final DateTime? now;
   final double bottomPadding;
   final VoidCallback? onViewReport;
-  final Future<List<String>?> Function()? onAddMedication;
   final VoidCallback? onOpenAccount;
   final List<DashboardDoseData> initialDoses;
   final int weeklyTaken;
@@ -101,7 +99,6 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   bool _isOpeningReport = false;
-  bool _isAddingMedication = false;
   String? _announcement;
 
   late List<_DashboardDose> _doses = const [];
@@ -152,36 +149,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
     if (prepared == true && mounted) _showConfirmation('Report Ready');
-  }
-
-  Future<void> _showAddMedication() async {
-    await pushInAppPage<void>(
-      context,
-      builder: (context) => const _CatalogUnavailablePage(),
-    );
-  }
-
-  Future<void> _handleAddMedication() async {
-    if (_isAddingMedication) return;
-    setState(() => _isAddingMedication = true);
-    unawaited(AppHaptics.primaryAction());
-    try {
-      final picker = widget.onAddMedication;
-      if (picker == null) {
-        await _showAddMedication();
-        return;
-      }
-
-      final selections = await picker();
-      if (!mounted || selections == null || selections.isEmpty) return;
-      _showConfirmation(
-        selections.length == 1
-            ? '${selections.single} Added · Schedule it from Calendar'
-            : '${selections.length} Medications Added · Schedule them from Calendar',
-      );
-    } finally {
-      if (mounted) setState(() => _isAddingMedication = false);
-    }
   }
 
   Future<void> _handleViewReport() async {
@@ -388,17 +355,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   scheduled: widget.weeklyScheduled,
                 ),
                 const SizedBox(height: 28),
-                _SectionHeader(
-                  title: 'Today’s Schedule',
-                  actionLabel: 'Add',
-                  actionIcon: CupertinoIcons.add,
-                  actionKey: const Key('dashboardAddButton'),
-                  busy: _isAddingMedication,
-                  loadingKey: const Key('dashboardAddLoadingIndicator'),
-                  onPressed: _handleAddMedication,
-                ),
+                _SectionHeader(title: 'Today’s Schedule'),
                 const SizedBox(height: 10),
                 _ScheduleTable(doses: _doses, onTapDose: _showDoseActions),
+                const SizedBox(height: 12),
+                const _CalendarManagementHint(),
               ],
             ),
           ),
@@ -499,25 +460,6 @@ class _DashboardProfilePage extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _CatalogUnavailablePage extends StatelessWidget {
-  const _CatalogUnavailablePage();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return InAppPageScaffold(
-      title: 'Add Medication',
-      child: Center(
-        child: Text(
-          'Search the medication catalog to add a medication.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: colors.onSurfaceVariant, fontSize: 15),
-        ),
       ),
     );
   }
@@ -724,21 +666,19 @@ class _ProfileAvatarState extends State<_ProfileAvatar> {
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.title,
-    required this.actionLabel,
-    this.actionIcon,
+    this.actionLabel,
     this.actionKey,
     this.loadingKey,
     this.busy = false,
-    required this.onPressed,
+    this.onPressed,
   });
 
   final String title;
-  final String actionLabel;
-  final IconData? actionIcon;
+  final String? actionLabel;
   final Key? actionKey;
   final Key? loadingKey;
   final bool busy;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -756,36 +696,34 @@ class _SectionHeader extends StatelessWidget {
             ),
           ),
         ),
-        TextButton.icon(
-          key: actionKey,
-          onPressed: busy ? null : onPressed,
-          style: TextButton.styleFrom(
-            minimumSize: const Size(44, 44),
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            foregroundColor: colors.primary,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        if (actionLabel != null && onPressed != null)
+          TextButton(
+            key: actionKey,
+            onPressed: busy ? null : onPressed,
+            style: TextButton.styleFrom(
+              minimumSize: const Size(44, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              foregroundColor: colors.primary,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: busy
+                ? SizedBox.square(
+                    key: loadingKey,
+                    dimension: 15,
+                    child: CircularProgressIndicator(
+                      value: .72,
+                      strokeWidth: 1.8,
+                      color: colors.primary,
+                    ),
+                  )
+                : Text(
+                    actionLabel!,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
           ),
-          icon: busy || actionIcon == null
-              ? const SizedBox.shrink()
-              : Icon(actionIcon, size: 15),
-          label: busy
-              ? SizedBox.square(
-                  key: loadingKey,
-                  dimension: 15,
-                  child: CircularProgressIndicator(
-                    value: .72,
-                    strokeWidth: 1.8,
-                    color: colors.primary,
-                  ),
-                )
-              : Text(
-                  actionLabel,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-        ),
       ],
     );
   }
@@ -945,6 +883,47 @@ class _ScheduleTable extends StatelessWidget {
               ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _CalendarManagementHint extends StatelessWidget {
+  const _CalendarManagementHint();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Semantics(
+      key: const Key('dashboardCalendarGuidance'),
+      container: true,
+      label: 'To add or manage medications, go to the Calendar page.',
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: colors.primaryContainer.withValues(alpha: .28),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: colors.primary.withValues(alpha: .16)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(CupertinoIcons.calendar, size: 18, color: colors.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'To add or manage medications, go to the Calendar page.',
+                style: TextStyle(
+                  color: colors.onSurfaceVariant,
+                  fontSize: 12,
+                  height: 1.35,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
