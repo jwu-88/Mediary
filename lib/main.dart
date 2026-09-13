@@ -18,6 +18,7 @@ import 'data/mediary_models.dart';
 import 'data/mediary_repository.dart';
 import 'data/medication_catalog_client.dart';
 import 'firebase_options.dart';
+import 'in_app_page.dart';
 import 'library_screens.dart';
 import 'liquid_glass_tab_bar.dart';
 import 'profile_screen.dart';
@@ -1513,11 +1514,14 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
                 return const <CalendarDoseData>[];
               }
               if (!context.mounted) return const <CalendarDoseData>[];
-              final time = await showTimePicker(
-                context: context,
-                initialTime: TimeOfDay.fromDateTime(DateTime.now()),
+              final scheduleDraft = await _showScheduleDetails(
+                context,
+                initialTimezone: store.profile?.timezone ?? 'UTC',
               );
-              if (time == null || !mounted) return const <CalendarDoseData>[];
+              if (scheduleDraft == null || !mounted) {
+                return const <CalendarDoseData>[];
+              }
+              final time = scheduleDraft.time;
               final scheduledFor = DateTime(
                 date.year,
                 date.month,
@@ -1531,34 +1535,58 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
               final addedDoses = <CalendarDoseData>[];
               for (final medication in selections) {
                 final catalog = await _catalogDetailsFor(medication);
-                final scheduleId =
-                    'once_${medication.id}_${localDate}_$localTime';
+                final existingMedication = _existingMedicationFor(
+                  store,
+                  catalog.rxcui,
+                );
+                final medicationId =
+                    existingMedication?.id ??
+                    _catalogMedicationId(catalog.rxcui);
+                final doseUnit = catalog.form.isNotEmpty
+                    ? catalog.form.toLowerCase()
+                    : medication.form.toLowerCase();
+                final scheduleId = _scheduleId(
+                  catalog.rxcui,
+                  localDate: localDate,
+                  localTime: localTime,
+                  frequency: scheduleDraft.frequency,
+                  doseAmount: scheduleDraft.doseAmount,
+                );
                 await store.commitScheduleAndDose(
                   medication: MedicationWrite(
-                    name: catalog.name,
-                    genericName: catalog.genericName,
-                    strength: catalog.strength,
-                    form: catalog.form,
-                    route: catalog.route,
+                    id: medicationId,
+                    name: existingMedication?.name ?? catalog.name,
+                    genericName:
+                        existingMedication?.genericName ?? catalog.genericName,
+                    strength: existingMedication?.strength ?? catalog.strength,
+                    form: existingMedication?.form ?? catalog.form,
+                    route: existingMedication?.route ?? catalog.route,
+                    instructions: existingMedication?.instructions ?? '',
+                    prescriber: existingMedication?.prescriber ?? '',
+                    pharmacy: existingMedication?.pharmacy ?? '',
+                    notes: existingMedication?.notes ?? '',
+                    active: existingMedication?.active ?? true,
                     catalogId: catalog.rxcui,
                     catalogSource: 'rxnorm',
                     catalogVersion: catalog.sourceVersion,
-                    source: 'library',
+                    source: existingMedication?.source ?? 'library',
                   ),
                   schedule: ScheduleWrite(
                     id: scheduleId,
-                    medicationId: medication.id,
-                    doseAmount: 1,
-                    doseUnit: medication.form.toLowerCase(),
+                    medicationId: medicationId,
+                    doseAmount: scheduleDraft.doseAmount,
+                    doseUnit: doseUnit,
                     times: [localTime],
-                    frequency: 'once',
+                    frequency: scheduleDraft.frequency,
                     startDate: localDate,
-                    endDate: localDate,
-                    timezone: 'UTC',
+                    endDate: scheduleDraft.frequency == 'once'
+                        ? localDate
+                        : null,
+                    timezone: scheduleDraft.timezone,
                   ),
                   dose: DoseWrite(
                     id: scheduleId,
-                    medicationId: medication.id,
+                    medicationId: medicationId,
                     scheduleId: scheduleId,
                     scheduledFor: scheduledFor,
                     localDate: localDate,
@@ -1571,7 +1599,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
                     localDate: localDate,
                     name: catalog.name,
                     details: [
-                      if (catalog.strength.isNotEmpty) catalog.strength,
+                      '${_formatDoseAmount(scheduleDraft.doseAmount)} $doseUnit',
                       localTime,
                     ].join(' · '),
                     status: 'due',
@@ -1582,6 +1610,46 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
             },
     );
   }
+
+  Future<_ScheduleDraft?> _showScheduleDetails(
+    BuildContext context, {
+    required String initialTimezone,
+  }) {
+    return pushInAppPage<_ScheduleDraft>(
+      context,
+      builder: (context) => _ScheduleDetailsPage(
+        initialTimezone: initialTimezone,
+        initialTime: TimeOfDay.fromDateTime(DateTime.now()),
+      ),
+    );
+  }
+
+  MedicationRecord? _existingMedicationFor(
+    MediaryDataStore store,
+    String catalogId,
+  ) {
+    for (final medication in store.medications) {
+      if (medication.catalogId == catalogId) return medication;
+    }
+    return null;
+  }
+
+  String _catalogMedicationId(String catalogId) => 'rxnorm_$catalogId';
+
+  String _scheduleId(
+    String catalogId, {
+    required String localDate,
+    required String localTime,
+    required String frequency,
+    required double doseAmount,
+  }) {
+    final amount = doseAmount.toString().replaceAll('.', '_');
+    return '${frequency}_${catalogId}_${localDate}_${localTime}_$amount';
+  }
+
+  String _formatDoseAmount(double amount) => amount == amount.roundToDouble()
+      ? amount.toInt().toString()
+      : amount.toString();
 
   List<CalendarDoseData> _calendarDoses(MediaryDataStore? store) {
     if (store == null) return const [];
@@ -1688,6 +1756,247 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       bottomNavigationBar: LiquidGlassTabBar(
         currentIndex: _selectedIndex,
         onTap: _selectDestination,
+      ),
+    );
+  }
+}
+
+class _ScheduleDraft {
+  const _ScheduleDraft({
+    required this.doseAmount,
+    required this.frequency,
+    required this.timezone,
+    required this.time,
+  });
+
+  final double doseAmount;
+  final String frequency;
+  final String timezone;
+  final TimeOfDay time;
+}
+
+class _ScheduleDetailsPage extends StatefulWidget {
+  const _ScheduleDetailsPage({
+    required this.initialTimezone,
+    required this.initialTime,
+  });
+
+  final String initialTimezone;
+  final TimeOfDay initialTime;
+
+  @override
+  State<_ScheduleDetailsPage> createState() => _ScheduleDetailsPageState();
+}
+
+class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
+  static const _frequencyOptions = [
+    ('once', 'Once', 'Only on the selected calendar day'),
+    ('daily', 'Every day', 'Repeat daily at this time'),
+    ('weekly', 'Every week', 'Repeat weekly at this time'),
+    ('every8Hours', 'Every 8 hours', 'Repeat every 8 hours'),
+    ('every12Hours', 'Every 12 hours', 'Repeat every 12 hours'),
+    ('asNeeded', 'As needed', 'Use when needed; keep the schedule active'),
+  ];
+
+  late final TextEditingController _doseController;
+  late String _frequency;
+  late String _timezone;
+  late TimeOfDay _time;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _doseController = TextEditingController(text: '1');
+    _frequency = 'once';
+    _timezone = widget.initialTimezone.trim().isEmpty
+        ? 'UTC'
+        : widget.initialTimezone.trim();
+    _time = widget.initialTime;
+  }
+
+  @override
+  void dispose() {
+    _doseController.dispose();
+    super.dispose();
+  }
+
+  String get _frequencyLabel =>
+      _frequencyOptions.firstWhere((option) => option.$1 == _frequency).$2;
+
+  Future<void> _chooseFrequency() async {
+    final selected = await pushInAppPage<String>(
+      context,
+      builder: (context) => InAppOptionPage<String>(
+        title: 'Frequency',
+        subtitle: 'Choose how often this schedule repeats.',
+        options: [
+          for (final option in _frequencyOptions)
+            InAppPageOption<String>(
+              label: option.$2,
+              detail: option.$3,
+              value: option.$1,
+              selected: option.$1 == _frequency,
+            ),
+        ],
+      ),
+    );
+    if (selected != null && mounted) {
+      setState(() => _frequency = selected);
+    }
+  }
+
+  Future<void> _chooseTimezone() async {
+    final zones = <String>{
+      _timezone,
+      'UTC',
+      'America/New_York',
+      'America/Chicago',
+      'America/Denver',
+      'America/Los_Angeles',
+    }.toList();
+    final selected = await pushInAppPage<String>(
+      context,
+      builder: (context) => InAppOptionPage<String>(
+        title: 'Time Zone',
+        subtitle: 'Schedules are stored using this IANA time zone.',
+        options: [
+          for (final zone in zones)
+            InAppPageOption<String>(
+              label: zone,
+              value: zone,
+              selected: zone == _timezone,
+            ),
+        ],
+      ),
+    );
+    if (selected != null && mounted) {
+      setState(() => _timezone = selected);
+    }
+  }
+
+  Future<void> _chooseTime() async {
+    final selected = await showTimePicker(context: context, initialTime: _time);
+    if (selected != null && mounted) setState(() => _time = selected);
+  }
+
+  void _save() {
+    final amount = double.tryParse(_doseController.text.trim());
+    if (amount == null || !amount.isFinite || amount <= 0) {
+      setState(() => _errorMessage = 'Enter a dose amount greater than zero.');
+      return;
+    }
+    Navigator.of(context).pop(
+      _ScheduleDraft(
+        doseAmount: amount,
+        frequency: _frequency,
+        timezone: _timezone,
+        time: _time,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final timeLabel = _time.format(context);
+    return InAppPageScaffold(
+      title: 'Schedule Medication',
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          Text(
+            'Set the dose, timing, and time zone for the selected calendar day.',
+            style: TextStyle(
+              color: colors.onSurfaceVariant,
+              fontSize: 14,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            key: const Key('scheduleDoseAmountField'),
+            controller: _doseController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Dose amount',
+              hintText: '1',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (_) {
+              if (_errorMessage != null) setState(() => _errorMessage = null);
+            },
+          ),
+          const SizedBox(height: 14),
+          _ScheduleChoiceTile(
+            key: const Key('scheduleFrequencyChoice'),
+            label: 'Frequency',
+            value: _frequencyLabel,
+            onTap: _chooseFrequency,
+          ),
+          const SizedBox(height: 10),
+          _ScheduleChoiceTile(
+            key: const Key('scheduleTimeChoice'),
+            label: 'Time',
+            value: timeLabel,
+            onTap: _chooseTime,
+          ),
+          const SizedBox(height: 10),
+          _ScheduleChoiceTile(
+            key: const Key('scheduleTimezoneChoice'),
+            label: 'Time zone',
+            value: _timezone,
+            onTap: _chooseTimezone,
+          ),
+          if (_errorMessage != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _errorMessage!,
+              key: const Key('scheduleDetailsError'),
+              style: TextStyle(color: colors.error, fontSize: 13),
+            ),
+          ],
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              key: const Key('saveScheduleDetailsButton'),
+              onPressed: _save,
+              child: const Text('Create Schedule'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScheduleChoiceTile extends StatelessWidget {
+  const _ScheduleChoiceTile({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: colors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: colors.outlineVariant),
+      ),
+      child: ListTile(
+        onTap: onTap,
+        title: Text(label),
+        subtitle: Text(value),
+        trailing: Icon(Icons.chevron_right, color: colors.onSurfaceVariant),
       ),
     );
   }

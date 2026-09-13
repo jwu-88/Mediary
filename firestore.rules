@@ -18,6 +18,19 @@ service cloud.firestore {
       return !data.keys().hasAny([field]) || data[field] is string;
     }
 
+    function optionalNonEmptyString(data, field) {
+      return !data.keys().hasAny([field])
+        || (data[field] is string && data[field].size() > 0);
+    }
+
+    function validCatalogMetadata(data) {
+      return optionalNonEmptyString(data, 'catalogId')
+        && (!data.keys().hasAny(['catalogSource'])
+          || data.catalogSource == 'rxnorm')
+        && optionalNonEmptyString(data, 'catalogSource')
+        && optionalNonEmptyString(data, 'catalogVersion');
+    }
+
     function optionalTimestamp(data, field) {
       return !data.keys().hasAny([field]) || data[field] is timestamp;
     }
@@ -103,9 +116,7 @@ service cloud.firestore {
         && data.notes is string
         && data.active is bool
         && data.source in ['manual', 'scanner', 'library']
-        && optionalString(data, 'catalogId')
-        && optionalString(data, 'catalogSource')
-        && optionalString(data, 'catalogVersion')
+        && validCatalogMetadata(data)
         && data.createdAt is timestamp
         && data.updatedAt is timestamp
         && optionalTimestamp(data, 'archivedAt');
@@ -196,9 +207,7 @@ service cloud.firestore {
         ])
         && data.savedAt is timestamp
         && data.libraryVersion is string
-        && optionalString(data, 'catalogId')
-        && optionalString(data, 'catalogSource')
-        && optionalString(data, 'catalogVersion');
+        && validCatalogMetadata(data);
     }
 
     function validReport(data) {
