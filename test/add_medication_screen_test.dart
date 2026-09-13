@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/add_medication_screen.dart';
@@ -138,28 +137,22 @@ void main() {
     expect(find.text('Open Picker'), findsOneWidget);
   });
 
-  testWidgets('uses the local image fallback when a remote image fails', (
-    tester,
-  ) async {
+  testWidgets('does not render fabricated medication artwork', (tester) async {
     usePhoneSize(tester);
-    const unavailableMedication = MedicationOption(
+    const medication = MedicationOption(
       id: 'unavailable',
       name: 'Sample Medication',
       genericName: 'Sample Generic',
       strength: '25 mg',
       form: 'Tablet',
-      imageUrl: 'invalid://medication-image',
-      fallbackColor: Color(0xFFE2E9DF),
     );
 
     await tester.pumpWidget(
-      const MaterialApp(
-        home: AddMedicationScreen(medications: [unavailableMedication]),
-      ),
+      const MaterialApp(home: AddMedicationScreen(medications: [medication])),
     );
     await tester.pump();
 
-    expect(find.byIcon(Icons.error), findsNothing);
-    expect(find.byIcon(CupertinoIcons.capsule_fill), findsOneWidget);
+    expect(find.text('Sample Medication'), findsOneWidget);
+    expect(find.byType(Image), findsNothing);
   });
 }
