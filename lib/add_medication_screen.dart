@@ -9,6 +9,7 @@ import 'data/medication_catalog_client.dart';
 import 'liquid_glass_back_button.dart';
 import 'liquid_glass_search_field.dart';
 import 'medication_artwork.dart';
+import 'text_formatting.dart';
 
 /// A medication that can be added to the user's schedule.
 @immutable
@@ -331,7 +332,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                           itemCount: medications.length,
                           separatorBuilder: (_, _) => Divider(
                             height: 1,
-                            indent: 86,
+                            indent: 96,
                             endIndent: 16,
                             color: colors.outlineVariant.withValues(alpha: .7),
                           ),
@@ -489,7 +490,7 @@ class _SelectedMedicationSummary extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      '${medications.length} selected',
+                      'Selected Medications: ${medications.length}',
                       style: TextStyle(
                         color: colors.onPrimaryContainer,
                         fontSize: 12,
@@ -516,7 +517,7 @@ class _SelectedMedicationSummary extends StatelessWidget {
                     InputChip(
                       key: Key('selectedMedicationChip_${medication.id}'),
                       label: Text(
-                        medication.name,
+                        titleCaseDisplay(medication.name),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -572,29 +573,29 @@ class _MedicationOptionRow extends StatelessWidget {
             ),
           ),
           child: SizedBox(
-            height: 78,
+            height: 92,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: Row(
                 children: [
                   MedicationArtwork(
                     seed: medication.id,
                     label: medication.name,
-                    size: 42,
+                    size: 50,
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          medication.name,
+                          titleCaseDisplay(medication.name),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: colors.onSurface,
-                            fontSize: 15,
+                            fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -602,13 +603,15 @@ class _MedicationOptionRow extends StatelessWidget {
                         Text(
                           medication.genericName == medication.name ||
                                   medication.genericName.isEmpty
-                              ? medication.doseDescription
-                              : '${medication.genericName} · ${medication.doseDescription}',
+                              ? titleCaseDisplay(medication.doseDescription)
+                              : titleCaseDisplay(
+                                  '${medication.genericName} · ${medication.doseDescription}',
+                                ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: colors.onSurfaceVariant,
-                            fontSize: 12,
+                            fontSize: 13,
                           ),
                         ),
                       ],

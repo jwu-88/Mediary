@@ -7,6 +7,7 @@ import 'app_interactions.dart';
 import 'app_layout.dart';
 import 'dose_action_error.dart';
 import 'in_app_page.dart';
+import 'text_formatting.dart';
 
 /// A native, interactive medication calendar based on the calendar prototype.
 class CalendarScreen extends StatefulWidget {
@@ -986,7 +987,8 @@ class _DoseRow extends StatelessWidget {
     return AppPressable(
       onPressed: onTap,
       autoManageBusy: false,
-      semanticLabel: '$name, $details, $status',
+      semanticLabel:
+          '${titleCaseDisplay(name)}, ${titleCaseDisplay(details)}, $status',
       borderRadius: BorderRadius.zero,
       hoverScale: 1,
       hoverOffset: Offset.zero,
@@ -1014,7 +1016,7 @@ class _DoseRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    name,
+                    titleCaseDisplay(name),
                     style: TextStyle(
                       color: palette.ink,
                       fontSize: 14,
@@ -1024,7 +1026,7 @@ class _DoseRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    details,
+                    titleCaseDisplay(details),
                     style: TextStyle(
                       color: palette.muted,
                       fontSize: 11,
