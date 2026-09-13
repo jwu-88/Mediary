@@ -246,9 +246,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           if (!mounted) return;
           final currentIndex = doses.indexWhere((item) => item.id == dose.id);
           if (currentIndex < 0) return;
-          setState(
-            () => doses[currentIndex] = dose.copyWith(status: 'cancelled'),
-          );
+          setState(() => doses.removeAt(currentIndex));
           _showConfirmation('${dose.name} Removed');
         } catch (error) {
           _showConfirmation(doseActionErrorMessage(error, action: 'remove'));

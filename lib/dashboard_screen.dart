@@ -174,15 +174,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       final selections = await picker();
       if (!mounted || selections == null || selections.isEmpty) return;
-      setState(() {
-        for (final name in selections) {
-          _doses.add(_doseForSelection(name));
-        }
-      });
       _showConfirmation(
         selections.length == 1
-            ? '${selections.single} Added'
-            : '${selections.length} Medications Added',
+            ? '${selections.single} Added · Schedule it from Calendar'
+            : '${selections.length} Medications Added · Schedule them from Calendar',
       );
     } finally {
       if (mounted) setState(() => _isAddingMedication = false);
@@ -208,13 +203,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted) setState(() => _isOpeningReport = false);
     }
   }
-
-  _DashboardDose _doseForSelection(String name) => _DashboardDose(
-    name: name,
-    details: 'Dose not set · Today',
-    status: 'Today',
-    tone: _DoseTone.primary,
-  );
 
   Future<void> _showDoseActions(int index) async {
     final dose = _doses[index];
