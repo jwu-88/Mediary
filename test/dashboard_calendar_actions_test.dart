@@ -67,6 +67,14 @@ void main() {
       find.byKey(const Key('dashboardScheduleHeaderDivider')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const Key('dashboardMedicationArtwork_dose-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('dashboardMedicationArtwork_dose-2')),
+      findsOneWidget,
+    );
     expect(dashboardRowDividers(), findsNWidgets(2));
     expect(dashboardVerticalDividers(), findsNWidgets(6));
     for (var column = 0; column < 2; column++) {
@@ -137,6 +145,10 @@ void main() {
     expect(find.text('August 2026'), findsOneWidget);
     expect(find.text('Vitamin D3'), findsOneWidget);
     expect(find.text('Amoxicillin'), findsOneWidget);
+    expect(
+      find.byKey(const Key('calendarMedicationArtwork_dose-1')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const Key('nextMonthButton')));
     await tester.pump();
@@ -193,7 +205,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Metformin'), findsOneWidget);
-    expect(find.text('Metformin scheduled'), findsOneWidget);
+    expect(find.text('Metformin Scheduled'), findsOneWidget);
   });
 
   testWidgets('calendar removal cancels the dose and removes its row', (

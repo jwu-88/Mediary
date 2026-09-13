@@ -10,6 +10,8 @@ import 'data/mediary_repository.dart';
 import 'data/medication_catalog_client.dart';
 import 'in_app_page.dart';
 import 'liquid_glass_back_button.dart';
+import 'medication_artwork.dart';
+import 'text_formatting.dart';
 import 'web_camera.dart';
 
 /// Camera permission state used by [MedicationScannerScreen].
@@ -1068,26 +1070,34 @@ class _ResultHero extends StatelessWidget {
       ),
       child: Row(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: SizedBox.square(
-              dimension: 82,
-              child: Image.asset(
-                'assets/images/medication_auth_background.jpg',
-                fit: BoxFit.cover,
-                cacheWidth: 328,
-                filterQuality: FilterQuality.medium,
-                errorBuilder: (context, error, stackTrace) => const ColoredBox(
-                  color: Color(0xFFF0E5EF),
-                  child: Icon(
-                    CupertinoIcons.capsule_fill,
-                    color: Color(0xFFEA3C86),
-                    size: 34,
+          medication == null
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: SizedBox.square(
+                    dimension: 82,
+                    child: Image.asset(
+                      'assets/images/medication_auth_background.jpg',
+                      fit: BoxFit.cover,
+                      cacheWidth: 328,
+                      filterQuality: FilterQuality.medium,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const ColoredBox(
+                            color: Color(0xFFF0E5EF),
+                            child: Icon(
+                              CupertinoIcons.capsule_fill,
+                              color: Color(0xFFEA3C86),
+                              size: 34,
+                            ),
+                          ),
+                    ),
                   ),
+                )
+              : MedicationArtwork(
+                  key: Key('scannerMedicationArtwork_${medication!.rxcui}'),
+                  seed: medication!.rxcui,
+                  label: titleCaseDisplay(medication!.name),
+                  size: 82,
                 ),
-              ),
-            ),
-          ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -1115,7 +1125,9 @@ class _ResultHero extends StatelessWidget {
                 ),
                 const SizedBox(height: 7),
                 Text(
-                  medication?.name ?? 'Medication not identified',
+                  titleCaseDisplay(
+                    medication?.name ?? 'Medication not identified',
+                  ),
                   style: TextStyle(
                     color: palette.primaryText,
                     fontSize: 19,
@@ -1127,7 +1139,7 @@ class _ResultHero extends StatelessWidget {
                 Text(
                   medication == null
                       ? 'Search RxNorm to confirm the medication'
-                      : medication!.doseDescription,
+                      : titleCaseDisplay(medication!.doseDescription),
                   style: TextStyle(color: palette.secondaryText, fontSize: 12),
                 ),
               ],

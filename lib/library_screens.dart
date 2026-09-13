@@ -574,7 +574,7 @@ class _MedicationRow extends StatelessWidget {
       onPressed: onTap,
       autoManageBusy: false,
       enabled: onTap != null,
-      semanticLabel: 'Open ${medication.name} details',
+      semanticLabel: 'Open ${titleCaseDisplay(medication.name)} details',
       borderRadius: BorderRadius.zero,
       hoverScale: 1,
       hoverOffset: Offset.zero,
@@ -584,8 +584,9 @@ class _MedicationRow extends StatelessWidget {
         child: Row(
           children: [
             MedicationArtwork(
+              key: Key('libraryMedicationArtwork_${medication.id}'),
               seed: medication.id,
-              label: medication.name,
+              label: titleCaseDisplay(medication.name),
               size: 50,
             ),
             const SizedBox(width: 14),
@@ -915,7 +916,7 @@ class _DetailHero extends StatelessWidget {
             padding: EdgeInsets.only(top: topPadding + 30),
             child: MedicationArtwork(
               seed: artworkSeed,
-              label: artworkLabel,
+              label: titleCaseDisplay(artworkLabel),
               size: 78,
             ),
           ),

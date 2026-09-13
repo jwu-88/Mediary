@@ -7,6 +7,7 @@ import 'app_interactions.dart';
 import 'app_layout.dart';
 import 'dose_action_error.dart';
 import 'in_app_page.dart';
+import 'medication_artwork.dart';
 import 'text_formatting.dart';
 
 /// A native, interactive medication calendar based on the calendar prototype.
@@ -173,8 +174,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
       });
       _showConfirmation(
         addedDoses.length == 1
-            ? '${addedDoses.single.name} scheduled'
-            : '${addedDoses.length} medications scheduled',
+            ? '${titleCaseDisplay(addedDoses.single.name)} Scheduled'
+            : '${addedDoses.length} Medications Scheduled',
       );
       return;
     }
@@ -206,8 +207,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final action = await pushInAppPage<_CalendarDoseAction>(
       context,
       builder: (context) => InAppOptionPage<_CalendarDoseAction>(
-        title: dose.name,
-        subtitle: dose.details,
+        title: titleCaseDisplay(dose.name),
+        subtitle: titleCaseDisplay(dose.details),
         options: [
           InAppPageOption(
             label: dose.isTaken ? 'Mark As Due' : 'Mark As Taken',
@@ -248,7 +249,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           final currentIndex = doses.indexWhere((item) => item.id == dose.id);
           if (currentIndex < 0) return;
           setState(() => doses.removeAt(currentIndex));
-          _showConfirmation('${dose.name} Removed');
+          _showConfirmation('${titleCaseDisplay(dose.name)} Removed');
         } catch (error) {
           _showConfirmation(doseActionErrorMessage(error, action: 'remove'));
         }
@@ -946,10 +947,8 @@ class _DoseList extends StatelessWidget {
           final doseIndex = index ~/ 2;
           final dose = doses[doseIndex];
           return _DoseRow(
-            iconColor: dose.isTaken ? palette.positive : palette.accent,
-            iconBackground: dose.isTaken
-                ? palette.positive.withValues(alpha: .12)
-                : palette.softAccent,
+            artworkSeed: dose.id,
+            artworkLabel: titleCaseDisplay(dose.name),
             name: dose.name,
             details: dose.details,
             status: dose.isTaken ? 'Taken' : 'Due',
@@ -964,8 +963,8 @@ class _DoseList extends StatelessWidget {
 
 class _DoseRow extends StatelessWidget {
   const _DoseRow({
-    required this.iconColor,
-    required this.iconBackground,
+    required this.artworkSeed,
+    required this.artworkLabel,
     required this.name,
     required this.details,
     required this.status,
@@ -973,8 +972,8 @@ class _DoseRow extends StatelessWidget {
     required this.onTap,
   });
 
-  final Color iconColor;
-  final Color iconBackground;
+  final String artworkSeed;
+  final String artworkLabel;
   final String name;
   final String details;
   final String status;
@@ -997,18 +996,11 @@ class _DoseRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
         child: Row(
           children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: iconBackground,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                CupertinoIcons.capsule_fill,
-                color: iconColor,
-                size: 17,
-              ),
+            MedicationArtwork(
+              key: Key('calendarMedicationArtwork_$artworkSeed'),
+              seed: artworkSeed,
+              label: artworkLabel,
+              size: 42,
             ),
             const SizedBox(width: 12),
             Expanded(
