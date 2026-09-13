@@ -21,6 +21,7 @@ import 'firebase_options.dart';
 import 'in_app_page.dart';
 import 'library_screens.dart';
 import 'liquid_glass_tab_bar.dart';
+import 'notifications/medication_notification_service.dart';
 import 'profile_screen.dart';
 import 'scanner_screens.dart';
 import 'settings_screen.dart';
@@ -1108,6 +1109,7 @@ class AuthenticatedHome extends StatefulWidget {
     this.onSignOut,
     this.dataStore,
     this.catalogClient,
+    this.notificationService,
     this.now,
     this.cameraPermissionRequester,
     this.onOpenCameraSettings,
@@ -1126,6 +1128,7 @@ class AuthenticatedHome extends StatefulWidget {
   final Future<void> Function()? onSignOut;
   final MediaryDataStore? dataStore;
   final MedicationCatalogClient? catalogClient;
+  final MedicationNotificationService? notificationService;
   final DateTime? now;
   final CameraPermissionRequester? cameraPermissionRequester;
   final Future<bool> Function()? onOpenCameraSettings;
@@ -1141,16 +1144,25 @@ class AuthenticatedHome extends StatefulWidget {
 class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   late final MedicationCatalogClient _catalogClient =
       widget.catalogClient ?? RxNormMedicationCatalogClient();
+  late final MedicationNotificationService _notificationService =
+      widget.notificationService ?? DefaultMedicationNotificationService();
   int _selectedIndex = 0;
   final Set<int> _visitedDestinations = {0};
   bool _showScanResult = false;
   CameraAccessState _cameraAccess = CameraAccessState.notRequested;
   String? _appliedPreferenceSignature;
+  Timer? _notificationTimer;
+  bool _notificationSyncInFlight = false;
+  final List<_MedicationToast> _webMedicationToasts = <_MedicationToast>[];
+  final Map<String, Timer> _webMedicationToastTimers = <String, Timer>{};
 
   @override
   void initState() {
     super.initState();
     widget.dataStore?.addListener(_onStoreChanged);
+    if (widget.dataStore != null) {
+      _startNotificationMonitoring();
+    }
   }
 
   @override
@@ -1160,12 +1172,23 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       oldWidget.dataStore?.removeListener(_onStoreChanged);
       widget.dataStore?.addListener(_onStoreChanged);
       _appliedPreferenceSignature = null;
+      if (oldWidget.dataStore == null && widget.dataStore != null) {
+        _startNotificationMonitoring();
+      }
     }
   }
 
   @override
   void dispose() {
     widget.dataStore?.removeListener(_onStoreChanged);
+    _notificationTimer?.cancel();
+    for (final timer in _webMedicationToastTimers.values) {
+      timer.cancel();
+    }
+    _webMedicationToastTimers.clear();
+    if (widget.notificationService == null) {
+      unawaited(_notificationService.dispose());
+    }
     if (widget.catalogClient == null &&
         _catalogClient is RxNormMedicationCatalogClient) {
       _catalogClient.dispose();
@@ -1173,7 +1196,87 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     super.dispose();
   }
 
+  void _startNotificationMonitoring() {
+    _notificationTimer ??= Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => _syncMedicationNotifications(),
+    );
+    unawaited(() async {
+      try {
+        await _notificationService.initialize();
+        if (!kIsWeb) await _notificationService.requestPermission();
+        await _syncMedicationNotifications();
+      } catch (error) {
+        if (kDebugMode) {
+          debugPrint('Medication notification setup failed: $error');
+        }
+      }
+    }());
+  }
+
+  Future<void> _syncMedicationNotifications() async {
+    final store = widget.dataStore;
+    if (store == null || _notificationSyncInFlight || !mounted) return;
+    _notificationSyncInFlight = true;
+    try {
+      final names = <String, String>{
+        for (final medication in store.medications)
+          medication.id: medication.name,
+      };
+      final scheduleTimezones = <String, String>{
+        for (final schedule in store.schedules) schedule.id: schedule.timezone,
+      };
+      final due = await _notificationService.syncDueDoses(
+        doses: store.doseLogs,
+        medicationNames: names,
+        scheduleTimezones: scheduleTimezones,
+        now: DateTime.now(),
+      );
+      if (kIsWeb && mounted) {
+        for (final notification in due) {
+          _showWebMedicationToast(notification);
+        }
+      }
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('Medication notification sync failed: $error');
+      }
+    } finally {
+      _notificationSyncInFlight = false;
+    }
+  }
+
+  void _showWebMedicationToast(MedicationDueNotification notification) {
+    if (!mounted ||
+        _webMedicationToasts.any(
+          (toast) => toast.notification.doseId == notification.doseId,
+        )) {
+      return;
+    }
+    final toast = _MedicationToast(notification);
+    setState(() {
+      _webMedicationToasts.add(toast);
+      if (_webMedicationToasts.length > 3) {
+        final removed = _webMedicationToasts.removeAt(0);
+        _webMedicationToastTimers.remove(removed.notification.doseId)?.cancel();
+      }
+    });
+    _webMedicationToastTimers[notification.doseId] = Timer(
+      const Duration(seconds: 5),
+      () {
+        if (!mounted) return;
+        setState(() {
+          _webMedicationToasts.removeWhere(
+            (item) => item.notification.doseId == notification.doseId,
+          );
+        });
+        _webMedicationToastTimers.remove(notification.doseId);
+      },
+    );
+  }
+
   void _onStoreChanged() {
+    unawaited(_syncMedicationNotifications());
     final preferences = widget.dataStore?.profile?.preferences;
     if (preferences == null) return;
     final signature = [preferences.theme, preferences.accentColor].join('|');
@@ -1739,23 +1842,135 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
                 ],
               ),
       );
-      if (!desktopWeb) return shell;
+      if (!desktopWeb) return _withWebMedicationNotifications(shell);
       final mediaQuery = MediaQuery.of(context);
       final baseTextSize = mediaQuery.textScaler.scale(1);
       return MediaQuery(
         data: mediaQuery.copyWith(
           textScaler: TextScaler.linear(baseTextSize * 1.22),
         ),
-        child: shell,
+        child: _withWebMedicationNotifications(shell),
       );
     }
 
-    return Scaffold(
-      extendBody: true,
-      body: pages,
-      bottomNavigationBar: LiquidGlassTabBar(
-        currentIndex: _selectedIndex,
-        onTap: _selectDestination,
+    return _withWebMedicationNotifications(
+      Scaffold(
+        extendBody: true,
+        body: pages,
+        bottomNavigationBar: LiquidGlassTabBar(
+          currentIndex: _selectedIndex,
+          onTap: _selectDestination,
+        ),
+      ),
+    );
+  }
+
+  Widget _withWebMedicationNotifications(Widget child) {
+    if (!kIsWeb || _webMedicationToasts.isEmpty) return child;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        child,
+        Positioned(
+          key: const Key('webMedicationNotificationToast'),
+          top: MediaQuery.paddingOf(context).top + 16,
+          right: 16,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.sizeOf(context).width < 392
+                  ? MediaQuery.sizeOf(context).width - 32
+                  : 360,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (final toast in _webMedicationToasts)
+                  _MedicationToastCard(
+                    key: ValueKey(toast.notification.doseId),
+                    notification: toast.notification,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MedicationToast {
+  const _MedicationToast(this.notification);
+
+  final MedicationDueNotification notification;
+}
+
+class _MedicationToastCard extends StatefulWidget {
+  const _MedicationToastCard({super.key, required this.notification});
+
+  final MedicationDueNotification notification;
+
+  @override
+  State<_MedicationToastCard> createState() => _MedicationToastCardState();
+}
+
+class _MedicationToastCardState extends State<_MedicationToastCard> {
+  bool _visible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future<void>.microtask(() {
+      if (mounted) setState(() => _visible = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AnimatedSlide(
+        offset: _visible ? Offset.zero : const Offset(1.2, 0),
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        child: Material(
+          elevation: 8,
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            key: const Key('medicationNotificationCard'),
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 14, 18, 14),
+            decoration: BoxDecoration(
+              border: Border.all(color: colors.outlineVariant),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.notifications_active_outlined,
+                  color: colors.primary,
+                ),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        widget.notification.title,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(widget.notification.body),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
