@@ -12,8 +12,6 @@ import 'app_interactions.dart';
 import 'app_layout.dart';
 import 'data/mediary_models.dart';
 import 'in_app_page.dart';
-import 'liquid_glass_accent_selector.dart';
-import 'liquid_glass_appearance_selector.dart';
 import 'liquid_glass_back_button.dart';
 import 'liquid_glass_switch.dart';
 import 'profile_image_policy.dart';
@@ -68,6 +66,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       widget.initialPreferences?.reminderSound ?? 'Gentle Chime';
   late String _language = widget.initialPreferences?.language ?? 'English';
   late String _units = widget.initialPreferences?.units ?? 'Metric';
+
+  String get _appearanceLabel => switch (_appearanceMode) {
+    ThemeMode.light => 'Light',
+    ThemeMode.dark => 'Dark',
+    ThemeMode.system => 'System',
+  };
 
   bool get _dark => Theme.of(context).brightness == Brightness.dark;
   ColorScheme get _colors => Theme.of(context).colorScheme;
@@ -254,6 +258,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _chooseAppearance() async {
+    final appearance = await _chooseOption(
+      title: 'Appearance',
+      options: const ['Light', 'Dark', 'System'],
+      selected: _appearanceLabel,
+    );
+    if (appearance == null || !mounted) return;
+    _setAppearanceMode(switch (appearance) {
+      'Light' => ThemeMode.light,
+      'Dark' => ThemeMode.dark,
+      _ => ThemeMode.system,
+    });
+  }
+
+  Future<void> _chooseAccentColor() async {
+    final accentLabel = await _chooseOption(
+      title: 'Accent Color',
+      options: [for (final accent in AppAccentColor.values) accent.label],
+      selected: _accentColor.label,
+    );
+    if (accentLabel == null || !mounted) return;
+    final accent = AppAccentColor.values.firstWhere(
+      (value) => value.label == accentLabel,
+      orElse: () => _accentColor,
+    );
+    _setAccentColor(accent);
+  }
+
   Future<void> _showPrivacyControls() {
     return pushInAppPage<void>(
       context,
@@ -434,54 +466,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     key: const Key('settingsAppearanceSectionTitle'),
                   ),
                   _group(key: const Key('settingsAppearanceGroup'), [
-                    Column(
-                      children: [
-                        Padding(
-                          key: const Key('appearanceOptionsPanel'),
-                          padding: const EdgeInsets.all(12),
-                          child: LiquidGlassAppearanceSelector(
-                            value: _appearanceMode,
-                            onChanged: _setAppearanceMode,
-                          ),
-                        ),
-                        Divider(height: 1, color: _line),
-                        Padding(
-                          key: const Key('accentColorOptionsPanel'),
-                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      'Accent Color',
-                                      style: TextStyle(
-                                        color: _ink,
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                  Text(
-                                    _accentColor.label,
-                                    key: const Key('selectedAccentColorLabel'),
-                                    style: TextStyle(
-                                      color: _muted,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              LiquidGlassAccentSelector(
-                                value: _accentColor,
-                                onChanged: _setAccentColor,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                    _SettingsRow(
+                      key: const Key('appearanceSettingRow'),
+                      icon: CupertinoIcons.circle_lefthalf_fill,
+                      iconColor: _accent,
+                      title: 'Theme',
+                      subtitle: 'Light, dark, or system',
+                      trailing: _value(_appearanceLabel),
+                      onTap: _chooseAppearance,
+                    ),
+                    _SettingsRow(
+                      key: const Key('accentColorSettingRow'),
+                      icon: CupertinoIcons.paintbrush_fill,
+                      iconColor: _accent,
+                      title: 'Accent Color',
+                      subtitle: 'Customize the app color',
+                      trailing: _value(_accentColor.label),
+                      onTap: _chooseAccentColor,
                     ),
                   ]),
                   _sectionTitle(

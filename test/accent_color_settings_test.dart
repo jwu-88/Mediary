@@ -37,13 +37,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(accent.value, AppAccentColor.blue);
-    expect(find.byKey(const Key('accentOptionBlue')), findsOneWidget);
+    expect(find.byKey(const Key('accentColorSettingRow')), findsOneWidget);
     expect(find.text('Blue'), findsOneWidget);
     expect(_appPrimary(tester), AppAccentColor.blue.light);
 
-    await tester.ensureVisible(find.byKey(const Key('accentOptionPurple')));
+    await tester.tap(find.byKey(const Key('accentColorSettingRow')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('accentOptionPurple')));
+    expect(find.byKey(const ValueKey('inAppOption-Purple')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('inAppOption-Purple')));
     await tester.pumpAndSettle();
 
     expect(accent.value, AppAccentColor.purple);

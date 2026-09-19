@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/app_theme.dart';
-import 'package:mediary/liquid_glass_appearance_selector.dart';
 import 'package:mediary/settings_screen.dart';
 
 void main() {
@@ -44,16 +43,10 @@ void main() {
 
     expect(appearanceMode.value, ThemeMode.system);
     expect(_settingsBackground(tester), AppColors.darkBackground);
-    expect(
-      tester
-          .widget<LiquidGlassAppearanceSelector>(
-            find.byType(LiquidGlassAppearanceSelector),
-          )
-          .value,
-      ThemeMode.system,
-    );
 
-    await tester.tap(find.byKey(const Key('appearanceOptionLight')));
+    await tester.tap(find.byKey(const Key('appearanceSettingRow')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('inAppOption-Light')));
     await tester.pumpAndSettle();
 
     expect(appearanceMode.value, ThemeMode.light);
