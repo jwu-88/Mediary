@@ -135,8 +135,48 @@ void main() {
     expect(find.text('Good Afternoon, person'), findsOneWidget);
     expect(find.byKey(const Key('dashboardTodayMetric')), findsOneWidget);
     expect(find.byKey(const Key('dashboardWeekMetric')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('dashboardFocusActionButton')));
+    final guidance = find.byKey(const Key('dashboardCalendarGuidance'));
+    final emptySchedule = find.text('No medications scheduled');
+    expect(guidance, findsOneWidget);
+    expect(emptySchedule, findsOneWidget);
+    expect(
+      tester.getTopLeft(guidance).dy,
+      lessThan(tester.getTopLeft(emptySchedule).dy),
+    );
+    await tester.ensureVisible(
+      find.byKey(const Key('dashboardCalendarGuidanceButton')),
+    );
+    await tester.tap(find.byKey(const Key('dashboardCalendarGuidanceButton')));
     expect(calendarOpens, 1);
+    await tester.tap(find.byKey(const Key('dashboardFocusActionButton')));
+    expect(calendarOpens, 2);
+  });
+
+  testWidgets('calendar guidance stays usable on a narrow mobile viewport', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DashboardScreen(
+            email: 'person@example.com',
+            now: DateTime(2026, 8, 23, 14),
+            onOpenCalendar: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const Key('dashboardCalendarGuidanceButton')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('calendar controls and dose actions are interactive', (

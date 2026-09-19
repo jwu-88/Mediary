@@ -391,9 +391,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(height: 28),
                 _SectionHeader(title: 'Today’s Schedule'),
                 const SizedBox(height: 10),
-                _ScheduleTable(doses: _doses, onTapDose: _showDoseActions),
+                _CalendarManagementHint(onOpenCalendar: widget.onOpenCalendar),
                 const SizedBox(height: 12),
-                const _CalendarManagementHint(),
+                _ScheduleTable(doses: _doses, onTapDose: _showDoseActions),
               ],
             ),
           ),
@@ -686,10 +686,7 @@ class _ProfileAvatarState extends State<_ProfileAvatar> {
                     )
                   : null,
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [avatar],
-            ),
+            child: Center(child: avatar),
           ),
         ),
       ),
@@ -1285,7 +1282,9 @@ class _ScheduleTable extends StatelessWidget {
 }
 
 class _CalendarManagementHint extends StatelessWidget {
-  const _CalendarManagementHint();
+  const _CalendarManagementHint({required this.onOpenCalendar});
+
+  final VoidCallback? onOpenCalendar;
 
   @override
   Widget build(BuildContext context) {
@@ -1293,32 +1292,79 @@ class _CalendarManagementHint extends StatelessWidget {
     return Semantics(
       key: const Key('dashboardCalendarGuidance'),
       container: true,
-      label: 'To add or manage medications, go to the Calendar page.',
+      label: 'Add or manage medications in Calendar.',
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
         decoration: BoxDecoration(
-          color: colors.primaryContainer.withValues(alpha: .28),
+          color: colors.primary.withValues(alpha: .13),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: colors.primary.withValues(alpha: .16)),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(CupertinoIcons.calendar, size: 18, color: colors.primary),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'To add or manage medications, go to the Calendar page.',
-                style: TextStyle(
-                  color: colors.onSurfaceVariant,
-                  fontSize: 12,
-                  height: 1.35,
-                  fontWeight: FontWeight.w600,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final message = Text(
+              'Add or manage medications in Calendar.',
+              style: TextStyle(
+                color: colors.onSurfaceVariant,
+                fontSize: 12,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+              ),
+            );
+            final openButton = TextButton.icon(
+              key: const Key('dashboardCalendarGuidanceButton'),
+              onPressed: onOpenCalendar,
+              icon: const Icon(CupertinoIcons.arrow_right, size: 15),
+              label: const Text('Open Calendar'),
+              style: TextButton.styleFrom(
+                foregroundColor: colors.primary,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-            ),
-          ],
+            );
+            if (constraints.maxWidth < 390) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        CupertinoIcons.calendar,
+                        size: 18,
+                        color: colors.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(child: message),
+                    ],
+                  ),
+                  const SizedBox(height: 7),
+                  Align(alignment: Alignment.centerRight, child: openButton),
+                ],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Icon(CupertinoIcons.calendar, size: 18, color: colors.primary),
+                const SizedBox(width: 10),
+                Expanded(child: message),
+                const SizedBox(width: 8),
+                openButton,
+              ],
+            );
+          },
         ),
       ),
     );
