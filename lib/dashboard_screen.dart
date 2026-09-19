@@ -836,12 +836,12 @@ class _DashboardFocusCard extends StatelessWidget {
     final allDone = scheduledToday > 0 && completedToday >= scheduledToday;
     final action = onReviewNext ?? onOpenCalendar;
     final title = scheduledToday == 0
-        ? 'Make Today Easier'
+        ? 'No Doses Scheduled'
         : allDone
-        ? 'You’re All Set'
+        ? 'All Done for Today'
         : nextDose == null
         ? 'Keep Going'
-        : 'Up Next';
+        : 'Next Dose';
     final description = scheduledToday == 0
         ? 'Create a schedule in Calendar to keep your routine on track.'
         : nextDose == null
@@ -850,7 +850,7 @@ class _DashboardFocusCard extends StatelessWidget {
               '${titleCaseDisplay(nextDose!.details)}';
     final actionLabel = onReviewNext != null ? 'Review Dose' : 'Open Calendar';
     final progressLabel = scheduledToday == 0
-        ? 'No doses scheduled'
+        ? 'Tap Calendar to begin'
         : '$completedToday/$scheduledToday complete';
     final cardStart = Color.lerp(
       colors.surface,
