@@ -852,7 +852,17 @@ class _DashboardFocusCard extends StatelessWidget {
     final progressLabel = scheduledToday == 0
         ? 'No doses scheduled'
         : '$completedToday/$scheduledToday complete';
-    final secondary = colors.onPrimary.withValues(alpha: dark ? .78 : .84);
+    final cardStart = Color.lerp(
+      colors.surface,
+      colors.primary,
+      dark ? .24 : .1,
+    )!;
+    final cardEnd = Color.lerp(
+      colors.surface,
+      colors.primary,
+      dark ? .13 : .035,
+    )!;
+    final secondary = colors.onSurfaceVariant;
 
     return Semantics(
       container: true,
@@ -861,19 +871,17 @@ class _DashboardFocusCard extends StatelessWidget {
         key: const Key('dashboardFocusCard'),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [
-              colors.primary,
-              Color.lerp(colors.primary, Colors.black, dark ? .16 : .05)!,
-            ],
+            colors: [cardStart, cardEnd],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: colors.primary.withValues(alpha: .18)),
           boxShadow: [
             BoxShadow(
-              color: colors.primary.withValues(alpha: dark ? .25 : .18),
-              blurRadius: 22,
-              offset: const Offset(0, 10),
+              color: colors.primary.withValues(alpha: dark ? .16 : .09),
+              blurRadius: 18,
+              offset: const Offset(0, 7),
             ),
           ],
         ),
@@ -902,8 +910,8 @@ class _DashboardFocusCard extends StatelessWidget {
                         Text(
                           title,
                           style: TextStyle(
-                            color: colors.onPrimary,
-                            fontSize: 23,
+                            color: colors.onSurface,
+                            fontSize: 22,
                             height: 1.1,
                             fontWeight: FontWeight.w800,
                             letterSpacing: -.5,
@@ -921,15 +929,15 @@ class _DashboardFocusCard extends StatelessWidget {
                           value: progress,
                           strokeWidth: 5,
                           strokeCap: StrokeCap.round,
-                          backgroundColor: colors.onPrimary.withValues(
-                            alpha: .18,
+                          backgroundColor: colors.primary.withValues(
+                            alpha: .14,
                           ),
-                          color: colors.onPrimary,
+                          color: colors.primary,
                         ),
                         Text(
                           '${(progress * 100).round()}%',
                           style: TextStyle(
-                            color: colors.onPrimary,
+                            color: colors.primary,
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
                           ),
@@ -960,10 +968,8 @@ class _DashboardFocusCard extends StatelessWidget {
                       child: LinearProgressIndicator(
                         value: progress,
                         minHeight: 6,
-                        backgroundColor: colors.onPrimary.withValues(
-                          alpha: .18,
-                        ),
-                        color: colors.onPrimary,
+                        backgroundColor: colors.primary.withValues(alpha: .14),
+                        color: colors.primary,
                       ),
                     ),
                   ),
@@ -993,8 +999,8 @@ class _DashboardFocusCard extends StatelessWidget {
                     ),
                     label: Text(actionLabel),
                     style: TextButton.styleFrom(
-                      foregroundColor: colors.onPrimary,
-                      backgroundColor: colors.onPrimary.withValues(alpha: .14),
+                      foregroundColor: colors.primary,
+                      backgroundColor: colors.primary.withValues(alpha: .12),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 8,

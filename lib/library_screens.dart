@@ -258,12 +258,30 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
                         },
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        'Catalog data from RxNorm (U.S. National Library of Medicine). Label details may come from openFDA. Verify with your pharmacist or care team.',
-                        style: TextStyle(
-                          color: _muted,
-                          fontSize: 10,
-                          height: 1.35,
+                      DecoratedBox(
+                        key: const Key('catalogAttribution'),
+                        decoration: BoxDecoration(
+                          color: _surface.withValues(alpha: .58),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: _line.withValues(alpha: .72),
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          child: Text(
+                            'Catalog data from RxNorm (U.S. National Library of Medicine). Label details may come from openFDA. Verify with your pharmacist or care team.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: _muted,
+                              fontSize: 11,
+                              height: 1.45,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         ),
                       ),
                     ],
