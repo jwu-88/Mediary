@@ -100,10 +100,11 @@ void main() {
     ]);
     expectRows('settingsAppPreferencesGroup', ['Language', 'Units']);
     expectRows('settingsAppearanceGroup', [
-      'Light',
-      'Dark',
-      'System',
+      'Theme',
+      'Light, dark, or system',
       'Accent Color',
+      'Customize the app color',
+      'System',
       'Blue',
     ]);
     expectRows('settingsPrivacyGroup', ['Privacy Controls', 'Export My Data']);

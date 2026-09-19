@@ -7,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mediary/app_theme.dart';
 import 'package:mediary/firebase_options.dart';
-import 'package:mediary/liquid_glass_appearance_selector.dart';
 import 'package:mediary/liquid_glass_tab_bar.dart';
 import 'package:mediary/main.dart';
 import 'package:mediary/profile_screen.dart';
@@ -643,28 +642,11 @@ void main() {
     expect(find.text('Dark Appearance'), findsNothing);
     expect(find.text('App Preferences'), findsOneWidget);
     expect(find.text('Account'), findsNothing);
-    expect(
-      tester
-          .widget<LiquidGlassAppearanceSelector>(
-            find.byType(LiquidGlassAppearanceSelector),
-          )
-          .value,
-      ThemeMode.system,
-    );
-
-    await tester.ensureVisible(find.byKey(const Key('appearanceOptionDark')));
+    await tester.tap(find.byKey(const Key('appearanceSettingRow')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('appearanceOptionDark')));
+    await tester.tap(find.byKey(const ValueKey('inAppOption-Dark')));
     await tester.pumpAndSettle();
     expect(appearanceMode.value, ThemeMode.dark);
-    expect(
-      tester
-          .widget<LiquidGlassAppearanceSelector>(
-            find.byType(LiquidGlassAppearanceSelector),
-          )
-          .value,
-      ThemeMode.dark,
-    );
     expect(
       tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode,
       ThemeMode.dark,

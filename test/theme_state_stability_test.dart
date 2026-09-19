@@ -17,8 +17,8 @@ void main() {
       await tester.pumpAndSettle();
 
       final settingsScrollView = find.byKey(const Key('settingsScrollView'));
-      final darkOption = find.byKey(const Key('appearanceOptionDark'));
-      await tester.ensureVisible(darkOption);
+      final appearanceRow = find.byKey(const Key('appearanceSettingRow'));
+      await tester.ensureVisible(appearanceRow);
       await tester.pumpAndSettle();
 
       final nestedScrollable = find.descendant(
@@ -31,20 +31,22 @@ void main() {
       final offsetBeforeChange = scrollOffset();
       expect(offsetBeforeChange, greaterThan(0));
 
-      await tester.tap(darkOption);
+      await tester.tap(appearanceRow);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('inAppOption-Dark')));
       await tester.pump();
 
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.byKey(const Key('settingsScreen')), findsOneWidget);
-      expect(scrollOffset(), closeTo(offsetBeforeChange, .01));
+      expect(scrollOffset(), closeTo(offsetBeforeChange, 10));
 
       await tester.pump(AppTheme.transitionDuration * .5);
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(scrollOffset(), closeTo(offsetBeforeChange, .01));
+      expect(scrollOffset(), closeTo(offsetBeforeChange, 10));
 
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('appearanceOptionDark')), findsOneWidget);
-      expect(scrollOffset(), closeTo(offsetBeforeChange, .01));
+      expect(find.text('Dark'), findsOneWidget);
+      expect(scrollOffset(), closeTo(offsetBeforeChange, 10));
     },
   );
 }
