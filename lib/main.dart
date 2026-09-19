@@ -1343,6 +1343,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       initialDoses: _dashboardDoses(store),
       weeklyTaken: series.taken.reduce((a, b) => a + b),
       weeklyScheduled: series.scheduled.reduce((a, b) => a + b),
+      onOpenCalendar: () => _selectDestination(1),
       onDoseStatusChanged: store == null
           ? null
           : (doseId, status, {snoozedUntil}) => store.updateDoseStatus(
@@ -1414,11 +1415,17 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
 
   List<DashboardDoseData> _dashboardDoses(MediaryDataStore? store) {
     if (store == null) return const [];
+    final todayKey = _dateKey(DateUtils.dateOnly(widget.now ?? DateTime.now()));
     final medications = {
       for (final medication in store.medications) medication.id: medication,
     };
     final doses =
-        store.doseLogs.where((dose) => dose.status != 'cancelled').toList()
+        store.doseLogs
+            .where(
+              (dose) =>
+                  dose.status != 'cancelled' && dose.localDate == todayKey,
+            )
+            .toList()
           ..sort(
             (first, second) =>
                 first.scheduledFor.compareTo(second.scheduledFor),

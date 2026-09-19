@@ -112,6 +112,31 @@ void main() {
     expect(find.text('Dose Taken'), findsOneWidget);
   });
 
+  testWidgets('dashboard empty state offers an interactive calendar shortcut', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    var calendarOpens = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DashboardScreen(
+            email: 'person@example.com',
+            now: DateTime(2026, 8, 23, 14),
+            onOpenCalendar: () => calendarOpens++,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('dashboardFocusCard')), findsOneWidget);
+    expect(find.text('Good Afternoon, person'), findsOneWidget);
+    expect(find.byKey(const Key('dashboardTodayMetric')), findsOneWidget);
+    expect(find.byKey(const Key('dashboardWeekMetric')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('dashboardFocusActionButton')));
+    expect(calendarOpens, 1);
+  });
+
   testWidgets('calendar controls and dose actions are interactive', (
     tester,
   ) async {

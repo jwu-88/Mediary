@@ -106,8 +106,10 @@ void main() {
       'Accent Color',
       'Blue',
     ]);
-    expectRows('settingsConnectedAppsGroup', ['Apple Health']);
     expectRows('settingsPrivacyGroup', ['Privacy Controls', 'Export My Data']);
+    expect(find.text('Connected Apps'), findsNothing);
+    expect(find.text('Apple Health'), findsNothing);
+    expect(find.byKey(const Key('settingsConnectedAppsGroup')), findsNothing);
 
     expect(
       find.descendant(

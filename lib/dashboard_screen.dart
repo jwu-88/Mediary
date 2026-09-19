@@ -21,6 +21,7 @@ class DashboardScreen extends StatefulWidget {
     this.now,
     this.bottomPadding = 120,
     this.onViewReport,
+    this.onOpenCalendar,
     this.onOpenAccount,
     this.initialDoses = const [],
     this.weeklyTaken = 0,
@@ -34,6 +35,7 @@ class DashboardScreen extends StatefulWidget {
   final DateTime? now;
   final double bottomPadding;
   final VoidCallback? onViewReport;
+  final VoidCallback? onOpenCalendar;
   final VoidCallback? onOpenAccount;
   final List<DashboardDoseData> initialDoses;
   final int weeklyTaken;
@@ -64,6 +66,12 @@ class DashboardScreen extends StatefulWidget {
   }
 
   String get _greetingName => _name.split(RegExp(r'\s+')).first;
+
+  String _greetingFor(DateTime date) {
+    if (date.hour < 12) return 'Good Morning';
+    if (date.hour < 17) return 'Good Afternoon';
+    return 'Good Evening';
+  }
 
   String _formatDate(DateTime date) {
     const weekdays = [
@@ -267,9 +275,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final today = DateUtils.dateOnly(widget.now ?? DateTime.now());
+    final currentTime = widget.now ?? DateTime.now();
+    final today = DateUtils.dateOnly(currentTime);
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final completedToday = _doses
+        .where((dose) => dose.status == 'Taken')
+        .length;
+    final nextDoseIndex = _doses.indexWhere((dose) => dose.status != 'Taken');
+    final nextDose = nextDoseIndex < 0 ? null : _doses[nextDoseIndex];
     final viewportWidth = MediaQuery.sizeOf(context).width;
     final contentWidth = viewportWidth >= 900
         ? responsiveContentWidth(context, nativeMaxWidth: 760)
@@ -304,7 +318,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            'Good Morning, ${widget._greetingName}',
+                            '${widget._greetingFor(currentTime)}, '
+                            '${widget._greetingName}',
                             key: const Key('dashboardGreeting'),
                             style: TextStyle(
                               color: colors.onSurface,
@@ -339,6 +354,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 setState(() => _announcement = null),
                           ),
                         ),
+                ),
+                const SizedBox(height: 20),
+                _DashboardFocusCard(
+                  completedToday: completedToday,
+                  scheduledToday: _doses.length,
+                  nextDose: nextDose,
+                  onReviewNext: nextDose == null
+                      ? null
+                      : () => unawaited(_showDoseActions(nextDoseIndex)),
+                  onOpenCalendar: widget.onOpenCalendar,
+                ),
+                const SizedBox(height: 14),
+                _DashboardMetricStrip(
+                  completedToday: completedToday,
+                  scheduledToday: _doses.length,
+                  weeklyTaken: widget.weeklyTaken,
+                  weeklyScheduled: widget.weeklyScheduled,
+                  onOpenCalendar: widget.onOpenCalendar,
+                  onViewReport: _handleViewReport,
                 ),
                 const SizedBox(height: 28),
                 _SectionHeader(
@@ -771,6 +805,368 @@ class _AdherenceSummary extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DashboardFocusCard extends StatelessWidget {
+  const _DashboardFocusCard({
+    required this.completedToday,
+    required this.scheduledToday,
+    required this.nextDose,
+    required this.onReviewNext,
+    required this.onOpenCalendar,
+  });
+
+  final int completedToday;
+  final int scheduledToday;
+  final _DashboardDose? nextDose;
+  final VoidCallback? onReviewNext;
+  final VoidCallback? onOpenCalendar;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+    final progress = scheduledToday == 0
+        ? 0.0
+        : (completedToday / scheduledToday).clamp(0.0, 1.0);
+    final allDone = scheduledToday > 0 && completedToday >= scheduledToday;
+    final action = onReviewNext ?? onOpenCalendar;
+    final title = scheduledToday == 0
+        ? 'Make Today Easier'
+        : allDone
+        ? 'You’re All Set'
+        : nextDose == null
+        ? 'Keep Going'
+        : 'Up Next';
+    final description = scheduledToday == 0
+        ? 'Create a schedule in Calendar to keep your routine on track.'
+        : nextDose == null
+        ? 'All scheduled doses for today are complete.'
+        : '${titleCaseDisplay(nextDose!.name)} · '
+              '${titleCaseDisplay(nextDose!.details)}';
+    final actionLabel = onReviewNext != null ? 'Review Dose' : 'Open Calendar';
+    final progressLabel = scheduledToday == 0
+        ? 'No doses scheduled'
+        : '$completedToday/$scheduledToday complete';
+    final secondary = colors.onPrimary.withValues(alpha: dark ? .78 : .84);
+
+    return Semantics(
+      container: true,
+      label: '$title. $description',
+      child: DecoratedBox(
+        key: const Key('dashboardFocusCard'),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              colors.primary,
+              Color.lerp(colors.primary, Colors.black, dark ? .16 : .05)!,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: [
+            BoxShadow(
+              color: colors.primary.withValues(alpha: dark ? .25 : .18),
+              blurRadius: 22,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 17, 12, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Today',
+                          style: TextStyle(
+                            color: secondary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: .3,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          title,
+                          style: TextStyle(
+                            color: colors.onPrimary,
+                            fontSize: 23,
+                            height: 1.1,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox.square(
+                    dimension: 52,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        CircularProgressIndicator(
+                          value: progress,
+                          strokeWidth: 5,
+                          strokeCap: StrokeCap.round,
+                          backgroundColor: colors.onPrimary.withValues(
+                            alpha: .18,
+                          ),
+                          color: colors.onPrimary,
+                        ),
+                        Text(
+                          '${(progress * 100).round()}%',
+                          style: TextStyle(
+                            color: colors.onPrimary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                description,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: secondary,
+                  fontSize: 13,
+                  height: 1.3,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 13),
+              Row(
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 6,
+                        backgroundColor: colors.onPrimary.withValues(
+                          alpha: .18,
+                        ),
+                        color: colors.onPrimary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    progressLabel,
+                    style: TextStyle(
+                      color: secondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              if (action != null) ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    key: const Key('dashboardFocusActionButton'),
+                    onPressed: action,
+                    icon: Icon(
+                      onReviewNext != null
+                          ? CupertinoIcons.check_mark_circled
+                          : CupertinoIcons.calendar_badge_plus,
+                      size: 16,
+                    ),
+                    label: Text(actionLabel),
+                    style: TextButton.styleFrom(
+                      foregroundColor: colors.onPrimary,
+                      backgroundColor: colors.onPrimary.withValues(alpha: .14),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardMetricStrip extends StatelessWidget {
+  const _DashboardMetricStrip({
+    required this.completedToday,
+    required this.scheduledToday,
+    required this.weeklyTaken,
+    required this.weeklyScheduled,
+    required this.onOpenCalendar,
+    required this.onViewReport,
+  });
+
+  final int completedToday;
+  final int scheduledToday;
+  final int weeklyTaken;
+  final int weeklyScheduled;
+  final VoidCallback? onOpenCalendar;
+  final VoidCallback onViewReport;
+
+  @override
+  Widget build(BuildContext context) {
+    final weeklyPercent = weeklyScheduled == 0
+        ? 0
+        : ((weeklyTaken / weeklyScheduled) * 100).round();
+    return Row(
+      children: [
+        Expanded(
+          child: _DashboardMetricTile(
+            key: const Key('dashboardTodayMetric'),
+            icon: CupertinoIcons.today,
+            label: 'Today',
+            value: '$completedToday/$scheduledToday',
+            detail: scheduledToday == 0
+                ? 'Start in Calendar'
+                : 'Doses complete',
+            onTap: onOpenCalendar,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _DashboardMetricTile(
+            key: const Key('dashboardWeekMetric'),
+            icon: CupertinoIcons.chart_bar,
+            label: 'This Week',
+            value: '$weeklyPercent%',
+            detail: weeklyScheduled == 0
+                ? 'No doses yet'
+                : '$weeklyTaken of $weeklyScheduled taken',
+            onTap: onViewReport,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DashboardMetricTile extends StatelessWidget {
+  const _DashboardMetricTile({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.detail,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final String detail;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Semantics(
+      button: onTap != null,
+      label: '$label: $value. $detail',
+      child: ResponsiveCupertinoButton(
+        onPressed: onTap,
+        minimumSize: Size.zero,
+        padding: EdgeInsets.zero,
+        semanticLabel: '$label: $value',
+        borderRadius: BorderRadius.circular(18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerHighest.withValues(alpha: .58),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: colors.outlineVariant.withValues(alpha: .55),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(13, 12, 10, 12),
+            child: Row(
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: colors.primary.withValues(alpha: .12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Icon(icon, color: colors.primary, size: 17),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(
+                          color: colors.onSurfaceVariant,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        value,
+                        style: TextStyle(
+                          color: colors.onSurface,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        detail,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.onSurfaceVariant,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (onTap != null)
+                  Icon(
+                    CupertinoIcons.chevron_right,
+                    color: colors.onSurfaceVariant,
+                    size: 14,
+                  ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -84,27 +84,13 @@ void main() {
     expect(find.text('No analytics service is installed'), findsOneWidget);
   });
 
-  testWidgets('Apple Health stays disconnected until integration is ready', (
+  testWidgets('Apple Health integration is not exposed in settings', (
     tester,
   ) async {
     usePhoneSize(tester);
     await tester.pumpWidget(settings());
 
-    await tester.scrollUntilVisible(
-      find.text('Apple Health'),
-      300,
-      scrollable: settingsScrollable(),
-    );
-    expect(
-      tester.getSize(find.byKey(const Key('appleHealthIcon'))),
-      const Size.square(24),
-    );
-    await tester.tap(find.text('Apple Health'));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('appleHealthInformationPage')), findsOneWidget);
-    expect(find.text('Apple Health is not connected.'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('appleHealthDoneButton')));
-    await tester.pumpAndSettle();
-    expect(find.text('Not connected'), findsOneWidget);
+    expect(find.text('Apple Health'), findsNothing);
+    expect(find.byKey(const Key('appleHealthIcon')), findsNothing);
   });
 }
