@@ -494,7 +494,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       icon: CupertinoIcons.lock_fill,
                       iconColor: _accent,
                       title: 'Privacy Controls',
-                      subtitle: 'Camera, health, analytics',
+                      subtitle: 'Camera and data preferences',
                       trailing: _chevron(),
                       onTap: _showPrivacyControls,
                     ),

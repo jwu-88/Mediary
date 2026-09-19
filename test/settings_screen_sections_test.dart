@@ -107,7 +107,11 @@ void main() {
       'System',
       'Blue',
     ]);
-    expectRows('settingsPrivacyGroup', ['Privacy Controls', 'Export My Data']);
+    expectRows('settingsPrivacyGroup', [
+      'Privacy Controls',
+      'Camera and data preferences',
+      'Export My Data',
+    ]);
     expect(find.text('Connected Apps'), findsNothing);
     expect(find.text('Apple Health'), findsNothing);
     expect(find.byKey(const Key('settingsConnectedAppsGroup')), findsNothing);
