@@ -32,6 +32,12 @@ void main() {
     );
     await tester.pump();
 
+    expect(find.byKey(const Key('catalogAttribution')), findsOneWidget);
+    final attribution = tester.widget<Text>(
+      find.textContaining('Catalog data from RxNorm'),
+    );
+    expect(attribution.textAlign, TextAlign.center);
+
     expect(find.byKey(const Key('liquidGlassSearchSurface')), findsOneWidget);
     await tester.enterText(
       find.byKey(const Key('medicationSearchField')),
