@@ -34,10 +34,7 @@ void main() {
 
     expect(find.byKey(const Key('dashboardAddButton')), findsNothing);
     expect(find.byKey(const Key('dashboardCalendarGuidance')), findsOneWidget);
-    expect(
-      find.text('To add or manage medications, go to the Calendar page.'),
-      findsOneWidget,
-    );
+    expect(find.text('Add or manage medications in Calendar.'), findsOneWidget);
   });
 
   testWidgets('dashboard report action cannot push twice during transition', (
