@@ -130,6 +130,8 @@ void main() {
     );
 
     expect(find.byKey(const Key('dashboardFocusCard')), findsOneWidget);
+    expect(find.text('No Doses Scheduled'), findsOneWidget);
+    expect(find.text('Make Today Easier'), findsNothing);
     expect(find.text('Good Afternoon, person'), findsOneWidget);
     expect(find.byKey(const Key('dashboardTodayMetric')), findsOneWidget);
     expect(find.byKey(const Key('dashboardWeekMetric')), findsOneWidget);
