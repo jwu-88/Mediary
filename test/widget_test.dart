@@ -241,6 +241,14 @@ void main() {
     expect(find.text('Settings'), findsOneWidget);
     expect(find.text('Weekly Progress'), findsOneWidget);
     expect(find.text('Today’s Schedule'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('No medications scheduled'),
+      250,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('dashboardScrollView')),
+        matching: find.byType(Scrollable),
+      ),
+    );
     expect(find.text('No medications scheduled'), findsOneWidget);
   });
 
@@ -397,7 +405,8 @@ void main() {
     expect(find.byKey(const Key('settingsPageTitle')), findsOneWidget);
     expect(find.text('App Preferences'), findsOneWidget);
     expect(find.text('Appearance'), findsOneWidget);
-    expect(find.text('Connected Apps'), findsOneWidget);
+    expect(find.text('Connected Apps'), findsNothing);
+    expect(find.text('Apple Health'), findsNothing);
 
     final settingsScrollable = find.descendant(
       of: find.byKey(const Key('settingsScrollView')),

@@ -62,7 +62,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late bool _doseNotifications =
       widget.initialPreferences?.doseNotifications ?? true;
   late bool _followUpAlerts = widget.initialPreferences?.followUpAlerts ?? true;
-  final bool _appleHealthConnected = false;
   bool _isExportingData = false;
   String? _exportStatusMessage;
   late String _reminderSound =
@@ -253,41 +252,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
     }
-  }
-
-  Future<void> _manageAppleHealth() async {
-    await pushInAppPage<void>(
-      context,
-      builder: (context) => InAppPageScaffold(
-        title: 'Apple Health',
-        child: ListView(
-          key: const Key('appleHealthInformationPage'),
-          padding: EdgeInsets.zero,
-          children: [
-            Text(
-              'Apple Health is not connected.',
-              style: Theme.of(context).textTheme.titleLarge
-                  ?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Mediary will only offer this connection after HealthKit '
-              'permissions and protected data handling are configured.',
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                height: 1.45,
-              ),
-            ),
-            const SizedBox(height: 28),
-            FilledButton(
-              key: const Key('appleHealthDoneButton'),
-              onPressed: () => Navigator.of(context).maybePop(),
-              child: const Text('Done'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Future<void> _showPrivacyControls() {
@@ -518,34 +482,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                       ],
-                    ),
-                  ]),
-                  _sectionTitle(
-                    'Connected Apps',
-                    key: const Key('settingsConnectedAppsSectionTitle'),
-                  ),
-                  _group(key: const Key('settingsConnectedAppsGroup'), [
-                    _SettingsRow(
-                      icon: CupertinoIcons.heart_fill,
-                      // Apple Health uses a white tile with its red heart mark,
-                      // independent of Mediary's current accent color.
-                      iconWidget: const _AppleHealthIcon(
-                        color: Color(0xFFFF2D55),
-                      ),
-                      iconColor: const Color(0xFFFF2D55),
-                      title: 'Apple Health',
-                      subtitle: _appleHealthConnected
-                          ? 'Connected'
-                          : 'Not connected',
-                      trailing: Text(
-                        _appleHealthConnected ? 'On' : 'Off',
-                        style: TextStyle(
-                          color: _appleHealthConnected ? _success : _muted,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      onTap: _manageAppleHealth,
                     ),
                   ]),
                   _sectionTitle(
@@ -1004,7 +940,6 @@ class _SettingsRow extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.trailing,
-    this.iconWidget,
     this.onTap,
   });
 
@@ -1013,7 +948,6 @@ class _SettingsRow extends StatelessWidget {
   final String title;
   final String subtitle;
   final Widget trailing;
-  final Widget? iconWidget;
   final VoidCallback? onTap;
 
   @override
@@ -1036,9 +970,7 @@ class _SettingsRow extends StatelessWidget {
               children: [
                 SizedBox(
                   width: 28,
-                  child: Center(
-                    child: iconWidget ?? Icon(icon, color: iconColor, size: 18),
-                  ),
+                  child: Center(child: Icon(icon, color: iconColor, size: 18)),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -1073,116 +1005,6 @@ class _SettingsRow extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Native-style Apple Health mark: a white tile, red heart, and ECG pulse.
-/// Keeping it dedicated avoids reducing the branded mark to a generic glyph.
-class _AppleHealthIcon extends StatelessWidget {
-  const _AppleHealthIcon({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox.square(
-      key: const Key('appleHealthIcon'),
-      dimension: 24,
-      child: ClipRRect(
-        borderRadius: const BorderRadius.all(Radius.circular(AppRadii.small)),
-        child: ColoredBox(
-          color: Colors.white,
-          child: CustomPaint(painter: _AppleHealthIconPainter(color)),
-        ),
-      ),
-    );
-  }
-}
-
-class _AppleHealthIconPainter extends CustomPainter {
-  const _AppleHealthIconPainter(this.color);
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final scale = size.shortestSide / 22;
-    final heart = Path()
-      ..moveTo(11 * scale, 18 * scale)
-      ..cubicTo(
-        9.1 * scale,
-        16.4 * scale,
-        4 * scale,
-        13.4 * scale,
-        4 * scale,
-        8.3 * scale,
-      )
-      ..cubicTo(
-        4 * scale,
-        5.8 * scale,
-        5.7 * scale,
-        4.2 * scale,
-        7.8 * scale,
-        4.2 * scale,
-      )
-      ..cubicTo(
-        9.1 * scale,
-        4.2 * scale,
-        10.3 * scale,
-        4.9 * scale,
-        11 * scale,
-        6 * scale,
-      )
-      ..cubicTo(
-        11.7 * scale,
-        4.9 * scale,
-        12.9 * scale,
-        4.2 * scale,
-        14.2 * scale,
-        4.2 * scale,
-      )
-      ..cubicTo(
-        16.3 * scale,
-        4.2 * scale,
-        18 * scale,
-        5.8 * scale,
-        18 * scale,
-        8.3 * scale,
-      )
-      ..cubicTo(
-        18 * scale,
-        13.4 * scale,
-        12.9 * scale,
-        16.4 * scale,
-        11 * scale,
-        18 * scale,
-      )
-      ..close();
-
-    canvas.drawPath(heart, Paint()..color = color);
-    canvas.save();
-    canvas.clipPath(heart);
-    final pulse = Path()
-      ..moveTo(3.5 * scale, 10.1 * scale)
-      ..lineTo(7.5 * scale, 10.1 * scale)
-      ..lineTo(9.1 * scale, 7.5 * scale)
-      ..lineTo(11 * scale, 13.5 * scale)
-      ..lineTo(12.7 * scale, 10.1 * scale)
-      ..lineTo(18.5 * scale, 10.1 * scale);
-    canvas.drawPath(
-      pulse,
-      Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.15 * scale
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round,
-    );
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant _AppleHealthIconPainter oldDelegate) =>
-      oldDelegate.color != color;
 }
 
 class _PrivacyDivider extends StatelessWidget {
