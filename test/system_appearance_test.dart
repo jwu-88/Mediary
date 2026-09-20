@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/app_theme.dart';
+import 'package:mediary/in_app_page.dart';
 import 'package:mediary/settings_screen.dart';
 
 void main() {
@@ -50,6 +51,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(appearanceMode.value, ThemeMode.light);
+    expect(find.byType(InAppPageScaffold), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('inAppOptionCheck-Light')),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.chevron_right_rounded), findsNothing);
+
+    await tester.tap(find.byTooltip('Back from Appearance'));
+    await tester.pumpAndSettle();
     expect(_settingsBackground(tester), AppColors.lightBackground);
   });
 }

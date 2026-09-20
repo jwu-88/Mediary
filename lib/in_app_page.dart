@@ -126,30 +126,108 @@ class InAppPageOption<T> {
 }
 
 /// A responsive, app-owned replacement for short action sheets and option
-/// dialogs. Selecting a row returns its value to the previous page.
+/// dialogs. By default, selecting a row returns its value to the previous
+/// page. Persistent selector pages can keep the route open and receive each
+/// selection through [onChanged].
 class InAppOptionPage<T> extends StatelessWidget {
   const InAppOptionPage({
     super.key,
     required this.title,
     required this.options,
     this.subtitle,
+    this.dismissOnSelect = true,
+    this.showUnselectedIndicator = true,
+    this.onChanged,
   });
 
   final String title;
   final String? subtitle;
   final List<InAppPageOption<T>> options;
+  final bool dismissOnSelect;
+  final bool showUnselectedIndicator;
+  final ValueChanged<T>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return _InAppOptionPageContent<T>(
+      title: title,
+      subtitle: subtitle,
+      options: options,
+      dismissOnSelect: dismissOnSelect,
+      showUnselectedIndicator: showUnselectedIndicator,
+      onChanged: onChanged,
+    );
+  }
+}
+
+class _InAppOptionPageContent<T> extends StatefulWidget {
+  const _InAppOptionPageContent({
+    required this.title,
+    required this.subtitle,
+    required this.options,
+    required this.dismissOnSelect,
+    required this.showUnselectedIndicator,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String? subtitle;
+  final List<InAppPageOption<T>> options;
+  final bool dismissOnSelect;
+  final bool showUnselectedIndicator;
+  final ValueChanged<T>? onChanged;
+
+  @override
+  State<_InAppOptionPageContent<T>> createState() =>
+      _InAppOptionPageContentState<T>();
+}
+
+class _InAppOptionPageContentState<T>
+    extends State<_InAppOptionPageContent<T>> {
+  T? _selectedValue;
+  bool _hasLocalSelection = false;
+
+  @override
+  void didUpdateWidget(covariant _InAppOptionPageContent<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_hasLocalSelection) return;
+    final stillAvailable = widget.options.any(
+      (option) => option.value == _selectedValue,
+    );
+    if (!stillAvailable) {
+      _hasLocalSelection = false;
+      _selectedValue = null;
+    }
+  }
+
+  bool _isSelected(InAppPageOption<T> option) {
+    if (_hasLocalSelection) return option.value == _selectedValue;
+    return option.selected;
+  }
+
+  void _select(InAppPageOption<T> option) {
+    if (widget.dismissOnSelect) {
+      Navigator.of(context).pop(option.value);
+      return;
+    }
+    setState(() {
+      _selectedValue = option.value;
+      _hasLocalSelection = true;
+    });
+    widget.onChanged?.call(option.value);
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return InAppPageScaffold(
-      title: title,
+      title: widget.title,
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          if (subtitle != null) ...[
+          if (widget.subtitle != null) ...[
             Text(
-              subtitle!,
+              widget.subtitle!,
               style: TextStyle(
                 color: colors.onSurfaceVariant,
                 fontSize: 15,
@@ -171,13 +249,22 @@ class InAppOptionPage<T> extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
               child: Column(
                 children: [
-                  for (var index = 0; index < options.length; index++) ...[
-                    _InAppOptionRow<T>(option: options[index]),
-                    if (index < options.length - 1)
+                  for (
+                    var index = 0;
+                    index < widget.options.length;
+                    index++
+                  ) ...[
+                    _InAppOptionRow<T>(
+                      option: widget.options[index],
+                      selected: _isSelected(widget.options[index]),
+                      showUnselectedIndicator: widget.showUnselectedIndicator,
+                      onSelected: _select,
+                    ),
+                    if (index < widget.options.length - 1)
                       Divider(
                         height: 1,
                         thickness: .5,
-                        indent: options[index].icon == null ? 16 : 56,
+                        indent: widget.options[index].icon == null ? 16 : 56,
                       ),
                   ],
                 ],
@@ -191,71 +278,93 @@ class InAppOptionPage<T> extends StatelessWidget {
 }
 
 class _InAppOptionRow<T> extends StatelessWidget {
-  const _InAppOptionRow({required this.option});
+  const _InAppOptionRow({
+    required this.option,
+    required this.selected,
+    required this.showUnselectedIndicator,
+    required this.onSelected,
+  });
 
   final InAppPageOption<T> option;
+  final bool selected;
+  final bool showUnselectedIndicator;
+  final ValueChanged<InAppPageOption<T>> onSelected;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final foreground = option.destructive ? colors.error : colors.onSurface;
-    return AppPressable(
-      key: ValueKey('inAppOption-${option.label}'),
-      onPressed: () => Navigator.of(context).pop(option.value),
-      semanticLabel: option.label,
-      haptic: option.destructive
-          ? AppHapticKind.primaryAction
-          : AppHapticKind.selection,
-      borderRadius: BorderRadius.zero,
-      hoverScale: 1,
-      pressedScale: .99,
-      hoverOffset: Offset.zero,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 58),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Row(
-            children: [
-              if (option.icon != null) ...[
-                Icon(option.icon, color: foreground, size: 21),
-                const SizedBox(width: 18),
-              ],
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      option.label,
-                      style: TextStyle(
-                        color: foreground,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (option.detail != null) ...[
-                      const SizedBox(height: 2),
+    final foreground = option.destructive
+        ? colors.error
+        : selected
+        ? colors.primary
+        : colors.onSurface;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      color: selected ? colors.primary.withValues(alpha: .075) : null,
+      child: AppPressable(
+        key: ValueKey('inAppOption-${option.label}'),
+        onPressed: () => onSelected(option),
+        semanticLabel: option.label,
+        haptic: option.destructive
+            ? AppHapticKind.primaryAction
+            : AppHapticKind.selection,
+        borderRadius: BorderRadius.zero,
+        hoverScale: 1,
+        pressedScale: .99,
+        hoverOffset: Offset.zero,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 58),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Row(
+              children: [
+                if (option.icon != null) ...[
+                  Icon(option.icon, color: foreground, size: 21),
+                  const SizedBox(width: 18),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
                       Text(
-                        option.detail!,
+                        option.label,
                         style: TextStyle(
-                          color: colors.onSurfaceVariant,
-                          fontSize: 13,
-                          height: 1.3,
+                          color: foreground,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
+                      if (option.detail != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          option.detail!,
+                          style: TextStyle(
+                            color: colors.onSurfaceVariant,
+                            fontSize: 13,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              if (option.selected)
-                Icon(Icons.check_rounded, color: colors.primary, size: 21)
-              else
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: colors.onSurfaceVariant,
-                  size: 21,
-                ),
-            ],
+                if (selected)
+                  Icon(
+                    Icons.check_rounded,
+                    key: ValueKey('inAppOptionCheck-${option.label}'),
+                    color: colors.primary,
+                    size: 21,
+                  )
+                else if (showUnselectedIndicator)
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: colors.onSurfaceVariant,
+                    size: 21,
+                  ),
+              ],
+            ),
           ),
         ),
       ),

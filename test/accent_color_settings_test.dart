@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/app_theme.dart';
+import 'package:mediary/in_app_page.dart';
 import 'package:mediary/main.dart';
 
 void main() {
@@ -49,6 +50,15 @@ void main() {
 
     expect(accent.value, AppAccentColor.purple);
     expect(find.text('Purple'), findsOneWidget);
+    expect(find.byType(InAppPageScaffold), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('inAppOptionCheck-Purple')),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.chevron_right_rounded), findsNothing);
+
+    await tester.tap(find.byTooltip('Back from Accent Color'));
+    await tester.pumpAndSettle();
     expect(_appPrimary(tester), AppAccentColor.purple.light);
     expect(
       tester

@@ -110,6 +110,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _setAppearanceMode(ThemeMode mode) {
+    if (mode == _appearanceMode) return;
     final previous = _appearanceMode;
     setState(() => _appearanceMode = mode);
     widget.onAppearanceModeChanged(mode);
@@ -126,6 +127,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _setAccentColor(AppAccentColor accent) {
+    if (accent == _accentColor) return;
     final previous = _accentColor;
     setState(() => _accentColor = accent);
     widget.onAccentColorChanged(accent);
@@ -184,11 +186,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required String title,
     required List<String> options,
     required String selected,
+    bool dismissOnSelect = true,
+    bool showUnselectedIndicator = true,
+    ValueChanged<String>? onChanged,
   }) {
     return pushInAppPage<String>(
       context,
       builder: (context) => InAppOptionPage<String>(
         title: title,
+        dismissOnSelect: dismissOnSelect,
+        showUnselectedIndicator: showUnselectedIndicator,
+        onChanged: onChanged,
         options: [
           for (final option in options)
             InAppPageOption<String>(
@@ -259,31 +267,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _chooseAppearance() async {
-    final appearance = await _chooseOption(
+    await _chooseOption(
       title: 'Appearance',
       options: const ['Light', 'Dark', 'System'],
       selected: _appearanceLabel,
+      dismissOnSelect: false,
+      showUnselectedIndicator: false,
+      onChanged: (appearance) => _setAppearanceMode(switch (appearance) {
+        'Light' => ThemeMode.light,
+        'Dark' => ThemeMode.dark,
+        _ => ThemeMode.system,
+      }),
     );
-    if (appearance == null || !mounted) return;
-    _setAppearanceMode(switch (appearance) {
-      'Light' => ThemeMode.light,
-      'Dark' => ThemeMode.dark,
-      _ => ThemeMode.system,
-    });
   }
 
   Future<void> _chooseAccentColor() async {
-    final accentLabel = await _chooseOption(
+    await _chooseOption(
       title: 'Accent Color',
       options: [for (final accent in AppAccentColor.values) accent.label],
       selected: _accentColor.label,
+      dismissOnSelect: false,
+      showUnselectedIndicator: false,
+      onChanged: (accentLabel) {
+        final accent = AppAccentColor.values.firstWhere(
+          (value) => value.label == accentLabel,
+          orElse: () => _accentColor,
+        );
+        _setAccentColor(accent);
+      },
     );
-    if (accentLabel == null || !mounted) return;
-    final accent = AppAccentColor.values.firstWhere(
-      (value) => value.label == accentLabel,
-      orElse: () => _accentColor,
-    );
-    _setAccentColor(accent);
   }
 
   Future<void> _showPrivacyControls() {

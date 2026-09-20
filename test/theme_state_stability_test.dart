@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/app_theme.dart';
+import 'package:mediary/in_app_page.dart';
 import 'package:mediary/main.dart';
 
 void main() {
@@ -37,15 +38,21 @@ void main() {
       await tester.pump();
 
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(find.byKey(const Key('settingsScreen')), findsOneWidget);
-      expect(scrollOffset(), closeTo(offsetBeforeChange, 10));
+      expect(find.byType(InAppPageScaffold), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('inAppOptionCheck-Dark')),
+        findsOneWidget,
+      );
 
       await tester.pump(AppTheme.transitionDuration * .5);
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(scrollOffset(), closeTo(offsetBeforeChange, 10));
 
       await tester.pumpAndSettle();
       expect(find.text('Dark'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Back from Appearance'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('settingsScreen')), findsOneWidget);
       expect(scrollOffset(), closeTo(offsetBeforeChange, 10));
     },
   );
