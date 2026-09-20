@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mediary/app_theme.dart';
 import 'package:mediary/firebase_options.dart';
+import 'package:mediary/in_app_page.dart';
 import 'package:mediary/liquid_glass_tab_bar.dart';
 import 'package:mediary/main.dart';
 import 'package:mediary/profile_screen.dart';
@@ -651,6 +652,11 @@ void main() {
       tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode,
       ThemeMode.dark,
     );
+    expect(find.byType(InAppPageScaffold), findsOneWidget);
+    expect(find.byKey(const ValueKey('inAppOptionCheck-Dark')), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Back from Appearance'));
+    await tester.pumpAndSettle();
     expect(
       tester
           .widget<Scaffold>(find.byKey(const Key('settingsScreen')))
