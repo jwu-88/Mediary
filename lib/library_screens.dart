@@ -19,12 +19,16 @@ class MedicationLibraryScreen extends StatefulWidget {
   const MedicationLibraryScreen({
     super.key,
     this.catalogClient,
+    this.initialQuery = '',
+    this.onBack,
     this.onSavedChanged,
     this.initialSavedMedicationIds = const {},
     this.bottomPadding = 128,
   });
 
   final MedicationCatalogClient? catalogClient;
+  final String initialQuery;
+  final VoidCallback? onBack;
   final Future<void> Function(
     String medicationId,
     bool saved, {
@@ -54,6 +58,17 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
   late final Set<String> _savedMedicationIds = {
     ...widget.initialSavedMedicationIds,
   };
+
+  @override
+  void initState() {
+    super.initState();
+    final initialQuery = widget.initialQuery.trim();
+    if (initialQuery.isEmpty) return;
+    _searchController.text = initialQuery;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _onSearchChanged(initialQuery);
+    });
+  }
 
   bool get _isDark => Theme.of(context).brightness == Brightness.dark;
   Color get _background =>
@@ -246,6 +261,7 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
                         ink: _ink,
                         muted: _muted,
                         savedOnly: _savedOnly,
+                        onBack: widget.onBack,
                         onSavedPressed: _toggleSavedOnly,
                       ),
                       const SizedBox(height: 16),
@@ -347,12 +363,14 @@ class _LibraryHeader extends StatelessWidget {
     required this.ink,
     required this.muted,
     required this.savedOnly,
+    this.onBack,
     required this.onSavedPressed,
   });
 
   final Color ink;
   final Color muted;
   final bool savedOnly;
+  final VoidCallback? onBack;
   final VoidCallback onSavedPressed;
 
   @override
@@ -361,6 +379,14 @@ class _LibraryHeader extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
+        if (onBack != null) ...[
+          LiquidGlassBackButton(
+            key: const Key('medicationLibraryBackButton'),
+            semanticLabel: 'Back to scan review',
+            onPressed: onBack!,
+          ),
+          const SizedBox(width: 8),
+        ],
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -685,9 +711,12 @@ class _EmptyResults extends StatelessWidget {
                 : 'Search by name, strength, or dosage form.',
             style: TextStyle(color: muted, fontSize: 12),
           ),
-          ResponsiveCupertinoButton(
+          FilledButton.tonal(
             onPressed: onReset,
-            semanticLabel: 'Show all medications',
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 36),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+            ),
             child: Text(savedOnly ? 'Show All Medications' : 'Clear Search'),
           ),
         ],

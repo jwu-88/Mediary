@@ -103,4 +103,29 @@ void main() {
     await mouse.removePointer();
     debugDefaultTargetPlatformOverride = null;
   });
+
+  testWidgets('only the visible rail expands on pointer hover', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: WebNavigationSidebar(currentIndex: 0, onTap: (_) {}),
+        ),
+      ),
+    );
+
+    final sidebar = find.byKey(const Key('webNavigationSidebar'));
+    expect(tester.getSize(sidebar).width, WebNavigationSidebar.collapsedWidth);
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(const Offset(140, 30));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(sidebar).width, WebNavigationSidebar.collapsedWidth);
+
+    await mouse.moveTo(const Offset(30, 30));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(sidebar).width, WebNavigationSidebar.expandedWidth);
+
+    await mouse.removePointer();
+  });
 }

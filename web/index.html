@@ -53,6 +53,70 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <!-- Browser OCR is used only for user-selected/pasted images. The native
+       apps use ML Kit through the platform adapter instead. -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
+  <script>
+    window.MediaryOcr = window.MediaryOcr || {};
+    window.MediaryOcr._worker = null;
+    window.MediaryOcr.recognize = async function (imageDataUrl) {
+      if (!window.Tesseract) return '';
+      try {
+        if (!window.MediaryOcr._worker) {
+          // createWorker is asynchronous in Tesseract.js 4. The old
+          // load/loadLanguage/initialize sequence leaves a Promise here and
+          // makes every browser scan fail before recognition starts.
+          window.MediaryOcr._worker = await Tesseract.createWorker('eng', 1, {
+            workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/worker.min.js',
+            langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+            corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@4.0.4'
+          });
+          await window.MediaryOcr._worker.setParameters({
+            tessedit_pageseg_mode: '6',
+            preserve_interword_spaces: '1'
+          });
+        }
+
+        // Normalizing through a canvas lets browsers decode AVIF/HEIC uploads
+        // before Tesseract receives them and also gives OCR a predictable PNG
+        // input. If the browser cannot decode the format, retain the original
+        // data URL so Tesseract can still try it directly.
+        var normalizedImage = await new Promise(function (resolve) {
+          var image = new Image();
+          image.onload = function () {
+            try {
+              var maxDimension = 2400;
+              var scale = Math.min(
+                1,
+                maxDimension / Math.max(image.naturalWidth, image.naturalHeight)
+              );
+              var canvas = document.createElement('canvas');
+              canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+              canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+              var context = canvas.getContext('2d');
+              if (!context) return resolve(imageDataUrl);
+              context.drawImage(image, 0, 0, canvas.width, canvas.height);
+              resolve(canvas.toDataURL('image/png'));
+            } catch (_) {
+              resolve(imageDataUrl);
+            }
+          };
+          image.onerror = function () { resolve(imageDataUrl); };
+          image.src = imageDataUrl;
+        });
+
+        var result = await window.MediaryOcr._worker.recognize(normalizedImage);
+        return result && result.data ? (result.data.text || '') : '';
+      } catch (error) {
+        if (window.MediaryOcr._worker) {
+          try { await window.MediaryOcr._worker.terminate(); } catch (_) {}
+          window.MediaryOcr._worker = null;
+        }
+        console.warn('Mediary browser OCR failed', error);
+        return '';
+      }
+    };
+  </script>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader

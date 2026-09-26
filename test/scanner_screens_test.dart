@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/data/medication_catalog_client.dart';
+import 'package:mediary/medication_scan.dart';
 import 'package:mediary/scanner_screens.dart';
 
 void main() {
@@ -19,7 +20,9 @@ void main() {
         home: MedicationScannerScreen(
           accessState: ScannerAccessState.granted,
           onRequestAccess: () async {},
-          onCapture: () => captures++,
+          onCapture: () async {
+            captures++;
+          },
           bottomNavigationInset: 0,
         ),
       ),
@@ -36,6 +39,7 @@ void main() {
     expect(find.byKey(const Key('scannerTorchButton')), findsNothing);
     expect(find.byKey(const Key('scannerScanFrame')), findsNothing);
     expect(find.byKey(const Key('closeScannerButton')), findsNothing);
+    expect(find.byKey(const Key('pasteScannerImageButton')), findsNothing);
     if (kIsWeb) {
       expect(find.text('Choose Photo'), findsOneWidget);
       expect(find.text('Capture'), findsOneWidget);
@@ -94,7 +98,7 @@ void main() {
     );
 
     expect(find.text('Review Medication'), findsOneWidget);
-    expect(find.text('Set Your Schedule'), findsOneWidget);
+    expect(find.text('SET YOUR SCHEDULE'), findsOneWidget);
 
     await tester.tap(find.text('1 capsule'));
     await tester.pumpAndSettle();
@@ -111,5 +115,129 @@ void main() {
     await tester.tap(find.byKey(const Key('scanResultBackButton')));
     expect(rescans, 1);
     expect(backs, 1);
+  });
+
+  testWidgets('scan result uses uppercase section subtitles', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScanResultScreen(
+          medication: const MedicationCatalogRecord(
+            rxcui: '723',
+            name: 'Ibuprofen 200 MG Oral Capsule [Advil]',
+            genericName: 'ibuprofen',
+            strength: '200 mg',
+            form: 'capsule',
+            route: 'oral',
+            indications: ['Temporary relief of minor aches and pains.'],
+            warnings: ['May cause an allergic reaction.'],
+          ),
+          scanResult: const MedicationScanResult(
+            imageUrl: '',
+            extractedText: 'Advil (ibuprofen) 200 mg tablet',
+            detectedMedicationName: 'Advil',
+            confidence: .99,
+          ),
+          bottomNavigationInset: 0,
+        ),
+      ),
+    );
+
+    expect(find.text('CATALOG MATCH'), findsOneWidget);
+    expect(find.text('200 MG · CAPSULE'), findsOneWidget);
+    expect(find.text('DETECTED LABEL TEXT'), findsOneWidget);
+    expect(find.text('99% CONFIDENCE'), findsOneWidget);
+    expect(find.text('MEDICATION INFORMATION'), findsOneWidget);
+    expect(find.text('GENERIC NAME'), findsOneWidget);
+    expect(find.text('COMMON USES'), findsOneWidget);
+    expect(find.text('WARNINGS'), findsOneWidget);
+
+    await tester.drag(
+      find.byKey(const Key('scanResultScrollView')),
+      const Offset(0, -1000),
+    );
+    await tester.pump();
+    expect(find.text('SET YOUR SCHEDULE'), findsOneWidget);
+  });
+
+  testWidgets('choose photo uses the gallery callback instead of capture', (
+    tester,
+  ) async {
+    var captures = 0;
+    var photoSelections = 0;
+    var photoSourcePrompts = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MedicationScannerScreen(
+          accessState: ScannerAccessState.granted,
+          onRequestAccess: () async {},
+          onCapture: () async {
+            captures++;
+          },
+          onChoosePhoto: () async {
+            photoSelections++;
+          },
+          onChoosePhotoOptions: () async {
+            photoSourcePrompts++;
+          },
+          bottomNavigationInset: 0,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('openScannerPhotosButton')));
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(photoSelections, 0);
+    expect(captures, 0);
+    expect(photoSourcePrompts, 1);
+  });
+
+  testWidgets('camera permission view offers alternate scan options', (
+    tester,
+  ) async {
+    var alternativesOpened = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MedicationScannerScreen(
+          accessState: ScannerAccessState.denied,
+          onRequestAccess: () async {},
+          onCapture: () async {},
+          onUseOtherScanOptions: () async {
+            alternativesOpened++;
+          },
+          bottomNavigationInset: 0,
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('cameraNoAccessButton')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('cameraNoAccessButton')));
+    await tester.pump();
+    expect(alternativesOpened, 1);
+  });
+
+  testWidgets('a rejected schedule stays retryable', (tester) async {
+    var additions = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScanResultScreen(
+          medication: const MedicationCatalogRecord(
+            rxcui: '723',
+            name: 'Amoxicillin',
+            strength: '500 mg',
+            form: 'capsule',
+          ),
+          onScheduleConfirmed: (_) async => false,
+          onAdded: () => additions++,
+          bottomNavigationInset: 0,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('addScanResultButton')));
+    await tester.pump();
+    expect(find.text('Add to Calendar'), findsOneWidget);
+    expect(find.text('Added to Calendar'), findsNothing);
+    expect(additions, 0);
   });
 }

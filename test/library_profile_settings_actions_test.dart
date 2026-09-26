@@ -54,6 +54,32 @@ void main() {
     expect(find.text('Search the medication catalog'), findsOneWidget);
   });
 
+  testWidgets('scan review search provides a back action to the result', (
+    tester,
+  ) async {
+    var backs = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MedicationLibraryScreen(
+            catalogClient: catalogClient,
+            initialQuery: 'amoxicillin',
+            onBack: () => backs++,
+            bottomPadding: 0,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('medicationLibraryBackButton')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('medicationLibraryBackButton')));
+    expect(backs, 1);
+  });
+
   testWidgets('library previews, saves, and filters medications', (
     tester,
   ) async {
