@@ -604,6 +604,15 @@ void main() {
       findsOneWidget,
     );
 
+    await tester.tap(
+      find.byKey(const Key('cameraAlternativeChoosePhotoButton')),
+    );
+    await tester.pump();
+    expect(find.text('Choose a medication image'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('photoSourceCancelButton')));
+    await tester.pump();
+    expect(find.text('Camera access unavailable'), findsOneWidget);
+
     await tester.tap(find.byKey(const Key('cameraAlternativeCancelButton')));
     await tester.pump();
     expect(find.byKey(const Key('cameraNoAccessButton')), findsOneWidget);

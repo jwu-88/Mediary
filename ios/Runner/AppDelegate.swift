@@ -14,5 +14,6 @@ import UserNotifications
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    MedicationOcrChannel.register(with: engineBridge.applicationRegistrar.messenger())
   }
 }
