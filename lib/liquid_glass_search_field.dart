@@ -187,10 +187,19 @@ class _LiquidGlassSearchFieldState extends State<LiquidGlassSearchField> {
               padding: EdgeInsets.zero,
               onPressed: _clear,
               semanticLabel: 'Clear search',
-              child: Icon(
-                CupertinoIcons.xmark_circle_fill,
-                color: colors.onSurfaceVariant.withValues(alpha: .72),
-                size: 18,
+              child: DecoratedBox(
+                key: const Key('liquidGlassSearchClearSurface'),
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerHighest.withValues(alpha: .94),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: colors.outlineVariant.withValues(alpha: .82),
+                  ),
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.all(5),
+                  child: Icon(CupertinoIcons.xmark, size: 15),
+                ),
               ),
             ),
           ),

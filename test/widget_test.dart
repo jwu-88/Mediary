@@ -551,7 +551,7 @@ void main() {
       expect(find.byKey(const Key('liquidGlassTabBar')), findsOneWidget);
       expect(toolbar().currentIndex, 2);
       expect(find.text('Review Medication'), findsOneWidget);
-      expect(find.text('Manual review required'), findsOneWidget);
+      expect(find.text('MANUAL REVIEW REQUIRED'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('scanResultBackButton')));
       await tester.pump();
@@ -567,6 +567,91 @@ void main() {
       expect(find.text('Thursday, February 29'), findsOneWidget);
     },
   );
+
+  testWidgets('denied camera access offers a centered fallback dialog', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(402, 874);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AuthenticatedHome(
+          email: 'person@example.com',
+          cameraPermissionRequester: () async => CameraAccessState.denied,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Scan'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('Camera access unavailable'), findsOneWidget);
+    expect(
+      find.byKey(const Key('cameraAlternativeCancelButton')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('cameraAlternativeOkButton')), findsOneWidget);
+    expect(
+      find.byKey(const Key('cameraAlternativeChoosePhotoButton')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('cameraAlternativePasteButton')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('cameraAlternativeCancelButton')));
+    await tester.pump();
+    expect(find.byKey(const Key('cameraNoAccessButton')), findsOneWidget);
+  });
+
+  testWidgets('choose photo opens file and clipboard source options', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(402, 874);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AuthenticatedHome(
+          email: 'person@example.com',
+          cameraPermissionRequester: () async => CameraAccessState.granted,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Scan'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.byKey(const Key('openScannerPhotosButton')));
+    await tester.pump();
+
+    expect(find.text('Choose a medication image'), findsOneWidget);
+    expect(find.byKey(const Key('photoSourceFileButton')), findsOneWidget);
+    expect(find.byKey(const Key('photoSourceClipboardButton')), findsOneWidget);
+    expect(
+      tester.widget<OutlinedButton>(
+        find.byKey(const Key('photoSourceFileButton')),
+      ),
+      isA<OutlinedButton>(),
+    );
+    expect(
+      tester.widget<OutlinedButton>(
+        find.byKey(const Key('photoSourceClipboardButton')),
+      ),
+      isA<OutlinedButton>(),
+    );
+
+    await tester.tap(find.byKey(const Key('photoSourceCancelButton')));
+    await tester.pump();
+    expect(find.text('Choose a medication image'), findsNothing);
+  });
 
   testWidgets('library opens the reference medication detail screen', (
     tester,

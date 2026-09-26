@@ -21,6 +21,7 @@ import 'firebase_options.dart';
 import 'in_app_page.dart';
 import 'library_screens.dart';
 import 'liquid_glass_tab_bar.dart';
+import 'medication_scan.dart';
 import 'notifications/medication_notification_service.dart';
 import 'profile_screen.dart';
 import 'scanner_screens.dart';
@@ -1141,6 +1142,7 @@ class AuthenticatedHome extends StatefulWidget {
     this.onSignOut,
     this.dataStore,
     this.catalogClient,
+    this.scanDetector,
     this.notificationService,
     this.now,
     this.cameraPermissionRequester,
@@ -1160,6 +1162,7 @@ class AuthenticatedHome extends StatefulWidget {
   final Future<void> Function()? onSignOut;
   final MediaryDataStore? dataStore;
   final MedicationCatalogClient? catalogClient;
+  final MedicationScanDetector? scanDetector;
   final MedicationNotificationService? notificationService;
   final DateTime? now;
   final CameraPermissionRequester? cameraPermissionRequester;
@@ -1173,14 +1176,26 @@ class AuthenticatedHome extends StatefulWidget {
   State<AuthenticatedHome> createState() => _AuthenticatedHomeState();
 }
 
+enum _ScanAlternative { choosePhoto, pasteImage }
+
+enum _PhotoSource { file, clipboard }
+
 class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   late final MedicationCatalogClient _catalogClient =
       widget.catalogClient ?? RxNormMedicationCatalogClient();
+  late final MedicationScanDetector _scanDetector =
+      widget.scanDetector ?? const MedicationOcrDetector();
   late final MedicationNotificationService _notificationService =
       widget.notificationService ?? DefaultMedicationNotificationService();
   int _selectedIndex = 0;
   final Set<int> _visitedDestinations = {0};
   bool _showScanResult = false;
+  MedicationScanResult? _scanResult;
+  MedicationCatalogRecord? _scanMedication;
+  String? _scanRecordId;
+  DateTime? _calendarFocusDate;
+  final List<CalendarDoseData> _pendingCalendarDoses = [];
+  final Set<String> _pendingScheduleKeys = <String>{};
   CameraAccessState _cameraAccess = CameraAccessState.notRequested;
   String? _appliedPreferenceSignature;
   Timer? _notificationTimer;
@@ -1348,17 +1363,135 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     }
 
     setState(() => _cameraAccess = CameraAccessState.requesting);
+    CameraAccessState result;
     try {
       final requester = widget.cameraPermissionRequester ?? requestCameraAccess;
-      final result = await requester();
-      if (mounted) {
-        setState(() => _cameraAccess = result);
-      }
+      result = await requester();
     } catch (_) {
-      if (mounted) {
-        setState(() => _cameraAccess = CameraAccessState.error);
-      }
+      result = CameraAccessState.error;
     }
+    if (!mounted) return;
+    setState(() => _cameraAccess = result);
+    if (result != CameraAccessState.granted) {
+      await _showCameraAlternatives();
+    }
+  }
+
+  Future<void> _showCameraAlternatives() async {
+    if (!mounted) return;
+    final choice = await showDialog<_ScanAlternative>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Camera access unavailable'),
+        content: const Text(
+          'You can still identify a medication by choosing a photo or pasting '
+          'an image from your clipboard.',
+        ),
+        actions: [
+          TextButton(
+            key: const Key('cameraAlternativeCancelButton'),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            key: const Key('cameraAlternativeChoosePhotoButton'),
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_ScanAlternative.choosePhoto),
+            child: const Text('Choose photo'),
+          ),
+          TextButton(
+            key: const Key('cameraAlternativePasteButton'),
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_ScanAlternative.pasteImage),
+            child: const Text('Paste image'),
+          ),
+          FilledButton(
+            key: const Key('cameraAlternativeOkButton'),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    switch (choice) {
+      case _ScanAlternative.choosePhoto:
+        await _chooseMedicationPhoto();
+      case _ScanAlternative.pasteImage:
+        await _pasteMedicationPhoto();
+      case null:
+        break;
+    }
+  }
+
+  Future<void> _showPhotoSourceOptions() async {
+    if (!mounted) return;
+    final source = await showDialog<_PhotoSource>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Choose a medication image'),
+        content: const Text(
+          'Select a photo from your files or paste an image that is already '
+          'on your clipboard.',
+        ),
+        actions: [
+          TextButton(
+            key: const Key('photoSourceCancelButton'),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          OutlinedButton(
+            key: const Key('photoSourceFileButton'),
+            onPressed: () => Navigator.of(dialogContext).pop(_PhotoSource.file),
+            child: const Text('Choose from files'),
+          ),
+          OutlinedButton(
+            key: const Key('photoSourceClipboardButton'),
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_PhotoSource.clipboard),
+            child: const Text('Paste from clipboard'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    switch (source) {
+      case _PhotoSource.file:
+        await _chooseMedicationPhoto();
+      case _PhotoSource.clipboard:
+        await _pasteMedicationPhoto();
+      case null:
+        break;
+    }
+  }
+
+  Future<void> _showScanAccessDialog({
+    required String title,
+    required String message,
+  }) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            key: const Key('scanAccessCancelButton'),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('scanAccessOkButton'),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildDashboard(BuildContext context) {
@@ -1584,13 +1717,13 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     if (_showScanResult) {
       return ScanResultScreen(
         onBack: () => setState(() => _showScanResult = false),
-        onScanAgain: () => setState(() => _showScanResult = false),
+        onScanAgain: _resetScan,
         onScanReady: store?.saveScan,
-        onSearchMedication: () => setState(() {
-          _showScanResult = false;
-          _selectedIndex = 3;
-          _visitedDestinations.add(3);
-        }),
+        scanRecordId: _scanRecordId,
+        scanResult: _scanResult,
+        medication: _scanMedication,
+        onScheduleConfirmed: store == null ? null : _commitScanSchedule,
+        onSearchMedication: () => _openMedicationSearchFromScan(context),
         bottomNavigationInset: _usesSidebarNavigation ? 16 : 106,
       );
     }
@@ -1606,17 +1739,410 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
         CameraAccessState.error => ScannerAccessState.error,
       },
       onRequestAccess: _requestCameraAccess,
-      onCapture: () => setState(() => _showScanResult = true),
+      onUseOtherScanOptions: _showCameraAlternatives,
+      onCapture: _runMedicationScan,
+      onChoosePhoto: _chooseMedicationPhoto,
+      onChoosePhotoOptions: _showPhotoSourceOptions,
       onOpenSettings: widget.onOpenCameraSettings ?? openAppSettings,
       isActive: _selectedIndex == 2,
       bottomNavigationInset: _usesSidebarNavigation ? 16 : 112,
     );
   }
 
+  void _resetScan() {
+    setState(() {
+      _showScanResult = false;
+      _scanResult = null;
+      _scanMedication = null;
+      _scanRecordId = null;
+    });
+  }
+
+  Future<void> _runMedicationScan() async {
+    await _runMedicationScanRequest(const MedicationScanRequest.sample());
+  }
+
+  Future<void> _chooseMedicationPhoto() async {
+    try {
+      final picked = await pickMedicationPhoto();
+      if (picked == null) return;
+      await _runMedicationScanRequest(
+        MedicationScanRequest.fromImage(
+          imageBytes: picked.bytes,
+          fileName: picked.fileName,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _scanRecordId = null;
+        _scanResult = const MedicationScanResult(
+          imageUrl: '',
+          extractedText: '',
+          detectedMedicationName: '',
+          confidence: 0,
+          errorMessage:
+              'Unable to open that image. Please choose another photo.',
+        );
+        _scanMedication = null;
+        _showScanResult = true;
+      });
+    }
+  }
+
+  Future<void> _pasteMedicationPhoto() async {
+    try {
+      final pasted = await pasteMedicationPhoto();
+      if (pasted == null) {
+        if (!mounted) return;
+        await _showScanAccessDialog(
+          title: 'Clipboard image unavailable',
+          message:
+              'No image was found in the clipboard. Copy a medication photo '
+              'and try again.',
+        );
+        return;
+      }
+      await _runMedicationScanRequest(
+        MedicationScanRequest.fromImage(
+          imageBytes: pasted.bytes,
+          fileName: pasted.fileName,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      await _showScanAccessDialog(
+        title: 'Clipboard access unavailable',
+        message:
+            'Mediary could not read the clipboard. Allow clipboard access '
+            'and try again, or choose a photo instead.',
+      );
+    }
+  }
+
+  Future<void> _runMedicationScanRequest(MedicationScanRequest request) async {
+    final store = widget.dataStore;
+    String? scanRecordId;
+    if (store != null) {
+      try {
+        scanRecordId = await store.saveScan(
+          const ScanWrite(
+            status: 'processing',
+            detectedMedicationName: '',
+            extractedText: '',
+            confidence: 0,
+          ),
+        );
+      } catch (_) {
+        // The review flow remains useful when the scan metadata write fails.
+      }
+    }
+
+    MedicationScanResult result;
+    try {
+      result = await _scanDetector.detect(request);
+    } catch (error) {
+      result = MedicationScanResult(
+        imageUrl: request.imageUrl,
+        imageBytes: request.imageBytes,
+        extractedText: '',
+        detectedMedicationName: '',
+        confidence: 0,
+        errorMessage:
+            'Unable to analyze this medication image. Please try again.',
+      );
+    }
+
+    MedicationCatalogRecord? medication;
+    if (!result.hasError) {
+      medication = await _resolveScanMedication(result.detectedMedicationName);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _scanRecordId = scanRecordId;
+      _scanResult = result;
+      _scanMedication = medication;
+      _showScanResult = true;
+    });
+  }
+
+  Future<MedicationCatalogRecord?> _resolveScanMedication(String name) async {
+    final query = name.trim();
+    if (query.isEmpty) return null;
+    try {
+      final page = await _catalogClient.search(query);
+      if (page.items.isEmpty) return null;
+      MedicationCatalogRecord? candidate = matchMedicationCatalogRecord(
+        query,
+        page.items,
+      );
+      // RxNorm often returns a list of strength/form variants. Any result
+      // returned for the scan's generic name is a better review target than
+      // incorrectly reporting that the medication was not found.
+      candidate ??= page.items.length == 1 ? page.items.first : null;
+      if (candidate == null) return null;
+      try {
+        return await _catalogClient.getDetails(candidate.rxcui);
+      } catch (_) {
+        return candidate;
+      }
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _openMedicationSearchFromScan(BuildContext context) {
+    final initialQuery = _scanResult?.detectedMedicationName.trim() ?? '';
+    unawaited(
+      pushInAppPage<void>(
+        context,
+        builder: (_) => MedicationLibraryScreen(
+          catalogClient: _catalogClient,
+          initialQuery: initialQuery,
+          onBack: () => Navigator.of(context).maybePop(),
+          bottomPadding: 32,
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _commitScanSchedule(ScanScheduleData schedule) async {
+    final store = widget.dataStore;
+    final catalog = _scanMedication;
+    if (store == null || catalog == null) {
+      throw StateError('A confirmed medication is required before scheduling.');
+    }
+
+    final existingMedication = _existingMedicationFor(store, catalog.rxcui);
+    final medicationId =
+        existingMedication?.id ?? _catalogMedicationId(catalog.rxcui);
+    final doseAmount = _scanDoseAmount(schedule.dose);
+    final doseUnit = _scanDoseUnit(schedule.dose, catalog);
+    final frequency = _scanFrequency(schedule.frequency);
+    final localDate = _dateKey(schedule.startDate);
+    final localTime =
+        '${schedule.time.hour.toString().padLeft(2, '0')}:${schedule.time.minute.toString().padLeft(2, '0')}';
+    final scheduleId = _scheduleId(
+      catalog.rxcui,
+      localDate: localDate,
+      localTime: localTime,
+      frequency: frequency,
+      doseAmount: doseAmount,
+    );
+    final endDate = _scanEndDate(schedule.startDate, schedule.duration);
+    final scheduledFor = DateTime(
+      schedule.startDate.year,
+      schedule.startDate.month,
+      schedule.startDate.day,
+      schedule.time.hour,
+      schedule.time.minute,
+    );
+
+    if (_isDuplicateSchedule(
+      store,
+      catalogId: catalog.rxcui,
+      medicationId: medicationId,
+      doseAmount: doseAmount,
+      doseUnit: doseUnit,
+      localTime: localTime,
+    )) {
+      await _showDuplicateScheduleDialog();
+      return false;
+    }
+
+    await store.commitScheduleAndDose(
+      medication: MedicationWrite(
+        id: medicationId,
+        name: existingMedication?.name ?? catalog.name,
+        genericName: existingMedication?.genericName ?? catalog.genericName,
+        strength: existingMedication?.strength ?? catalog.strength,
+        form: existingMedication?.form ?? catalog.form,
+        route: existingMedication?.route ?? catalog.route,
+        instructions: existingMedication?.instructions ?? '',
+        prescriber: existingMedication?.prescriber ?? '',
+        pharmacy: existingMedication?.pharmacy ?? '',
+        notes: existingMedication?.notes ?? '',
+        active: existingMedication?.active ?? true,
+        catalogId: catalog.rxcui,
+        catalogSource: 'rxnorm',
+        catalogVersion: catalog.sourceVersion,
+        source: 'scanner',
+      ),
+      schedule: ScheduleWrite(
+        id: scheduleId,
+        medicationId: medicationId,
+        doseAmount: doseAmount,
+        doseUnit: doseUnit,
+        times: [localTime],
+        frequency: frequency,
+        startDate: localDate,
+        endDate: endDate,
+        timezone: store.profile?.timezone.trim().isNotEmpty == true
+            ? store.profile!.timezone
+            : 'UTC',
+        instructions: 'Confirmed from scanned medication label.',
+      ),
+      dose: DoseWrite(
+        id: scheduleId,
+        medicationId: medicationId,
+        scheduleId: scheduleId,
+        scheduledFor: scheduledFor,
+        localDate: localDate,
+        localTime: localTime,
+      ),
+    );
+
+    final calendarDose = CalendarDoseData(
+      id: scheduleId,
+      localDate: localDate,
+      name: existingMedication?.name ?? catalog.name,
+      details: [
+        if ((existingMedication?.strength ?? catalog.strength).isNotEmpty)
+          existingMedication?.strength ?? catalog.strength,
+        localTime,
+      ].join(' · '),
+      status: 'due',
+    );
+    if (mounted) {
+      setState(() {
+        _calendarFocusDate = schedule.startDate;
+        _pendingCalendarDoses.removeWhere((dose) => dose.id == scheduleId);
+        _pendingCalendarDoses.add(calendarDose);
+        _pendingScheduleKeys.add(
+          _scanScheduleKey(
+            catalogId: catalog.rxcui,
+            doseAmount: doseAmount,
+            doseUnit: doseUnit,
+            localTime: localTime,
+          ),
+        );
+      });
+    }
+    return true;
+  }
+
+  Future<void> _showDuplicateScheduleDialog() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Duplicate medication'),
+        content: const Text(
+          'This medication already has the same dose and time on your '
+          'calendar. Duplicate medications are not allowed.',
+        ),
+        actions: [
+          TextButton(
+            key: const Key('duplicateMedicationCancelButton'),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('duplicateMedicationOkButton'),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isDuplicateSchedule(
+    MediaryDataStore store, {
+    required String catalogId,
+    required String medicationId,
+    required double doseAmount,
+    required String doseUnit,
+    required String localTime,
+  }) {
+    final key = _scanScheduleKey(
+      catalogId: catalogId,
+      doseAmount: doseAmount,
+      doseUnit: doseUnit,
+      localTime: localTime,
+    );
+    if (_pendingScheduleKeys.contains(key)) return true;
+
+    final medicationIds = <String>{
+      medicationId,
+      _catalogMedicationId(catalogId),
+    };
+    medicationIds.addAll(
+      store.medications
+          .where((medication) => medication.catalogId == catalogId)
+          .map((medication) => medication.id),
+    );
+    final normalizedUnit = _normalizeDoseUnit(doseUnit);
+    return store.schedules.any(
+      (schedule) =>
+          schedule.active &&
+          medicationIds.contains(schedule.medicationId) &&
+          (schedule.doseAmount - doseAmount).abs() < 0.0001 &&
+          _normalizeDoseUnit(schedule.doseUnit) == normalizedUnit &&
+          schedule.times.any((time) => time.trim() == localTime),
+    );
+  }
+
+  String _scanScheduleKey({
+    required String catalogId,
+    required double doseAmount,
+    required String doseUnit,
+    required String localTime,
+  }) =>
+      '$catalogId|${doseAmount.toStringAsFixed(4)}|${_normalizeDoseUnit(doseUnit)}|$localTime';
+
+  String _normalizeDoseUnit(String value) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized.endsWith('s') && normalized.length > 1) {
+      return normalized.substring(0, normalized.length - 1);
+    }
+    return normalized;
+  }
+
+  double _scanDoseAmount(String dose) {
+    final normalized = dose.replaceAll('½', '0.5');
+    final match = RegExp(r'\d+(?:\.\d+)?').firstMatch(normalized);
+    return double.tryParse(match?.group(0) ?? '') ?? 1;
+  }
+
+  String _scanDoseUnit(String dose, MedicationCatalogRecord catalog) {
+    final normalized = dose
+        .replaceAll('½', '')
+        .replaceAll(RegExp(r'\d+(?:\.\d+)?'), '')
+        .trim()
+        .toLowerCase();
+    if (normalized.isNotEmpty) {
+      final firstWord = normalized.split(RegExp(r'\s+')).first;
+      return firstWord.endsWith('s') && firstWord.length > 1
+          ? firstWord.substring(0, firstWord.length - 1)
+          : firstWord;
+    }
+    return catalog.form.trim().toLowerCase().isEmpty
+        ? 'dose'
+        : catalog.form.trim().toLowerCase();
+  }
+
+  String _scanFrequency(String label) => switch (label) {
+    'Once daily' => 'daily',
+    'Every 8 hours' => 'every8Hours',
+    'Every 12 hours' => 'every12Hours',
+    'As needed' => 'asNeeded',
+    _ => 'once',
+  };
+
+  String? _scanEndDate(DateTime startDate, String duration) {
+    final match = RegExp(r'\d+').firstMatch(duration);
+    final days = int.tryParse(match?.group(0) ?? '');
+    if (days == null || days < 1) return null;
+    return _dateKey(startDate.add(Duration(days: days - 1)));
+  }
+
   Widget _buildCalendar(BuildContext context) {
     final store = widget.dataStore;
     return CalendarScreen(
-      initialDate: widget.now,
+      initialDate: _calendarFocusDate ?? widget.now,
       bottomPadding: _usesSidebarNavigation ? 32 : 120,
       initialDoses: _calendarDoses(store),
       onDoseStatusChanged: store == null
@@ -1668,6 +2194,17 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
                 final doseUnit = catalog.form.isNotEmpty
                     ? catalog.form.toLowerCase()
                     : medication.form.toLowerCase();
+                if (_isDuplicateSchedule(
+                  store,
+                  catalogId: catalog.rxcui,
+                  medicationId: medicationId,
+                  doseAmount: scheduleDraft.doseAmount,
+                  doseUnit: doseUnit,
+                  localTime: localTime,
+                )) {
+                  await _showDuplicateScheduleDialog();
+                  continue;
+                }
                 final scheduleId = _scheduleId(
                   catalog.rxcui,
                   localDate: localDate,
@@ -1713,6 +2250,14 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
                     scheduleId: scheduleId,
                     scheduledFor: scheduledFor,
                     localDate: localDate,
+                    localTime: localTime,
+                  ),
+                );
+                _pendingScheduleKeys.add(
+                  _scanScheduleKey(
+                    catalogId: catalog.rxcui,
+                    doseAmount: scheduleDraft.doseAmount,
+                    doseUnit: doseUnit,
                     localTime: localTime,
                   ),
                 );
@@ -1775,12 +2320,12 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       : amount.toString();
 
   List<CalendarDoseData> _calendarDoses(MediaryDataStore? store) {
-    if (store == null) return const [];
     final medications = {
-      for (final medication in store.medications) medication.id: medication,
+      for (final medication in store?.medications ?? const <MedicationRecord>[])
+        medication.id: medication,
     };
-    return [
-      for (final dose in store.doseLogs.where(
+    final persisted = [
+      for (final dose in (store?.doseLogs ?? const <DoseLogRecord>[]).where(
         (dose) => dose.status != 'cancelled',
       ))
         CalendarDoseData(
@@ -1794,6 +2339,12 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
           ].join(' · '),
           status: dose.status,
         ),
+    ];
+    final persistedIds = {for (final dose in persisted) dose.id};
+    return [
+      ...persisted,
+      for (final dose in _pendingCalendarDoses)
+        if (!persistedIds.contains(dose.id)) dose,
     ];
   }
 
@@ -1843,11 +2394,10 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
                     left: 0,
                     top: 0,
                     bottom: 0,
-                    width: WebNavigationSidebar.expandedWidth,
                     child: WebNavigationSidebar(
                       currentIndex: _selectedIndex,
                       onTap: _selectDestination,
-                      overlayHoverArea: true,
+                      overlayHoverArea: false,
                     ),
                   ),
                 ],

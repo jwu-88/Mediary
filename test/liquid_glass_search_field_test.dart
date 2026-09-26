@@ -81,6 +81,12 @@ void main() {
     expect(controller.text, 'amoxicillin');
     expect(query, 'amoxicillin');
 
+    final clearSurface = tester.widget<DecoratedBox>(
+      find.byKey(const Key('liquidGlassSearchClearSurface')),
+    );
+    final clearDecoration = clearSurface.decoration as BoxDecoration;
+    expect(clearDecoration.color!.a, greaterThan(.9));
+
     await tester.tap(find.byKey(const Key('liquidGlassSearchClearButton')));
     await tester.pump();
     expect(controller.text, isEmpty);

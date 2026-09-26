@@ -11,6 +11,7 @@ import 'data/medication_catalog_client.dart';
 import 'in_app_page.dart';
 import 'liquid_glass_back_button.dart';
 import 'medication_artwork.dart';
+import 'medication_scan.dart';
 import 'text_formatting.dart';
 import 'web_camera.dart';
 
@@ -92,6 +93,9 @@ class MedicationScannerScreen extends StatefulWidget {
     required this.accessState,
     required this.onRequestAccess,
     required this.onCapture,
+    this.onChoosePhoto,
+    this.onChoosePhotoOptions,
+    this.onUseOtherScanOptions,
     this.onOpenSettings,
     this.isActive = true,
     this.bottomNavigationInset = 112,
@@ -99,7 +103,10 @@ class MedicationScannerScreen extends StatefulWidget {
 
   final ScannerAccessState accessState;
   final Future<void> Function() onRequestAccess;
-  final VoidCallback onCapture;
+  final Future<void> Function() onCapture;
+  final Future<void> Function()? onChoosePhoto;
+  final Future<void> Function()? onChoosePhotoOptions;
+  final Future<void> Function()? onUseOtherScanOptions;
   final Future<bool> Function()? onOpenSettings;
   final bool isActive;
   final double bottomNavigationInset;
@@ -119,9 +126,10 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
     unawaited(AppHaptics.primaryAction());
     await Future<void>.delayed(const Duration(milliseconds: 850));
     if (!mounted) return;
-    widget.onCapture();
-    if (mounted) {
-      setState(() => _isAnalyzing = false);
+    try {
+      await widget.onCapture();
+    } finally {
+      if (mounted) setState(() => _isAnalyzing = false);
     }
   }
 
@@ -131,11 +139,15 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
       _barcodeMode = false;
       _isAnalyzing = true;
     });
-    await Future<void>.delayed(const Duration(milliseconds: 550));
     if (!mounted) return;
-    widget.onCapture();
-    if (mounted) {
-      setState(() => _isAnalyzing = false);
+    try {
+      // Keep the file chooser in the original pointer-activation turn. Web
+      // browsers reject a file dialog opened after an asynchronous delay.
+      await (widget.onChoosePhotoOptions ??
+          widget.onChoosePhoto ??
+          widget.onCapture)();
+    } finally {
+      if (mounted) setState(() => _isAnalyzing = false);
     }
   }
 
@@ -151,6 +163,7 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
       return _PermissionView(
         accessState: widget.accessState,
         onRequestAccess: widget.onRequestAccess,
+        onUseOtherScanOptions: widget.onUseOtherScanOptions,
         onOpenSettings: widget.onOpenSettings,
         bottomNavigationInset: widget.bottomNavigationInset,
       );
@@ -247,12 +260,14 @@ class _PermissionView extends StatelessWidget {
   const _PermissionView({
     required this.accessState,
     required this.onRequestAccess,
+    this.onUseOtherScanOptions,
     this.onOpenSettings,
     required this.bottomNavigationInset,
   });
 
   final ScannerAccessState accessState;
   final Future<void> Function() onRequestAccess;
+  final Future<void> Function()? onUseOtherScanOptions;
   final Future<bool> Function()? onOpenSettings;
   final double bottomNavigationInset;
 
@@ -389,6 +404,35 @@ class _PermissionView extends StatelessWidget {
                               ),
                             ),
                           ),
+                        if (!isRequesting && onUseOtherScanOptions != null) ...[
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 44,
+                            child: OutlinedButton.icon(
+                              key: const Key('cameraNoAccessButton'),
+                              onPressed: onUseOtherScanOptions,
+                              icon: const Icon(
+                                CupertinoIcons.photo_on_rectangle,
+                                size: 18,
+                              ),
+                              label: const Text("I don't have camera access"),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: palette.primary,
+                                side: BorderSide(
+                                  color: palette.primary.withValues(alpha: .65),
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(11),
+                                ),
+                                textStyle: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -538,13 +582,13 @@ class _ScannerControlBar extends StatelessWidget {
       ],
     );
 
-    if (!kIsWeb) return controls;
-    return Center(
+    final constrainedControls = Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 900),
         child: SizedBox(width: double.infinity, child: controls),
       ),
     );
+    return kIsWeb ? constrainedControls : controls;
   }
 }
 
@@ -632,6 +676,8 @@ class ScanResultScreen extends StatefulWidget {
     this.onScanReady,
     this.onScheduleConfirmed,
     this.medication,
+    this.scanResult,
+    this.scanRecordId,
     this.onSearchMedication,
     this.bottomNavigationInset = 106,
   });
@@ -640,8 +686,10 @@ class ScanResultScreen extends StatefulWidget {
   final VoidCallback? onScanAgain;
   final VoidCallback? onAdded;
   final Future<String> Function(ScanWrite scan)? onScanReady;
-  final Future<void> Function(ScanScheduleData schedule)? onScheduleConfirmed;
+  final Future<bool> Function(ScanScheduleData schedule)? onScheduleConfirmed;
   final MedicationCatalogRecord? medication;
+  final MedicationScanResult? scanResult;
+  final String? scanRecordId;
   final VoidCallback? onSearchMedication;
   final double bottomNavigationInset;
 
@@ -665,14 +713,25 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
   }
 
   Future<void> _saveScanResult() async {
+    final scan = widget.scanResult;
+    final status = scan?.hasError == true
+        ? 'failed'
+        : widget.medication == null
+        ? 'needsReview'
+        : 'complete';
     await widget.onScanReady?.call(
       ScanWrite(
-        status: widget.medication == null ? 'needsReview' : 'complete',
-        detectedMedicationName: widget.medication?.name ?? '',
-        extractedText: widget.medication == null
-            ? ''
-            : '${widget.medication!.name} ${widget.medication!.doseDescription}',
-        confidence: widget.medication == null ? 0 : 1,
+        id: widget.scanRecordId,
+        status: status,
+        detectedMedicationName:
+            scan?.detectedMedicationName ?? widget.medication?.name ?? '',
+        extractedText:
+            scan?.extractedText ??
+            (widget.medication == null
+                ? ''
+                : '${widget.medication!.name} ${widget.medication!.doseDescription}'),
+        confidence: scan?.confidence ?? (widget.medication == null ? 0 : 1),
+        errorMessage: scan?.errorMessage ?? '',
       ),
     );
   }
@@ -761,15 +820,18 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
   Future<void> _addToCalendar() async {
     if (_isAdded) return;
     try {
-      await widget.onScheduleConfirmed?.call(
-        ScanScheduleData(
-          dose: _dose,
-          frequency: _frequency,
-          duration: _duration,
-          startDate: _startDate,
-          time: _time,
-        ),
-      );
+      final added =
+          await widget.onScheduleConfirmed?.call(
+            ScanScheduleData(
+              dose: _dose,
+              frequency: _frequency,
+              duration: _duration,
+              startDate: _startDate,
+              time: _time,
+            ),
+          ) ??
+          true;
+      if (!added) return;
       if (!mounted) return;
       setState(() => _isAdded = true);
       widget.onAdded?.call();
@@ -857,9 +919,20 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                           96 + widget.bottomNavigationInset,
                         ),
                         children: [
-                          _ResultHero(medication: widget.medication),
+                          _ResultHero(
+                            medication: widget.medication,
+                            scanResult: widget.scanResult,
+                          ),
                           const SizedBox(height: 18),
                           _InfoGrid(medication: widget.medication),
+                          if (widget.scanResult != null) ...[
+                            const SizedBox(height: 16),
+                            _ExtractedTextCard(result: widget.scanResult!),
+                          ],
+                          if (widget.medication != null) ...[
+                            const SizedBox(height: 16),
+                            _CatalogDetailsCard(medication: widget.medication!),
+                          ],
                           const SizedBox(height: 16),
                           const _SafetyNotice(),
                           const SizedBox(height: 16),
@@ -879,7 +952,7 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Set Your Schedule',
+                                    'SET YOUR SCHEDULE',
                                     style: TextStyle(
                                       color: palette.primaryText,
                                       fontSize: 18,
@@ -1056,9 +1129,10 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
 }
 
 class _ResultHero extends StatelessWidget {
-  const _ResultHero({required this.medication});
+  const _ResultHero({required this.medication, this.scanResult});
 
   final MedicationCatalogRecord? medication;
+  final MedicationScanResult? scanResult;
 
   @override
   Widget build(BuildContext context) {
@@ -1070,7 +1144,39 @@ class _ResultHero extends StatelessWidget {
       ),
       child: Row(
         children: [
-          medication == null
+          scanResult?.imageUrl.isNotEmpty == true
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: SizedBox.square(
+                    dimension: 82,
+                    child: Image.network(
+                      scanResult!.imageUrl,
+                      fit: BoxFit.cover,
+                      cacheWidth: 328,
+                      cacheHeight: 328,
+                      filterQuality: FilterQuality.medium,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const _MedicationImageFallback(),
+                    ),
+                  ),
+                )
+              : scanResult?.imageBytes?.isNotEmpty == true
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: SizedBox.square(
+                    dimension: 82,
+                    child: Image.memory(
+                      scanResult!.imageBytes!,
+                      fit: BoxFit.cover,
+                      cacheWidth: 328,
+                      cacheHeight: 328,
+                      filterQuality: FilterQuality.medium,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const _MedicationImageFallback(),
+                    ),
+                  ),
+                )
+              : medication == null
               ? ClipRRect(
                   borderRadius: BorderRadius.circular(10),
                   child: SizedBox.square(
@@ -1113,8 +1219,8 @@ class _ResultHero extends StatelessWidget {
                     const SizedBox(width: 5),
                     Text(
                       medication == null
-                          ? 'Manual review required'
-                          : 'Catalog match',
+                          ? 'MANUAL REVIEW REQUIRED'
+                          : 'CATALOG MATCH',
                       style: TextStyle(
                         color: palette.success,
                         fontSize: 11,
@@ -1126,7 +1232,11 @@ class _ResultHero extends StatelessWidget {
                 const SizedBox(height: 7),
                 Text(
                   titleCaseDisplay(
-                    medication?.name ?? 'Medication not identified',
+                    medication?.name ??
+                        (scanResult?.detectedMedicationName.trim().isNotEmpty ==
+                                true
+                            ? scanResult!.detectedMedicationName
+                            : 'Medication not identified'),
                   ),
                   style: TextStyle(
                     color: palette.primaryText,
@@ -1138,8 +1248,9 @@ class _ResultHero extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   medication == null
-                      ? 'Search RxNorm to confirm the medication'
-                      : titleCaseDisplay(medication!.doseDescription),
+                      ? 'SEARCH RXNORM TO CONFIRM THE MEDICATION'
+                      : titleCaseDisplay(medication!.doseDescription)
+                            .toUpperCase(),
                   style: TextStyle(color: palette.secondaryText, fontSize: 12),
                 ),
               ],
@@ -1165,6 +1276,172 @@ class ScanScheduleData {
   final String duration;
   final DateTime startDate;
   final TimeOfDay time;
+}
+
+class _ExtractedTextCard extends StatelessWidget {
+  const _ExtractedTextCard({required this.result});
+
+  final MedicationScanResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _ScannerPalette.of(context);
+    final confidence = '${(result.confidence * 100).round()}% CONFIDENCE';
+    return Container(
+      key: const Key('scanExtractedTextCard'),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(CupertinoIcons.doc_text, color: palette.primary, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'DETECTED LABEL TEXT',
+                  style: TextStyle(
+                    color: palette.primaryText,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  confidence,
+                  textAlign: TextAlign.end,
+                  style: TextStyle(color: palette.secondaryText, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            result.hasError ? result.errorMessage : result.extractedText,
+            style: TextStyle(
+              color: result.hasError
+                  ? palette.warningText
+                  : palette.primaryText,
+              fontSize: 14,
+              height: 1.45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CatalogDetailsCard extends StatelessWidget {
+  const _CatalogDetailsCard({required this.medication});
+
+  final MedicationCatalogRecord medication;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _ScannerPalette.of(context);
+    final rows = <String, String>{
+      if (medication.genericName.isNotEmpty)
+        'Generic name': medication.genericName,
+      if (medication.route.isNotEmpty) 'Route': medication.route,
+    };
+    final indications = medication.indications.take(2).join(' ');
+    final warnings = medication.warnings.take(2).join(' ');
+    return Container(
+      key: const Key('scanMedicationDetailsCard'),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'MEDICATION INFORMATION',
+            style: TextStyle(
+              color: palette.primaryText,
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          for (final entry in rows.entries) ...[
+            const SizedBox(height: 8),
+            _DetailRow(label: entry.key, value: entry.value),
+          ],
+          if (indications.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _DetailRow(label: 'Common uses', value: indications),
+          ],
+          if (warnings.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _DetailRow(label: 'Warnings', value: warnings, warning: true),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.label,
+    required this.value,
+    this.warning = false,
+  });
+
+  final String label;
+  final String value;
+  final bool warning;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _ScannerPalette.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: TextStyle(
+            color: warning ? palette.warningText : palette.secondaryText,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          style: TextStyle(
+            color: warning ? palette.warningText : palette.primaryText,
+            fontSize: 13,
+            height: 1.35,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MedicationImageFallback extends StatelessWidget {
+  const _MedicationImageFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return const ColoredBox(
+      color: Color(0xFFF0E5EF),
+      child: Icon(
+        CupertinoIcons.capsule_fill,
+        color: Color(0xFFEA3C86),
+        size: 34,
+      ),
+    );
+  }
 }
 
 class _InfoGrid extends StatelessWidget {
@@ -1246,7 +1523,7 @@ class _PendingReviewCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Manual review needed',
+            'MANUAL REVIEW NEEDED',
             style: TextStyle(
               color: palette.primaryText,
               fontSize: 17,
@@ -1255,7 +1532,7 @@ class _PendingReviewCard extends StatelessWidget {
           ),
           const SizedBox(height: 7),
           Text(
-            'The scanner did not identify a medication. Search RxNorm and confirm the exact product before creating a schedule.',
+            'The label text was detected, but it could not be confidently matched to a catalog product. Search RxNorm and confirm the exact product before creating a schedule.',
             style: TextStyle(
               color: palette.secondaryText,
               fontSize: 13,
@@ -1306,7 +1583,7 @@ class _InfoTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            label,
+            label.toUpperCase(),
             style: TextStyle(
               color: palette.secondaryText,
               fontSize: 9,
@@ -1394,7 +1671,7 @@ class _ScheduleField extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(left: 2),
           child: Text(
-            label,
+            label.toUpperCase(),
             style: TextStyle(
               color: palette.secondaryText,
               fontSize: 9,

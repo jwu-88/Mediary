@@ -41,6 +41,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Mediary uses the camera to scan medication labels for identification and scheduling.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Mediary uses your photo library to scan a medication label from a photo you choose.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

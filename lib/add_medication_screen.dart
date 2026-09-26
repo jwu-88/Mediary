@@ -498,10 +498,10 @@ class _SelectedMedicationSummary extends StatelessWidget {
                       ),
                     ),
                   ),
-                  TextButton(
+                  FilledButton.tonal(
                     key: const Key('clearMedicationSelectionButton'),
                     onPressed: onClear,
-                    style: TextButton.styleFrom(
+                    style: FilledButton.styleFrom(
                       minimumSize: const Size(44, 32),
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                     ),
@@ -697,7 +697,14 @@ class _EmptyMedicationSearch extends StatelessWidget {
             ),
             if (!prompt) ...[
               const SizedBox(height: 8),
-              TextButton(onPressed: onClear, child: const Text('Clear Search')),
+              FilledButton.tonal(
+                onPressed: onClear,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                ),
+                child: const Text('Clear Search'),
+              ),
             ],
           ],
         ),
