@@ -1,38 +1,20 @@
-import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
-import 'package:path/path.dart' as path;
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter/services.dart';
 
-/// Uses the native ML Kit text recognizer without exposing dart:io to web
-/// builds. The temporary file is deleted immediately after recognition.
+const _nativeOcrChannel = MethodChannel('com.mediary/medication_ocr');
+
+/// Uses the platform's native OCR implementation without exposing dart:io to
+/// web builds. iOS uses Apple's Vision framework and Android uses ML Kit
+/// through the app's own platform channel. Passing bytes keeps this path
+/// compatible with both photo-library and clipboard images.
 Future<String> recognizeMedicationText(
   Uint8List bytes, {
   String fileName = '',
 }) async {
-  final temporaryDirectory = await getTemporaryDirectory();
-  final extension = path.extension(fileName).toLowerCase();
-  final safeExtension = extension == '.png' || extension == '.webp'
-      ? extension
-      : '.jpg';
-  final file = File(
-    path.join(
-      temporaryDirectory.path,
-      'mediary-medication-${DateTime.now().microsecondsSinceEpoch}$safeExtension',
-    ),
-  );
-  final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
-  try {
-    await file.writeAsBytes(bytes, flush: true);
-    final result = await recognizer.processImage(
-      InputImage.fromFilePath(file.path),
-    );
-    return result.text;
-  } finally {
-    await recognizer.close();
-    if (await file.exists()) {
-      await file.delete();
-    }
-  }
+  final text = await _nativeOcrChannel.invokeMethod<String>('recognize', {
+    'bytes': bytes,
+    'fileName': fileName,
+  });
+  return text ?? '';
 }

@@ -1417,7 +1417,9 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     if (!mounted) return;
     switch (choice) {
       case _ScanAlternative.choosePhoto:
-        await _chooseMedicationPhoto();
+        // Keep the same source chooser whether the user starts from the
+        // camera controls or from the camera-permission fallback dialog.
+        await _showPhotoSourceOptions();
       case _ScanAlternative.pasteImage:
         await _pasteMedicationPhoto();
       case null:
