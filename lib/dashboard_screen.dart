@@ -12,6 +12,10 @@ import 'medication_artwork.dart';
 import 'profile_image_policy.dart';
 import 'text_formatting.dart';
 
+const _dashboardHorizontalInset = 16.0;
+const _dashboardNativeContentWidth = 520.0;
+const _dashboardDesktopContentWidth = 760.0;
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
     super.key,
@@ -108,6 +112,9 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   bool _isOpeningReport = false;
   String? _announcement;
+  final Set<String> _removedDoseIds = <String>{};
+  _RemovedDashboardDose? _undoDose;
+  Timer? _undoTimer;
 
   late List<_DashboardDose> _doses = const [];
 
@@ -123,17 +130,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (widget.initialDoses != oldWidget.initialDoses) _syncInitialDoses();
   }
 
+  @override
+  void dispose() {
+    _undoTimer?.cancel();
+    super.dispose();
+  }
+
   void _syncInitialDoses() {
     _doses = [
       for (final dose in widget.initialDoses)
-        _DashboardDose(
-          id: dose.id,
-          name: dose.name,
-          details: dose.details,
-          status: dose.displayStatus,
-          firestoreStatus: dose.status,
-          tone: dose.status == 'taken' ? _DoseTone.taken : _DoseTone.primary,
-        ),
+        if (!_removedDoseIds.contains(dose.id))
+          _DashboardDose(
+            id: dose.id,
+            name: dose.name,
+            details: dose.details,
+            status: dose.displayStatus,
+            firestoreStatus: dose.status,
+            tone: dose.status == 'taken' ? _DoseTone.taken : _DoseTone.primary,
+          ),
     ];
   }
 
@@ -254,23 +268,87 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _showConfirmation(doseActionErrorMessage(error, action: 'update'));
         }
       case _DoseAction.remove:
-        try {
-          await widget.onDoseStatusChanged?.call(dose.id, 'cancelled');
-          if (!mounted) return;
-          setState(() {
-            _doses.removeWhere((item) => item.id == dose.id);
-          });
-          _showConfirmation('${titleCaseDisplay(dose.name)} Removed');
-        } catch (error) {
-          if (kDebugMode) debugPrint('Dose removal failed: $error');
-          _showConfirmation(doseActionErrorMessage(error, action: 'remove'));
-        }
+        await _removeDose(dose);
     }
+  }
+
+  Future<void> _removeDose(_DashboardDose dose) async {
+    final index = _doses.indexWhere((item) => item.id == dose.id);
+    if (index < 0) return;
+    setState(() {
+      _removedDoseIds.add(dose.id);
+      _doses.removeAt(index);
+    });
+    _setUndoDose(_RemovedDashboardDose(dose: dose, index: index));
+    try {
+      await widget.onDoseStatusChanged?.call(dose.id, 'cancelled');
+      if (!mounted) return;
+      _showConfirmation('${titleCaseDisplay(dose.name)} Removed');
+    } catch (error) {
+      if (kDebugMode) debugPrint('Dose removal failed: $error');
+      _restoreRemovedDose(dose.id);
+      _showConfirmation(doseActionErrorMessage(error, action: 'remove'));
+    }
+  }
+
+  Future<void> _removeDoseAt(int index) async {
+    if (index < 0 || index >= _doses.length) return;
+    await _removeDose(_doses[index]);
   }
 
   void _showConfirmation(String message) {
     if (!mounted) return;
     setState(() => _announcement = message);
+  }
+
+  void _setUndoDose(_RemovedDashboardDose removed) {
+    _undoTimer?.cancel();
+    setState(() => _undoDose = removed);
+    _undoTimer = Timer(const Duration(seconds: 6), () {
+      if (mounted) setState(() => _undoDose = null);
+    });
+  }
+
+  void _restoreRemovedDose(String doseId) {
+    final removed = _undoDose;
+    _undoTimer?.cancel();
+    if (!mounted) return;
+    if (removed?.dose.id == doseId) {
+      setState(() {
+        _removedDoseIds.remove(doseId);
+        final index = removed!.index.clamp(0, _doses.length);
+        _doses.insert(index, removed.dose);
+        _undoDose = null;
+      });
+    } else {
+      _removedDoseIds.remove(doseId);
+    }
+  }
+
+  Future<void> _undoRemovedDose() async {
+    final removed = _undoDose;
+    if (removed == null) return;
+    _undoTimer?.cancel();
+    setState(() {
+      _undoDose = null;
+      _removedDoseIds.remove(removed.dose.id);
+      final index = removed.index.clamp(0, _doses.length);
+      _doses.insert(index, removed.dose);
+    });
+    try {
+      await widget.onDoseStatusChanged?.call(removed.dose.id, 'due');
+      if (mounted) {
+        _showConfirmation('${titleCaseDisplay(removed.dose.name)} Restored');
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _removedDoseIds.add(removed.dose.id);
+          _doses.removeWhere((dose) => dose.id == removed.dose.id);
+        });
+        _showConfirmation(doseActionErrorMessage(error, action: 'restore'));
+      }
+    }
   }
 
   @override
@@ -286,8 +364,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final nextDose = nextDoseIndex < 0 ? null : _doses[nextDoseIndex];
     final viewportWidth = MediaQuery.sizeOf(context).width;
     final contentWidth = viewportWidth >= 900
-        ? responsiveContentWidth(context, nativeMaxWidth: 760)
-        : 520.0;
+        ? responsiveContentWidth(
+            context,
+            nativeMaxWidth: _dashboardDesktopContentWidth,
+          )
+        : _dashboardNativeContentWidth;
     return ColoredBox(
       color: theme.scaffoldBackgroundColor,
       child: SafeArea(
@@ -297,7 +378,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             constraints: BoxConstraints(maxWidth: contentWidth),
             child: ListView(
               key: const Key('dashboardScrollView'),
-              padding: EdgeInsets.fromLTRB(16, 8, 16, widget.bottomPadding),
+              padding: EdgeInsets.fromLTRB(
+                _dashboardHorizontalInset,
+                12,
+                _dashboardHorizontalInset,
+                widget.bottomPadding,
+              ),
               children: [
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -323,7 +409,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             key: const Key('dashboardGreeting'),
                             style: TextStyle(
                               color: colors.onSurface,
-                              fontSize: 27,
+                              fontSize: 28,
                               height: 1.12,
                               fontWeight: FontWeight.w700,
                               letterSpacing: -.7,
@@ -352,6 +438,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             message: _announcement!,
                             onDismiss: () =>
                                 setState(() => _announcement = null),
+                            onUndo: _undoDose == null ? null : _undoRemovedDose,
                           ),
                         ),
                 ),
@@ -365,7 +452,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       : () => unawaited(_showDoseActions(nextDoseIndex)),
                   onOpenCalendar: widget.onOpenCalendar,
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 _DashboardMetricStrip(
                   completedToday: completedToday,
                   scheduledToday: _doses.length,
@@ -374,8 +461,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   onOpenCalendar: widget.onOpenCalendar,
                   onViewReport: _handleViewReport,
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 24),
                 _SectionHeader(
+                  key: const Key('dashboardWeeklyProgressHeader'),
                   title: 'Weekly Progress',
                   actionLabel: 'View Report',
                   actionKey: const Key('dashboardViewReportButton'),
@@ -383,17 +471,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   loadingKey: const Key('dashboardViewReportLoadingIndicator'),
                   onPressed: _handleViewReport,
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 _AdherenceSummary(
                   taken: widget.weeklyTaken,
                   scheduled: widget.weeklyScheduled,
                 ),
-                const SizedBox(height: 28),
-                _SectionHeader(title: 'Today’s Schedule'),
-                const SizedBox(height: 10),
-                _CalendarManagementHint(onOpenCalendar: widget.onOpenCalendar),
+                const SizedBox(height: 24),
+                _SectionHeader(
+                  key: const Key('dashboardTodayScheduleHeader'),
+                  title: 'Today’s Schedule',
+                ),
                 const SizedBox(height: 12),
-                _ScheduleTable(doses: _doses, onTapDose: _showDoseActions),
+                _CalendarManagementHint(onOpenCalendar: widget.onOpenCalendar),
+                const SizedBox(height: 16),
+                _ScheduleTable(
+                  doses: _doses,
+                  onTapDose: _showDoseActions,
+                  onRemoveDose: _removeDoseAt,
+                ),
               ],
             ),
           ),
@@ -561,10 +656,12 @@ class _DashboardInlineStatus extends StatelessWidget {
   const _DashboardInlineStatus({
     required this.message,
     required this.onDismiss,
+    this.onUndo,
   });
 
   final String message;
   final VoidCallback onDismiss;
+  final VoidCallback? onUndo;
 
   @override
   Widget build(BuildContext context) {
@@ -591,6 +688,8 @@ class _DashboardInlineStatus extends StatelessWidget {
                   ),
                 ),
               ),
+              if (onUndo != null)
+                TextButton(onPressed: onUndo, child: const Text('Undo')),
               IconButton(
                 tooltip: 'Dismiss',
                 onPressed: onDismiss,
@@ -698,6 +797,7 @@ class _ProfileAvatarState extends State<_ProfileAvatar> {
 
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
+    super.key,
     required this.title,
     this.actionLabel,
     this.actionKey,
@@ -724,6 +824,7 @@ class _SectionHeader extends StatelessWidget {
             style: TextStyle(
               color: colors.onSurface,
               fontSize: 18,
+              height: 1.25,
               fontWeight: FontWeight.w700,
               letterSpacing: -.25,
             ),
@@ -874,7 +975,7 @@ class _DashboardFocusCard extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: colors.primary.withValues(alpha: .18)),
           boxShadow: [
             BoxShadow(
@@ -1000,10 +1101,12 @@ class _DashboardFocusCard extends StatelessWidget {
                     style: TextButton.styleFrom(
                       foregroundColor: colors.primary,
                       backgroundColor: colors.primary.withValues(alpha: .12),
+                      minimumSize: const Size(0, 40),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 8,
                       ),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -1219,10 +1322,15 @@ class _ProgressRing extends StatelessWidget {
 }
 
 class _ScheduleTable extends StatelessWidget {
-  const _ScheduleTable({required this.doses, required this.onTapDose});
+  const _ScheduleTable({
+    required this.doses,
+    required this.onTapDose,
+    required this.onRemoveDose,
+  });
 
   final List<_DashboardDose> doses;
   final ValueChanged<int> onTapDose;
+  final ValueChanged<int> onRemoveDose;
 
   @override
   Widget build(BuildContext context) {
@@ -1266,6 +1374,7 @@ class _ScheduleTable extends StatelessWidget {
               status: doses[index].status,
               statusColor: doses[index].tone == _DoseTone.taken ? taken : null,
               onTap: () => onTapDose(index),
+              onRemove: () => onRemoveDose(index),
             ),
             if (index < doses.length - 1)
               Divider(
@@ -1328,10 +1437,10 @@ class _CalendarManagementHint extends StatelessWidget {
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 textStyle: const TextStyle(
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -1388,32 +1497,64 @@ class _ScheduleHeader extends StatelessWidget {
       height: 30,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: Row(
-          children: [
-            const SizedBox(width: 38),
-            Expanded(
-              flex: 5,
-              child: Text('Medication', style: style.copyWith(color: color)),
-            ),
-            const _ScheduleVerticalDivider(
-              dividerKey: Key('dashboardScheduleHeaderVerticalDivider0'),
-            ),
-            Expanded(
-              flex: 5,
-              child: Text('Dose & Time', style: style.copyWith(color: color)),
-            ),
-            const _ScheduleVerticalDivider(
-              dividerKey: Key('dashboardScheduleHeaderVerticalDivider1'),
-            ),
-            SizedBox(
-              width: 72,
-              child: Text(
-                'Status',
-                textAlign: TextAlign.end,
-                style: style.copyWith(color: color),
-              ),
-            ),
-          ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final metrics = _ScheduleLayoutMetrics.forWidth(
+              constraints.maxWidth,
+            );
+            return Row(
+              children: [
+                SizedBox(width: metrics.artworkSlotWidth),
+                SizedBox(
+                  key: const Key('dashboardScheduleMedicationHeaderCell'),
+                  width: metrics.medicationWidth,
+                  child: Text(
+                    'Medication',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: style.copyWith(color: color),
+                  ),
+                ),
+                _ScheduleVerticalDivider(
+                  dividerKey: const Key(
+                    'dashboardScheduleHeaderVerticalDivider0',
+                  ),
+                  slotWidth: metrics.dividerSlotWidth,
+                ),
+                SizedBox(
+                  key: const Key('dashboardScheduleDoseHeaderCell'),
+                  width: metrics.doseTimeWidth,
+                  child: Text(
+                    'Dose & Time',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: style.copyWith(color: color),
+                  ),
+                ),
+                _ScheduleVerticalDivider(
+                  dividerKey: const Key(
+                    'dashboardScheduleHeaderVerticalDivider1',
+                  ),
+                  slotWidth: metrics.dividerSlotWidth,
+                ),
+                SizedBox(
+                  key: const Key('dashboardScheduleStatusHeaderCell'),
+                  width: metrics.statusWidth,
+                  child: Text(
+                    'Status',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
+                    style: style.copyWith(color: color),
+                  ),
+                ),
+                SizedBox(
+                  key: const Key('dashboardScheduleActionsHeaderCell'),
+                  width: metrics.actionWidth,
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -1421,15 +1562,19 @@ class _ScheduleHeader extends StatelessWidget {
 }
 
 class _ScheduleVerticalDivider extends StatelessWidget {
-  const _ScheduleVerticalDivider({required this.dividerKey});
+  const _ScheduleVerticalDivider({
+    required this.dividerKey,
+    this.slotWidth = 17,
+  });
 
   final Key dividerKey;
+  final double slotWidth;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return SizedBox(
-      width: 17,
+      width: slotWidth,
       child: VerticalDivider(
         key: dividerKey,
         width: 1,
@@ -1450,6 +1595,7 @@ class _DoseRow extends StatelessWidget {
     required this.status,
     this.statusColor,
     required this.onTap,
+    required this.onRemove,
   });
 
   final int rowIndex;
@@ -1460,6 +1606,7 @@ class _DoseRow extends StatelessWidget {
   final String status;
   final Color? statusColor;
   final VoidCallback onTap;
+  final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -1481,91 +1628,183 @@ class _DoseRow extends StatelessWidget {
           height: 62,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 38,
-                  child: MedicationArtwork(
-                    key: Key('dashboardMedicationArtwork_$artworkSeed'),
-                    seed: artworkSeed,
-                    label: artworkLabel,
-                    size: 30,
-                  ),
-                ),
-                Expanded(
-                  flex: 5,
-                  child: Text(
-                    titleCaseDisplay(name),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: colors.onSurface,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                _ScheduleVerticalDivider(
-                  dividerKey: ValueKey(
-                    'dashboardScheduleRowVerticalDivider${rowIndex}Column0',
-                  ),
-                ),
-                Expanded(
-                  flex: 5,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        titleCaseDisplay(details.replaceFirst(' · ', '\n')),
-                        maxLines: 2,
-                        style: TextStyle(
-                          color: colors.onSurfaceVariant,
-                          fontSize: 11,
-                          height: 1.35,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                _ScheduleVerticalDivider(
-                  dividerKey: ValueKey(
-                    'dashboardScheduleRowVerticalDivider${rowIndex}Column1',
-                  ),
-                ),
-                SizedBox(
-                  width: 72,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      if (status == 'Taken') ...[
-                        Icon(
-                          CupertinoIcons.check_mark_circled_solid,
-                          color: resolvedStatusColor,
-                          size: 13,
-                        ),
-                        const SizedBox(width: 3),
-                      ],
-                      Flexible(
-                        child: Text(
-                          status,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.end,
-                          style: TextStyle(
-                            color: resolvedStatusColor,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final metrics = _ScheduleLayoutMetrics.forWidth(
+                  constraints.maxWidth,
+                );
+                return Row(
+                  children: [
+                    SizedBox(
+                      width: metrics.artworkSlotWidth,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            left: metrics.artworkLeadingGap,
+                          ),
+                          child: MedicationArtwork(
+                            key: Key('dashboardMedicationArtwork_$artworkSeed'),
+                            seed: artworkSeed,
+                            label: artworkLabel,
+                            size: 30,
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              ],
+                    ),
+                    SizedBox(
+                      key: ValueKey('dashboardScheduleMedicationCell$rowIndex'),
+                      width: metrics.medicationWidth,
+                      child: Text(
+                        titleCaseDisplay(name),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: true,
+                        style: TextStyle(
+                          color: colors.onSurface,
+                          fontSize: 13,
+                          height: 1.2,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    _ScheduleVerticalDivider(
+                      dividerKey: ValueKey(
+                        'dashboardScheduleRowVerticalDivider${rowIndex}Column0',
+                      ),
+                      slotWidth: metrics.dividerSlotWidth,
+                    ),
+                    SizedBox(
+                      key: ValueKey('dashboardScheduleDoseCell$rowIndex'),
+                      width: metrics.doseTimeWidth,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          titleCaseDisplay(details.replaceFirst(' · ', '\n')),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          softWrap: true,
+                          style: TextStyle(
+                            color: colors.onSurfaceVariant,
+                            fontSize: 11,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ),
+                    _ScheduleVerticalDivider(
+                      dividerKey: ValueKey(
+                        'dashboardScheduleRowVerticalDivider${rowIndex}Column1',
+                      ),
+                      slotWidth: metrics.dividerSlotWidth,
+                    ),
+                    SizedBox(
+                      key: ValueKey('dashboardScheduleStatusCell$rowIndex'),
+                      width: metrics.statusWidth,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          if (status == 'Taken') ...[
+                            Icon(
+                              CupertinoIcons.check_mark_circled_solid,
+                              color: resolvedStatusColor,
+                              size: 13,
+                            ),
+                            const SizedBox(width: 3),
+                          ],
+                          Flexible(
+                            child: Text(
+                              titleCaseDisplay(status),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.end,
+                              style: TextStyle(
+                                color: resolvedStatusColor,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(
+                      width: metrics.actionWidth,
+                      child: IconButton(
+                        key: Key('dashboardDeleteDose_$artworkSeed'),
+                        onPressed: onRemove,
+                        tooltip: 'Remove ${titleCaseDisplay(name)} from today',
+                        icon: const Icon(CupertinoIcons.trash),
+                        iconSize: 17,
+                        padding: EdgeInsets.zero,
+                        constraints: BoxConstraints.tightFor(
+                          width: metrics.actionWidth,
+                          height: 44,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        color: colors.error,
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Shared geometry for the schedule header and every dose row.
+///
+/// Keeping the same metrics in both places prevents the column dividers from
+/// drifting and gives the artwork a dedicated slot before medication text.
+class _ScheduleLayoutMetrics {
+  const _ScheduleLayoutMetrics({
+    required this.artworkSlotWidth,
+    required this.artworkLeadingGap,
+    required this.medicationWidth,
+    required this.dividerSlotWidth,
+    required this.doseTimeWidth,
+    required this.statusWidth,
+    required this.actionWidth,
+  });
+
+  final double artworkSlotWidth;
+  final double artworkLeadingGap;
+  final double medicationWidth;
+  final double dividerSlotWidth;
+  final double doseTimeWidth;
+  final double statusWidth;
+  final double actionWidth;
+
+  factory _ScheduleLayoutMetrics.forWidth(double width) {
+    final compact = width < 420;
+    final artworkSlotWidth = compact ? 50.0 : 54.0;
+    final artworkLeadingGap = compact ? 8.0 : 12.0;
+    final dividerSlotWidth = compact ? 9.0 : 17.0;
+    final statusWidth = compact ? 58.0 : 72.0;
+    final actionWidth = 44.0;
+    final fixedWidth =
+        artworkSlotWidth + (dividerSlotWidth * 2) + statusWidth + actionWidth;
+    final flexibleWidth = (width - fixedWidth).clamp(0.0, double.infinity);
+    final doseTimeWidth = compact
+        ? flexibleWidth.clamp(0.0, 96.0)
+        : flexibleWidth * .48;
+    final medicationWidth = (flexibleWidth - doseTimeWidth).clamp(
+      0.0,
+      double.infinity,
+    );
+
+    return _ScheduleLayoutMetrics(
+      artworkSlotWidth: artworkSlotWidth,
+      artworkLeadingGap: artworkLeadingGap,
+      medicationWidth: medicationWidth,
+      dividerSlotWidth: dividerSlotWidth,
+      doseTimeWidth: doseTimeWidth,
+      statusWidth: statusWidth,
+      actionWidth: actionWidth,
     );
   }
 }
@@ -1605,6 +1844,13 @@ class _DashboardDose {
       tone: tone ?? this.tone,
     );
   }
+}
+
+class _RemovedDashboardDose {
+  const _RemovedDashboardDose({required this.dose, required this.index});
+
+  final _DashboardDose dose;
+  final int index;
 }
 
 class DashboardDoseData {

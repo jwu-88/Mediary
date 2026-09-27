@@ -31,6 +31,8 @@ class MediaryDataStore extends ChangeNotifier {
   var _receivedSavedMedications = false;
   var _receivedReports = false;
   var _receivedScans = false;
+  bool _doseWindowSyncInFlight = false;
+  String? _lastDoseWindowSignature;
 
   bool get hasInitialData =>
       _receivedProfile &&
@@ -50,7 +52,6 @@ class MediaryDataStore extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await repository.ensureProfile(user);
       _subscriptions.add(
         repository.watchProfile().listen((value) {
           profile = value;
@@ -70,6 +71,7 @@ class MediaryDataStore extends ChangeNotifier {
           schedules = value;
           _receivedSchedules = true;
           _finishInitialLoad();
+          _maybeEnsureDoseWindow();
         }, onError: _handleError),
       );
       _subscriptions.add(
@@ -77,6 +79,7 @@ class MediaryDataStore extends ChangeNotifier {
           doseLogs = value;
           _receivedDoseLogs = true;
           _finishInitialLoad();
+          _maybeEnsureDoseWindow();
         }, onError: _handleError),
       );
       _subscriptions.add(
@@ -100,6 +103,11 @@ class MediaryDataStore extends ChangeNotifier {
           _finishInitialLoad();
         }, onError: _handleError),
       );
+      // Hydrate the user's medication data independently of profile setup.
+      // Profile normalization is a write and can fail or be delayed on a
+      // returning session; it must not prevent schedules and dose logs from
+      // reaching the UI.
+      await repository.ensureProfile(user);
     } catch (exception) {
       _handleError(exception);
     }
@@ -136,6 +144,8 @@ class MediaryDataStore extends ChangeNotifier {
     _receivedSavedMedications = false;
     _receivedReports = false;
     _receivedScans = false;
+    _doseWindowSyncInFlight = false;
+    _lastDoseWindowSignature = null;
     isLoading = true;
     error = null;
   }
@@ -166,6 +176,15 @@ class MediaryDataStore extends ChangeNotifier {
 
   Future<String> saveDose(DoseWrite value) => repository.upsertDose(value);
 
+  Future<int> ensureUpcomingDoses({DateTime? now}) async {
+    if (_user == null) throw StateError('No signed-in user.');
+    return repository.ensureUpcomingDoses(
+      schedules: schedules,
+      existing: doseLogs,
+      now: now,
+    );
+  }
+
   Future<void> updateDoseStatus(
     String id,
     String status, {
@@ -184,6 +203,40 @@ class MediaryDataStore extends ChangeNotifier {
 
   Future<void> deactivateSchedule(String id) =>
       repository.deactivateSchedule(id);
+
+  void _maybeEnsureDoseWindow() {
+    if (_user == null || !_receivedSchedules || !_receivedDoseLogs) return;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day).toIso8601String();
+    final signature = [
+      today,
+      for (final schedule in schedules)
+        '${schedule.id}:${schedule.frequency}:${schedule.startDate}:'
+            '${schedule.endDate}:${schedule.timezone}:${schedule.times.join(',')}:'
+            '${schedule.daysOfWeek.join(',')}:${schedule.active}:'
+            '${schedule.updatedAt?.millisecondsSinceEpoch}',
+    ].join('|');
+    if (_doseWindowSyncInFlight || signature == _lastDoseWindowSignature) {
+      return;
+    }
+    _lastDoseWindowSignature = signature;
+    _doseWindowSyncInFlight = true;
+    unawaited(() async {
+      try {
+        await repository.ensureUpcomingDoses(
+          schedules: schedules,
+          existing: doseLogs,
+        );
+      } catch (exception, stackTrace) {
+        // Keep the active UI available when a background reconciliation is
+        // temporarily offline. The next schedule/profile snapshot retries.
+        _lastDoseWindowSignature = null;
+        _handleError(exception, stackTrace);
+      } finally {
+        _doseWindowSyncInFlight = false;
+      }
+    }());
+  }
 
   Future<void> saveLibraryMedication({
     required String id,
@@ -210,7 +263,7 @@ class MediaryDataStore extends ChangeNotifier {
   Future<void> commitScheduleAndDose({
     required MedicationWrite medication,
     required ScheduleWrite schedule,
-    required DoseWrite dose,
+    required DoseWrite? dose,
   }) => repository.commitScheduleAndDose(
     medication: medication,
     schedule: schedule,

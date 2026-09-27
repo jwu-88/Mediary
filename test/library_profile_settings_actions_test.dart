@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/app_theme.dart';
 import 'package:mediary/data/medication_catalog_client.dart';
@@ -105,6 +104,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('medicationDetailScrollView')), findsOneWidget);
     expect(find.byType(BottomSheet), findsNothing);
+    expect(find.bySemanticsLabel('Artwork for Ibuprofen'), findsNothing);
     expect(find.text('Source: RxNorm test'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('medicationDetailBookmarkButton')));
@@ -151,6 +151,37 @@ void main() {
     expect(find.textContaining('Nausea'), findsOneWidget);
   });
 
+  testWidgets('important safety uses a softer dark palette in dark mode', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: MedicationDetailScreen(
+            medication: amoxicillin.copyWith(warnings: const ['Nausea']),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final safetyPanel = tester.widget<Container>(
+      find
+          .ancestor(
+            of: find.text('Important Safety'),
+            matching: find.byType(Container),
+          )
+          .first,
+    );
+    final decoration = safetyPanel.decoration! as BoxDecoration;
+    expect(decoration.color, const Color(0xFF2B251D));
+    expect(
+      tester.widget<Text>(find.text('Important Safety')).style?.color,
+      const Color(0xFFFFC56B),
+    );
+  });
+
   testWidgets('profile rows open useful summaries', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -170,24 +201,7 @@ void main() {
     expect(find.text('Copy'), findsOneWidget);
   });
 
-  testWidgets('settings choices and export update immediately', (tester) async {
-    String? copiedData;
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'Clipboard.setData') {
-          copiedData =
-              (call.arguments as Map<Object?, Object?>)['text'] as String?;
-        }
-        return null;
-      },
-    );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      ),
-    );
+  testWidgets('settings choices update immediately', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
@@ -199,6 +213,7 @@ void main() {
       ),
     );
     await tester.pump();
+    expect(find.byKey(const Key('exportDataButton')), findsNothing);
 
     await tester.tap(find.text('Reminder Sound'));
     await tester.pumpAndSettle();
@@ -220,13 +235,6 @@ void main() {
     expect(find.byKey(const Key('privacyControlDivider1')), findsOneWidget);
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
-
-    await tester.ensureVisible(find.byKey(const Key('exportDataButton')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('exportDataButton')));
-    await tester.pump(const Duration(milliseconds: 200));
-    expect(find.text('Copied to device clipboard'), findsOneWidget);
-    expect(copiedData, contains('Mediary Data Export'));
   });
 }
 

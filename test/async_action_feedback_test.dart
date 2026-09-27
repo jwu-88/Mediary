@@ -1,11 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/app_theme.dart';
 import 'package:mediary/dashboard_screen.dart';
-import 'package:mediary/settings_screen.dart';
 import 'package:mediary/weekly_report_screen.dart';
 
 void main() {
@@ -110,63 +107,5 @@ void main() {
 
     expect(find.text('Prepared Summary'), findsOneWidget);
     expect(clipboardCalls, 0);
-  });
-
-  testWidgets('data export reports progress and ignores repeat taps', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(430, 1500);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final clipboard = Completer<Object?>();
-    var clipboardCalls = 0;
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) {
-        if (call.method == 'Clipboard.setData') {
-          clipboardCalls += 1;
-          return clipboard.future;
-        }
-        return Future<Object?>.value();
-      },
-    );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      ),
-    );
-
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light,
-        home: SettingsScreen(
-          embedded: true,
-          appearanceMode: ThemeMode.system,
-          onAppearanceModeChanged: (_) {},
-          accentColor: AppAccentColor.blue,
-          onAccentColorChanged: (_) {},
-          accountEmail: 'person@example.com',
-        ),
-      ),
-    );
-    final exportButton = find.byKey(const Key('exportDataButton'));
-    await tester.scrollUntilVisible(
-      exportButton,
-      400,
-      scrollable: find.byType(Scrollable),
-    );
-    await tester.tap(exportButton);
-    await tester.tap(exportButton);
-    await tester.pump();
-
-    expect(clipboardCalls, 1);
-    expect(find.byKey(const Key('exportDataLoadingIndicator')), findsOneWidget);
-
-    clipboard.complete(null);
-    await tester.pumpAndSettle();
-    expect(find.text('Copied to device clipboard'), findsOneWidget);
-    expect(find.byKey(const Key('exportDataLoadingIndicator')), findsNothing);
   });
 }

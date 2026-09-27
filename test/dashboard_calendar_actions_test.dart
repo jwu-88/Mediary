@@ -312,4 +312,52 @@ void main() {
     expect(find.text('No medications scheduled'), findsOneWidget);
     expect(find.text('Metformin Removed'), findsOneWidget);
   });
+
+  testWidgets('calendar removal stays gone after its input is refreshed', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    var refresh = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) => Scaffold(
+            body: Column(
+              children: [
+                Expanded(
+                  child: CalendarScreen(
+                    initialDate: DateTime(2026, 8, 23),
+                    initialDoses: [
+                      CalendarDoseData(
+                        id: 'dose-refresh',
+                        localDate: '2026-08-23',
+                        name: 'Metformin',
+                        details: '500 mg · 08:00',
+                        status: 'due',
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => refresh++),
+                  child: const Text('Refresh calendar'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Metformin'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove From Day'));
+    await tester.pumpAndSettle();
+    expect(find.text('Metformin'), findsNothing);
+
+    await tester.tap(find.text('Refresh calendar'));
+    await tester.pump();
+    expect(find.text('Metformin'), findsNothing);
+    expect(find.text('No medications scheduled'), findsOneWidget);
+  });
 }

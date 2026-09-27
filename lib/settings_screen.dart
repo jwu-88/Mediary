@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
@@ -15,6 +16,7 @@ import 'in_app_page.dart';
 import 'liquid_glass_back_button.dart';
 import 'liquid_glass_switch.dart';
 import 'profile_image_policy.dart';
+import 'time_formatting.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -33,6 +35,10 @@ class SettingsScreen extends StatefulWidget {
     this.accountPhotoUrl,
     this.onPreferenceChanged,
     this.initialPreferences,
+    this.timeDisplayFormat = TimeDisplayFormat.twelveHour,
+    this.onTimeDisplayFormatChanged,
+    this.onSendTestNotification,
+    this.onReadNotificationPermission,
   });
 
   final ThemeMode appearanceMode;
@@ -49,6 +55,10 @@ class SettingsScreen extends StatefulWidget {
   final String? accountPhotoUrl;
   final Future<void> Function(String key, Object value)? onPreferenceChanged;
   final MediaryPreferences? initialPreferences;
+  final TimeDisplayFormat timeDisplayFormat;
+  final ValueChanged<TimeDisplayFormat>? onTimeDisplayFormatChanged;
+  final Future<void> Function()? onSendTestNotification;
+  final Future<String> Function()? onReadNotificationPermission;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -62,10 +72,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late bool _followUpAlerts = widget.initialPreferences?.followUpAlerts ?? true;
   bool _isExportingData = false;
   String? _exportStatusMessage;
+  String? _notificationStatusMessage;
+  String _notificationPermissionState = 'unknown';
   late String _reminderSound =
       widget.initialPreferences?.reminderSound ?? 'Gentle Chime';
-  late String _language = widget.initialPreferences?.language ?? 'English';
   late String _units = widget.initialPreferences?.units ?? 'Metric';
+  late TimeDisplayFormat _timeDisplayFormat = widget.timeDisplayFormat;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_readNotificationPermission());
+  }
+
+  Future<void> _readNotificationPermission() async {
+    final callback = widget.onReadNotificationPermission;
+    if (callback == null) return;
+    final state = await callback();
+    if (mounted) setState(() => _notificationPermissionState = state);
+  }
 
   String get _appearanceLabel => switch (_appearanceMode) {
     ThemeMode.light => 'Light',
@@ -92,6 +117,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (oldWidget.accentColor != widget.accentColor) {
       _accentColor = widget.accentColor;
     }
+    if (oldWidget.timeDisplayFormat != widget.timeDisplayFormat) {
+      _timeDisplayFormat = widget.timeDisplayFormat;
+    }
     final oldPreferences = oldWidget.initialPreferences;
     final preferences = widget.initialPreferences;
     if (preferences != null &&
@@ -99,13 +127,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             oldPreferences.doseNotifications != preferences.doseNotifications ||
             oldPreferences.followUpAlerts != preferences.followUpAlerts ||
             oldPreferences.reminderSound != preferences.reminderSound ||
-            oldPreferences.language != preferences.language ||
-            oldPreferences.units != preferences.units)) {
+            oldPreferences.units != preferences.units ||
+            oldPreferences.timeFormat != preferences.timeFormat)) {
       _doseNotifications = preferences.doseNotifications;
       _followUpAlerts = preferences.followUpAlerts;
       _reminderSound = preferences.reminderSound;
-      _language = preferences.language;
       _units = preferences.units;
+      _timeDisplayFormat = TimeDisplayFormat.fromPreference(
+        preferences.timeFormat,
+      );
     }
   }
 
@@ -182,12 +212,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Future<void> _sendTestNotification() async {
+    final callback = widget.onSendTestNotification;
+    if (callback == null) return;
+    try {
+      await callback();
+      if (mounted) {
+        setState(() => _notificationStatusMessage = 'Test notification sent');
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _notificationStatusMessage = 'Unable to send test notification',
+        );
+      }
+    }
+  }
+
   Future<String?> _chooseOption({
     required String title,
     required List<String> options,
     required String selected,
     bool dismissOnSelect = true,
-    bool showUnselectedIndicator = true,
+    bool showUnselectedIndicator = false,
     ValueChanged<String>? onChanged,
   }) {
     return pushInAppPage<String>(
@@ -228,25 +275,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _chooseLanguage() async {
-    final language = await _chooseOption(
-      title: 'Language',
-      options: const ['English', 'Spanish', 'French'],
-      selected: _language,
-    );
-    if (language != null && mounted) {
-      final previous = _language;
-      setState(() => _language = language);
-      unawaited(
-        _persistPreference(
-          'language',
-          language,
-          rollback: () => setState(() => _language = previous),
-        ),
-      );
-    }
-  }
-
   Future<void> _chooseUnits() async {
     final units = await _chooseOption(
       title: 'Units',
@@ -264,6 +292,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
     }
+  }
+
+  Future<void> _chooseTimeFormat() async {
+    final selected = await _chooseOption(
+      title: 'Time Format',
+      options: const ['12-hour', '24-hour'],
+      selected: _timeDisplayFormat.label,
+    );
+    if (selected == null || !mounted) return;
+    final next = TimeDisplayFormat.fromPreference(selected);
+    if (next == _timeDisplayFormat) return;
+    setState(() => _timeDisplayFormat = next);
+    widget.onTimeDisplayFormatChanged?.call(next);
+    unawaited(_persistPreference('timeFormat', next.preferenceValue));
   }
 
   Future<void> _chooseAppearance() async {
@@ -426,7 +468,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       icon: CupertinoIcons.bell_fill,
                       iconColor: _accent,
                       title: 'Dose Notifications',
-                      subtitle: 'At scheduled times',
+                      subtitle:
+                          _notificationStatusMessage ??
+                          switch (_notificationPermissionState) {
+                            'granted' => 'Browser alerts enabled',
+                            'denied' => 'Browser alerts blocked; in-app reminders stay on',
+                            'default' => 'Permission needed for browser alerts',
+                            'available' => 'Device alerts available',
+                            _ => 'At scheduled times',
+                          },
                       onTap: () => _setDoseNotifications(!_doseNotifications),
                       trailing: _themedSwitch(
                         key: const Key('doseNotificationsSwitch'),
@@ -454,6 +504,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       trailing: _chevron(),
                       onTap: _chooseReminderSound,
                     ),
+                    if (widget.onSendTestNotification != null)
+                      _SettingsRow(
+                        key: const Key('sendTestNotificationRow'),
+                        icon: CupertinoIcons.bell_circle_fill,
+                        iconColor: _accent,
+                        title: 'Send Test Notification',
+                        subtitle: 'Verify alerts on this device',
+                        trailing: _chevron(),
+                        onTap: _sendTestNotification,
+                      ),
                   ]),
                   _sectionTitle(
                     'App Preferences',
@@ -461,20 +521,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   _group(key: const Key('settingsAppPreferencesGroup'), [
                     _SettingsRow(
-                      icon: CupertinoIcons.globe,
-                      iconColor: _accent,
-                      title: 'Language',
-                      subtitle: 'Display language',
-                      trailing: _value(_language),
-                      onTap: _chooseLanguage,
-                    ),
-                    _SettingsRow(
                       icon: CupertinoIcons.gauge,
                       iconColor: _accent,
                       title: 'Units',
                       subtitle: 'Measurements',
                       trailing: _value(_units),
                       onTap: _chooseUnits,
+                    ),
+                    _SettingsRow(
+                      key: const Key('timeFormatSettingRow'),
+                      icon: CupertinoIcons.clock,
+                      iconColor: _accent,
+                      title: 'Time Format',
+                      subtitle: 'How medication times are displayed',
+                      trailing: _value(_timeDisplayFormat.label),
+                      onTap: _chooseTimeFormat,
                     ),
                   ]),
                   _sectionTitle(
@@ -514,40 +575,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       trailing: _chevron(),
                       onTap: _showPrivacyControls,
                     ),
-                    _SettingsRow(
-                      key: const Key('exportDataButton'),
-                      icon: CupertinoIcons.square_arrow_up_fill,
-                      iconColor: _accent,
-                      title: 'Export My Data',
-                      subtitle:
-                          _exportStatusMessage ?? 'Copy an account summary',
-                      trailing: _isExportingData
-                          ? SizedBox.square(
-                              key: const Key('exportDataLoadingIndicator'),
-                              dimension: 17,
-                              child: CircularProgressIndicator(
-                                value: .72,
-                                strokeWidth: 1.8,
-                                color: _accent,
-                              ),
-                            )
-                          : _exportStatusMessage != null
-                          ? Icon(
-                              key: const Key('exportDataStatusIndicator'),
-                              _exportStatusMessage ==
-                                      'Copied to device clipboard'
-                                  ? CupertinoIcons.check_mark_circled_solid
-                                  : CupertinoIcons.exclamationmark_circle_fill,
-                              color:
-                                  _exportStatusMessage ==
-                                      'Copied to device clipboard'
-                                  ? _success
-                                  : _colors.error,
-                              size: 18,
-                            )
-                          : _chevron(),
-                      onTap: _isExportingData ? null : _exportData,
-                    ),
+                    if (kIsWeb)
+                      _SettingsRow(
+                        key: const Key('exportDataButton'),
+                        icon: CupertinoIcons.square_arrow_up_fill,
+                        iconColor: _accent,
+                        title: 'Export My Data',
+                        subtitle:
+                            _exportStatusMessage ?? 'Copy an account summary',
+                        trailing: _isExportingData
+                            ? SizedBox.square(
+                                key: const Key('exportDataLoadingIndicator'),
+                                dimension: 17,
+                                child: CircularProgressIndicator(
+                                  value: .72,
+                                  strokeWidth: 1.8,
+                                  color: _accent,
+                                ),
+                              )
+                            : _exportStatusMessage != null
+                            ? Icon(
+                                key: const Key('exportDataStatusIndicator'),
+                                _exportStatusMessage ==
+                                        'Copied to device clipboard'
+                                    ? CupertinoIcons.check_mark_circled_solid
+                                    : CupertinoIcons
+                                          .exclamationmark_circle_fill,
+                                color:
+                                    _exportStatusMessage ==
+                                        'Copied to device clipboard'
+                                    ? _success
+                                    : _colors.error,
+                                size: 18,
+                              )
+                            : _chevron(),
+                        onTap: _isExportingData ? null : _exportData,
+                      ),
                   ]),
                   _sectionTitle(
                     'Legal & Support',

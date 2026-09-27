@@ -11,6 +11,11 @@ import 'data/mediary_repository.dart';
 import 'in_app_page.dart';
 import 'liquid_glass_back_button.dart';
 
+const _weeklyReportHorizontalInset = 16.0;
+const _weeklyReportNativeContentWidth = 520.0;
+const _weeklyReportDesktopContentWidth = 760.0;
+const _weeklyChartHorizontalPadding = 10.0;
+
 /// A weekly medication-adherence report that can be pushed as a standalone
 /// route.
 ///
@@ -177,8 +182,11 @@ class WeeklyReportScreen extends StatelessWidget {
     final missed = math.max(0, _scheduled - _taken);
     final viewportWidth = MediaQuery.sizeOf(context).width;
     final contentWidth = viewportWidth >= 900
-        ? responsiveContentWidth(context, nativeMaxWidth: 760)
-        : 520.0;
+        ? responsiveContentWidth(
+            context,
+            nativeMaxWidth: _weeklyReportDesktopContentWidth,
+          )
+        : _weeklyReportNativeContentWidth;
 
     return Scaffold(
       appBar: AppBar(
@@ -202,23 +210,30 @@ class WeeklyReportScreen extends StatelessWidget {
             constraints: BoxConstraints(maxWidth: contentWidth),
             child: ListView(
               key: const Key('weeklyReportScrollView'),
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+              padding: const EdgeInsets.fromLTRB(
+                _weeklyReportHorizontalInset,
+                12,
+                _weeklyReportHorizontalInset,
+                32,
+              ),
               children: [
                 Text(
                   'Week Ending ${_formatDate(ending)}',
+                  key: const Key('weeklyReportWeekEnding'),
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: colors.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 24),
                 Text(
                   'Adherence',
+                  key: const Key('weeklyReportAdherenceHeading'),
                   style: theme.textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.4,
                   ),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 16),
                 Row(
                   children: [
                     Semantics(
@@ -265,12 +280,13 @@ class WeeklyReportScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 40),
+                const SizedBox(height: 32),
                 _SectionHeading(
+                  key: const Key('weeklyReportDailyDosesHeading'),
                   title: 'Daily Doses',
                   detail: _missedDoseDescription,
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
                 Semantics(
                   key: const Key('dailyDoseChartSemantics'),
                   label: _dailyDoseSemantics,
@@ -291,12 +307,13 @@ class WeeklyReportScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 42),
+                const SizedBox(height: 32),
                 _SectionHeading(
+                  key: const Key('weeklyReportDoseTimingHeading'),
                   title: 'Dose Timing',
                   detail: '$_averageTiming Min Average',
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
                 Semantics(
                   label:
                       'Dose timing chart. Average timing was $_averageTiming minutes from schedule.',
@@ -316,22 +333,25 @@ class WeeklyReportScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 42),
+                const SizedBox(height: 32),
                 Text(
                   'Highlights',
+                  key: const Key('weeklyReportHighlightsHeading'),
                   style: theme.textTheme.titleLarge?.copyWith(
+                    fontSize: 18,
+                    height: 1.25,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.2,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 _HighlightRow(
                   icon: CupertinoIcons.check_mark_circled_solid,
                   iconColor: _green,
                   title: 'Strong Weekly Adherence',
                   detail: 'You completed $_adherence% of scheduled doses.',
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
                 _HighlightRow(
                   icon: CupertinoIcons.clock_fill,
                   iconColor: colors.primary,
@@ -339,7 +359,7 @@ class WeeklyReportScreen extends StatelessWidget {
                   detail:
                       'Doses were within $_averageTiming minutes of schedule on average.',
                 ),
-                const SizedBox(height: 42),
+                const SizedBox(height: 24),
                 _PrepareSummaryButton(
                   onPressed: () => _prepareSummary(context, ending),
                 ),
@@ -432,7 +452,7 @@ class _ReportMetric extends StatelessWidget {
 }
 
 class _SectionHeading extends StatelessWidget {
-  const _SectionHeading({required this.title, required this.detail});
+  const _SectionHeading({super.key, required this.title, required this.detail});
 
   final String title;
   final String detail;
@@ -441,22 +461,29 @@ class _SectionHeading extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
           child: Text(
             title,
             style: theme.textTheme.titleLarge?.copyWith(
+              fontSize: 18,
+              height: 1.25,
               fontWeight: FontWeight.w700,
               letterSpacing: -0.2,
             ),
           ),
         ),
-        Text(
-          detail,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w500,
+        Flexible(
+          child: Text(
+            detail,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.end,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       ],
@@ -586,11 +613,31 @@ class _PreparedSummaryPageState extends State<_PreparedSummaryPage> {
               final copyButton = OutlinedButton(
                 key: const Key('copySummaryAgainButton'),
                 onPressed: _copySummary,
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 child: Text(_hasCopied ? 'Copy Again' : 'Copy Summary'),
               );
               final doneButton = FilledButton(
                 key: const Key('closeSummaryButton'),
                 onPressed: () => Navigator.pop(context),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 child: const Text('Done'),
               );
               if (stackButtons) {
@@ -683,9 +730,11 @@ class _DailyDoseChartPainter extends CustomPainter {
     const labelGap = 10.0;
     const topPadding = 6.0;
     const segmentGap = 5.0;
+    const chartHorizontalPadding = _weeklyChartHorizontalPadding;
     final plotBottom = size.height - labelBandHeight - labelGap;
     final chartHeight = math.max(0.0, plotBottom - topPadding);
-    final columnWidth = size.width / labels.length;
+    final chartWidth = size.width - chartHorizontalPadding * 2;
+    final columnWidth = chartWidth / labels.length;
     final barWidth = math.min(22.0, columnWidth * 0.4);
     final maxScheduled = math.max(1, scheduled.fold<int>(0, math.max));
 
@@ -693,7 +742,9 @@ class _DailyDoseChartPainter extends CustomPainter {
     final completedPaint = Paint()..color = barColor;
 
     for (var index = 0; index < labels.length; index++) {
-      final x = columnWidth * index + columnWidth / 2;
+      final x = labels.length == 1
+          ? size.width / 2
+          : chartHorizontalPadding + chartWidth * index / (labels.length - 1);
       final scheduledCount = math.max(0, scheduled[index]);
       final completedCount = math.min(
         math.max(0, completed[index]),
@@ -803,7 +854,7 @@ class _TimingChartPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    const horizontalPadding = 10.0;
+    const horizontalPadding = _weeklyChartHorizontalPadding;
     const topPadding = 10.0;
     const labelHeight = 30.0;
     final chartHeight = size.height - topPadding - labelHeight;

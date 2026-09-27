@@ -39,6 +39,7 @@ class MediaryPreferences {
     this.reminderSound = 'Gentle Chime',
     this.language = 'English',
     this.units = 'Metric',
+    this.timeFormat = '12-hour',
   });
 
   final String theme;
@@ -48,6 +49,7 @@ class MediaryPreferences {
   final String reminderSound;
   final String language;
   final String units;
+  final String timeFormat;
 
   factory MediaryPreferences.fromMap(Map<String, dynamic>? data) {
     return MediaryPreferences(
@@ -58,6 +60,7 @@ class MediaryPreferences {
       reminderSound: _string(data?['reminderSound'], 'Gentle Chime'),
       language: _string(data?['language'], 'English'),
       units: _string(data?['units'], 'Metric'),
+      timeFormat: _string(data?['timeFormat'], '12-hour'),
     );
   }
 }
@@ -227,7 +230,7 @@ class ScheduleRecord {
       frequency: _string(data['frequency'], 'once'),
       daysOfWeek: _ints(data['daysOfWeek']),
       startDate: _string(data['startDate']),
-      endDate: data['endDate'] as String?,
+      endDate: _nullableString(data['endDate']),
       timezone: _string(data['timezone'], 'UTC'),
       instructions: _string(data['instructions']),
       active: _bool(data['active'], true),
