@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -48,6 +47,7 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
   Timer? _searchDebounce;
   var _searchRequest = 0;
   var _isSearching = false;
+  var _hasSearchQuery = false;
   String? _searchError;
   List<MedicationCatalogRecord> _results = const [];
   bool _savedOnly = false;
@@ -175,13 +175,23 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
     _searchDebounce?.cancel();
     final request = ++_searchRequest;
     final query = value.trim();
-    setState(() {
-      _searchError = null;
-      _results = const [];
-      _isSearching = query.length >= 2;
-    });
+    final hasQuery = query.isNotEmpty;
+    final isSearching = query.length >= 2;
+    final shouldRefreshResults =
+        _hasSearchQuery != hasQuery ||
+        _isSearching != isSearching ||
+        _results.isNotEmpty ||
+        _searchError != null;
+    _hasSearchQuery = hasQuery;
+    if (shouldRefreshResults) {
+      setState(() {
+        _searchError = null;
+        _results = const [];
+        _isSearching = isSearching;
+      });
+    }
     if (query.length < 2) return;
-    _searchDebounce = Timer(const Duration(milliseconds: 300), () async {
+    _searchDebounce = Timer(const Duration(milliseconds: 180), () async {
       try {
         final page = await client.search(query);
         if (!mounted || request != _searchRequest) return;
@@ -581,8 +591,8 @@ class _LibraryGlassSurface extends StatelessWidget {
     final glassTint = primary.withValues(alpha: dark ? .045 : .025);
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+      child: WebAwareBlur(
+        sigma: 18,
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: Color.alphaBlend(glassTint, glassBase),

@@ -1,6 +1,17 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+abstract final class AppBreakpoints {
+  static const mobile = 600.0;
+  static const desktop = 900.0;
+
+  static bool isMobile(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < mobile;
+
+  static bool isDesktop(BuildContext context) =>
+      MediaQuery.sizeOf(context).width >= desktop;
+}
+
 /// Returns the content width used by a destination page.
 ///
 /// Native screens keep their deliberately narrow reading width. The web app

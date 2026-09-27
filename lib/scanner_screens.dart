@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'app_interactions.dart';
@@ -94,7 +93,6 @@ class MedicationScannerScreen extends StatefulWidget {
     required this.onRequestAccess,
     required this.onCapture,
     this.onChoosePhoto,
-    this.onChoosePhotoOptions,
     this.onUseOtherScanOptions,
     this.onOpenSettings,
     this.isActive = true,
@@ -105,7 +103,6 @@ class MedicationScannerScreen extends StatefulWidget {
   final Future<void> Function() onRequestAccess;
   final Future<void> Function() onCapture;
   final Future<void> Function()? onChoosePhoto;
-  final Future<void> Function()? onChoosePhotoOptions;
   final Future<void> Function()? onUseOtherScanOptions;
   final Future<bool> Function()? onOpenSettings;
   final bool isActive;
@@ -124,7 +121,6 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
     if (_isAnalyzing) return;
     setState(() => _isAnalyzing = true);
     unawaited(AppHaptics.primaryAction());
-    await Future<void>.delayed(const Duration(milliseconds: 850));
     if (!mounted) return;
     try {
       await widget.onCapture();
@@ -143,9 +139,7 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
     try {
       // Keep the file chooser in the original pointer-activation turn. Web
       // browsers reject a file dialog opened after an asynchronous delay.
-      await (widget.onChoosePhotoOptions ??
-          widget.onChoosePhoto ??
-          widget.onCapture)();
+      await (widget.onChoosePhoto ?? widget.onCapture)();
     } finally {
       if (mounted) setState(() => _isAnalyzing = false);
     }
@@ -467,7 +461,8 @@ class _CaptureSideControl extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final displayLabel = kIsWeb ? webLabel ?? label : label;
+    final isWide = !AppBreakpoints.isMobile(context);
+    final displayLabel = webLabel ?? label;
     return Tooltip(
       message: label,
       child: Semantics(
@@ -476,28 +471,28 @@ class _CaptureSideControl extends StatelessWidget {
         selected: isSelected,
         label: label,
         child: ResponsiveCupertinoButton(
-          padding: const EdgeInsets.all(8),
-          minimumSize: Size(kIsWeb ? 0 : 48, kIsWeb ? 64 : 48),
+          padding: EdgeInsets.all(isWide ? 8 : 6),
+          minimumSize: Size(isWide ? 0 : 58, isWide ? 64 : 58),
           onPressed: enabled ? onPressed : null,
           semanticLabel: label,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 160),
-            width: kIsWeb ? double.infinity : 46,
-            height: kIsWeb ? 60 : 46,
-            padding: EdgeInsets.symmetric(horizontal: kIsWeb ? 18 : 0),
+            width: isWide ? double.infinity : 58,
+            height: isWide ? 64 : 58,
+            padding: EdgeInsets.symmetric(horizontal: isWide ? 18 : 0),
             decoration: BoxDecoration(
               color: isSelected
                   ? colors.primary
-                  : Colors.white.withValues(alpha: .14),
-              borderRadius: BorderRadius.circular(kIsWeb ? 16 : 99),
+                  : Colors.white.withValues(alpha: isWide ? .18 : .16),
+              borderRadius: BorderRadius.circular(isWide ? 18 : 99),
               border: Border.all(
-                color: Colors.white.withValues(alpha: isSelected ? .38 : .14),
-                width: .7,
+                color: Colors.white.withValues(alpha: isSelected ? .55 : .28),
+                width: isWide ? 1 : 1.2,
               ),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: kIsWeb ? MainAxisSize.max : MainAxisSize.min,
+              mainAxisSize: isWide ? MainAxisSize.max : MainAxisSize.min,
               children: [
                 Icon(
                   icon,
@@ -506,9 +501,9 @@ class _CaptureSideControl extends StatelessWidget {
                             ? colors.onPrimary
                             : Colors.white
                       : Colors.white.withValues(alpha: .42),
-                  size: kIsWeb ? 23 : 21,
+                  size: isWide ? 23 : 24,
                 ),
-                if (kIsWeb) ...[
+                if (isWide) ...[
                   const SizedBox(width: 10),
                   Flexible(
                     child: Text(
@@ -553,6 +548,7 @@ class _ScannerControlBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isWide = !AppBreakpoints.isMobile(context);
     final controls = Row(
       children: [
         Expanded(
@@ -565,9 +561,9 @@ class _ScannerControlBar extends StatelessWidget {
             enabled: !isAnalyzing,
           ),
         ),
-        SizedBox(width: kIsWeb ? 16 : 0),
+        SizedBox(width: isWide ? 16 : 10),
         _ScannerCaptureButton(isAnalyzing: isAnalyzing, onPressed: onCapture),
-        SizedBox(width: kIsWeb ? 16 : 0),
+        SizedBox(width: isWide ? 16 : 10),
         Expanded(
           child: _CaptureSideControl(
             key: const Key('scannerBarcodeButton'),
@@ -584,11 +580,11 @@ class _ScannerControlBar extends StatelessWidget {
 
     final constrainedControls = Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 900),
+        constraints: const BoxConstraints(maxWidth: 760),
         child: SizedBox(width: double.infinity, child: controls),
       ),
     );
-    return kIsWeb ? constrainedControls : controls;
+    return isWide ? constrainedControls : controls;
   }
 }
 
@@ -603,7 +599,8 @@ class _ScannerCaptureButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = isAnalyzing ? 'Analyzing' : 'Capture';
+    final isWide = !AppBreakpoints.isMobile(context);
+    final diameter = isWide ? 76.0 : 78.0;
     return Tooltip(
       message: isAnalyzing ? 'Analyzing medication' : 'Capture medication',
       child: Semantics(
@@ -615,51 +612,27 @@ class _ScannerCaptureButton extends StatelessWidget {
           onPressed: isAnalyzing ? null : onPressed,
           busy: isAnalyzing,
           semanticLabel: 'Capture medication',
-          borderRadius: BorderRadius.circular(kIsWeb ? 16 : 99),
+          borderRadius: BorderRadius.circular(99),
           hoverScale: 1.04,
           pressedScale: .92,
           hoverOffset: Offset.zero,
           haptic: AppHapticKind.primaryAction,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 120),
-            width: kIsWeb ? 176 : 70,
-            height: kIsWeb ? 60 : 70,
-            padding: EdgeInsets.symmetric(horizontal: kIsWeb ? 20 : 5),
+            width: diameter,
+            height: diameter,
             decoration: BoxDecoration(
-              color: kIsWeb
-                  ? Colors.white
-                  : Colors.white.withValues(alpha: .12),
-              borderRadius: BorderRadius.circular(kIsWeb ? 16 : 99),
-              border: kIsWeb ? null : Border.all(color: Colors.white, width: 4),
+              color: isAnalyzing
+                  ? Colors.white.withValues(alpha: .58)
+                  : Colors.white,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: isWide ? 1 : 3),
             ),
-            child: kIsWeb
-                ? Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        CupertinoIcons.camera,
-                        color: Colors.black,
-                        size: 23,
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        label,
-                        style: const TextStyle(
-                          color: Colors.black,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  )
-                : DecoratedBox(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: isAnalyzing
-                          ? Colors.white.withValues(alpha: .65)
-                          : Colors.white,
-                    ),
-                  ),
+            child: Icon(
+              CupertinoIcons.camera_fill,
+              color: isAnalyzing ? Colors.black54 : Colors.black,
+              size: isWide ? 25 : 27,
+            ),
           ),
         ),
       ),
@@ -1152,6 +1125,7 @@ class _ResultHero extends StatelessWidget {
                     child: Image.network(
                       scanResult!.imageUrl,
                       fit: BoxFit.cover,
+                      semanticLabel: 'Medication scan preview',
                       cacheWidth: 328,
                       cacheHeight: 328,
                       filterQuality: FilterQuality.medium,
@@ -1168,6 +1142,7 @@ class _ResultHero extends StatelessWidget {
                     child: Image.memory(
                       scanResult!.imageBytes!,
                       fit: BoxFit.cover,
+                      semanticLabel: 'Medication scan preview',
                       cacheWidth: 328,
                       cacheHeight: 328,
                       filterQuality: FilterQuality.medium,
@@ -1184,6 +1159,7 @@ class _ResultHero extends StatelessWidget {
                     child: Image.asset(
                       'assets/images/medication_auth_background.jpg',
                       fit: BoxFit.cover,
+                      semanticLabel: 'Medication scan preview placeholder',
                       cacheWidth: 328,
                       filterQuality: FilterQuality.medium,
                       errorBuilder: (context, error, stackTrace) =>

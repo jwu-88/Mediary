@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Mediary</title>
+  <desc id="desc">Identify, organize, and track medications with Mediary.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#07111D"/>
+      <stop offset="1" stop-color="#173D67"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" rx="42" fill="url(#bg)"/>
+  <circle cx="180" cy="315" r="86" fill="#0A84FF" opacity=".22"/>
+  <path d="M143 315c0-28 22-50 50-50s50 22 50 50-22 50-50 50-50-22-50-50Zm50-27a27 27 0 1 0 0 54 27 27 0 0 0 0-54Z" fill="#F2F2F7"/>
+  <text x="300" y="300" fill="#F2F2F7" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="84" font-weight="700">Mediary</text>
+  <text x="306" y="370" fill="#B8C7D9" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="32">Medication clarity, every day.</text>
+</svg>

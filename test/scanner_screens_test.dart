@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/data/medication_catalog_client.dart';
@@ -40,10 +39,14 @@ void main() {
     expect(find.byKey(const Key('scannerScanFrame')), findsNothing);
     expect(find.byKey(const Key('closeScannerButton')), findsNothing);
     expect(find.byKey(const Key('pasteScannerImageButton')), findsNothing);
-    if (kIsWeb) {
+    expect(find.text('Capture'), findsNothing);
+    expect(find.text('Analyzing'), findsNothing);
+    if (tester.view.physicalSize.width >= 600) {
       expect(find.text('Choose Photo'), findsOneWidget);
-      expect(find.text('Capture'), findsOneWidget);
       expect(find.text('Scan Barcode'), findsOneWidget);
+    } else {
+      expect(find.text('Choose Photo'), findsNothing);
+      expect(find.text('Scan Barcode'), findsNothing);
     }
 
     final cameraSurface = tester.widget<DecoratedBox>(
@@ -159,12 +162,11 @@ void main() {
     expect(find.text('SET YOUR SCHEDULE'), findsOneWidget);
   });
 
-  testWidgets('choose photo uses the gallery callback instead of capture', (
+  testWidgets('choose photo opens the gallery directly instead of capture', (
     tester,
   ) async {
     var captures = 0;
     var photoSelections = 0;
-    var photoSourcePrompts = 0;
     await tester.pumpWidget(
       MaterialApp(
         home: MedicationScannerScreen(
@@ -176,9 +178,6 @@ void main() {
           onChoosePhoto: () async {
             photoSelections++;
           },
-          onChoosePhotoOptions: () async {
-            photoSourcePrompts++;
-          },
           bottomNavigationInset: 0,
         ),
       ),
@@ -187,9 +186,8 @@ void main() {
     await tester.tap(find.byKey(const Key('openScannerPhotosButton')));
     await tester.pump(const Duration(milliseconds: 600));
 
-    expect(photoSelections, 0);
+    expect(photoSelections, 1);
     expect(captures, 0);
-    expect(photoSourcePrompts, 1);
   });
 
   testWidgets('camera permission view offers alternate scan options', (

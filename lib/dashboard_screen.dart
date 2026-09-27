@@ -452,6 +452,7 @@ class _DashboardProfilePage extends StatelessWidget {
                       : Image(
                           image: profileImage,
                           fit: BoxFit.cover,
+                          semanticLabel: '$name profile photo',
                           errorBuilder: (_, _, _) => fallback,
                         ),
                 ),
@@ -652,6 +653,7 @@ class _ProfileAvatarState extends State<_ProfileAvatar> {
             : Image(
                 image: profileImage,
                 fit: BoxFit.cover,
+                semanticLabel: '${widget.initials} profile photo',
                 errorBuilder: (context, error, stackTrace) => fallback,
               ),
       ),

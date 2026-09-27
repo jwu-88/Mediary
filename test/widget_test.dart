@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mediary/app_theme.dart';
@@ -568,9 +569,19 @@ void main() {
     },
   );
 
-  testWidgets('denied camera access offers a centered fallback dialog', (
+  testWidgets('denied camera access opens the gallery from its fallback', (
     tester,
   ) async {
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/image_picker'),
+      (call) async => null,
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/image_picker'),
+        null,
+      );
+    });
     tester.view.physicalSize = const Size(402, 874);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -608,19 +619,29 @@ void main() {
       find.byKey(const Key('cameraAlternativeChoosePhotoButton')),
     );
     await tester.pump();
-    expect(find.text('Choose a medication image'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('photoSourceCancelButton')));
-    await tester.pump();
-    expect(find.text('Camera access unavailable'), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('cameraAlternativeCancelButton')));
-    await tester.pump();
-    expect(find.byKey(const Key('cameraNoAccessButton')), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Choose a medication image'), findsNothing);
+    expect(find.byKey(const Key('photoSourceFileButton')), findsNothing);
+    expect(find.text('Camera access unavailable'), findsNothing);
   });
 
-  testWidgets('choose photo opens file and clipboard source options', (
+  testWidgets('choose photo opens the native gallery picker directly', (
     tester,
   ) async {
+    var pickerRequests = 0;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/image_picker'),
+      (call) async {
+        pickerRequests++;
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/image_picker'),
+        null,
+      );
+    });
     tester.view.physicalSize = const Size(402, 874);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -641,25 +662,11 @@ void main() {
     await tester.tap(find.byKey(const Key('openScannerPhotosButton')));
     await tester.pump();
 
-    expect(find.text('Choose a medication image'), findsOneWidget);
-    expect(find.byKey(const Key('photoSourceFileButton')), findsOneWidget);
-    expect(find.byKey(const Key('photoSourceClipboardButton')), findsOneWidget);
-    expect(
-      tester.widget<OutlinedButton>(
-        find.byKey(const Key('photoSourceFileButton')),
-      ),
-      isA<OutlinedButton>(),
-    );
-    expect(
-      tester.widget<OutlinedButton>(
-        find.byKey(const Key('photoSourceClipboardButton')),
-      ),
-      isA<OutlinedButton>(),
-    );
-
-    await tester.tap(find.byKey(const Key('photoSourceCancelButton')));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(pickerRequests, 1);
     expect(find.text('Choose a medication image'), findsNothing);
+    expect(find.byKey(const Key('photoSourceFileButton')), findsNothing);
+    expect(find.byKey(const Key('photoSourceClipboardButton')), findsNothing);
   });
 
   testWidgets('library opens the reference medication detail screen', (

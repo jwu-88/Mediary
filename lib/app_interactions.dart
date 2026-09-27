@@ -6,11 +6,22 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// A backdrop blur that is skipped on web.
+/// Whether a backdrop blur is safe for the current rendering target.
+///
+/// iOS can make a blurred surface over a scrolling or frequently updating
+/// screen fall back to an expensive offscreen render pass. The tinted glass
+/// surfaces remain visually consistent without the blur, so skip that pass on
+/// iOS to keep typing, scrolling, and navigation responsive.
+bool shouldUseBackdropBlur(BuildContext context) {
+  if (kIsWeb) return false;
+  return defaultTargetPlatform != TargetPlatform.iOS;
+}
+
+/// A backdrop blur that is skipped on web and on iOS.
 ///
 /// `BackdropFilter` forces a `saveLayer` + backdrop read every frame. On the
-/// CanvasKit/Skwasm web renderer this is a major source of jank, so web falls
-/// back to the surrounding tint alone (matching the native design).
+/// CanvasKit/Skwasm web renderer and on iOS scrolling surfaces this is a major
+/// source of jank, so those targets fall back to the surrounding tint alone.
 class WebAwareBlur extends StatelessWidget {
   const WebAwareBlur({super.key, required this.sigma, required this.child});
 
@@ -19,7 +30,7 @@ class WebAwareBlur extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (kIsWeb) return child;
+    if (!shouldUseBackdropBlur(context)) return child;
     return BackdropFilter(
       filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
       child: child,
@@ -325,7 +336,12 @@ class _AppPressableState extends State<AppPressable> {
 
     final mediaQuery = MediaQuery.maybeOf(context);
     final reduceMotion = mediaQuery?.disableAnimations ?? false;
-    final duration = reduceMotion ? Duration.zero : widget.motionDuration;
+    final isIOS = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+    final duration = reduceMotion
+        ? Duration.zero
+        : isIOS && widget.motionDuration > const Duration(milliseconds: 100)
+        ? const Duration(milliseconds: 100)
+        : widget.motionDuration;
     final colorScheme = Theme.of(context).colorScheme;
     final highContrast = mediaQuery?.highContrast ?? false;
     final hoverOverlay =
@@ -349,8 +365,6 @@ class _AppPressableState extends State<AppPressable> {
     // translating a full-width surface can paint into adjacent UI, especially
     // beside the expanding web sidebar. Keep motion for the intentional press
     // response and use the overlay above for hover feedback instead.
-    final scale = _pressed ? widget.pressedScale : 1.0;
-    final offset = Offset.zero;
     final effectiveCursor = !_isInteractive
         ? SystemMouseCursors.forbidden
         : widget.mouseCursor ?? SystemMouseCursors.click;
@@ -388,21 +402,18 @@ class _AppPressableState extends State<AppPressable> {
       child: content,
     );
 
-    content = TweenAnimationBuilder<Offset>(
-      key: const Key('appPressableTranslation'),
-      duration: duration,
-      curve: widget.motionCurve,
-      tween: Tween(begin: Offset.zero, end: offset),
-      builder: (context, value, child) =>
-          Transform.translate(offset: value, child: child),
-      child: AnimatedScale(
+    // iOS gets an overlay-only press response. Avoiding a transform layer on
+    // every tappable surface keeps complex cards and scrolling lists cheap to
+    // composite while preserving immediate visual feedback.
+    if (!isIOS) {
+      content = AnimatedScale(
         key: const Key('appPressableScale'),
-        scale: scale,
+        scale: _pressed ? widget.pressedScale : 1.0,
         duration: duration,
         curve: widget.motionCurve,
         child: content,
-      ),
-    );
+      );
+    }
 
     content = FocusableActionDetector(
       enabled: _isInteractive,

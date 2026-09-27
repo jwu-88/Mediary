@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import 'app_interactions.dart';
@@ -46,8 +44,8 @@ class LiquidGlassSwitch extends StatelessWidget {
           height: 32,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(99),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: WebAwareBlur(
+              sigma: 18,
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(99),

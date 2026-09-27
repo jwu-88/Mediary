@@ -9,7 +9,9 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'add_medication_screen.dart';
+import 'app_legal.dart';
 import 'app_interactions.dart';
+import 'app_layout.dart';
 import 'app_theme.dart';
 import 'calendar_screen.dart';
 import 'dashboard_screen.dart';
@@ -27,6 +29,7 @@ import 'profile_screen.dart';
 import 'scanner_screens.dart';
 import 'settings_screen.dart';
 import 'web_camera.dart';
+import 'web_page_metadata.dart';
 import 'web_navigation_sidebar.dart';
 import 'weekly_report_screen.dart';
 import 'text_formatting.dart';
@@ -196,6 +199,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   // ThemeData trees on every frame of the theme transition.
   late ThemeData _lightTheme = AppTheme.lightFor(_accentColor);
   late ThemeData _darkTheme = AppTheme.darkFor(_accentColor);
+  bool _cookieBannerVisible = kIsWeb;
 
   void _setAccentColor(AppAccentColor accent) {
     if (accent == _accentColor) return;
@@ -241,8 +245,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           ? Duration.zero
           : AppTheme.transitionDuration,
       themeAnimationCurve: AppTheme.transitionCurve,
-      builder: (context, child) =>
-          AppThemeTransitionSurface(child: child ?? const SizedBox.shrink()),
+      builder: (context, child) {
+        final app = AppThemeTransitionSurface(
+          child: child ?? const SizedBox.shrink(),
+        );
+        if (!_cookieBannerVisible) return app;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            app,
+            CookieBanner(
+              onDismiss: () => setState(() => _cookieBannerVisible = false),
+            ),
+          ],
+        );
+      },
       home: AuthGate(
         auth: _auth,
         appearanceMode: _appearanceMode,
@@ -353,8 +370,11 @@ class _AuthGateState extends State<AuthGate> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+          return const WebPageMetadata(
+            title: 'Mediary',
+            description:
+                'Identify, organize, and track medications with Mediary.',
+            child: Scaffold(body: Center(child: CircularProgressIndicator())),
           );
         }
 
@@ -363,19 +383,23 @@ class _AuthGateState extends State<AuthGate> {
           _returningUser = true;
           _syncDataStore(user);
           if (_requiresEmailVerification(user)) {
-            return EmailVerificationScreen(
-              email: user.email ?? 'your email address',
-              onResend: user.sendEmailVerification,
-              onRefresh: () async {
-                await user.reload();
-                final refreshed = widget.auth.currentUser;
-                final verified = refreshed?.emailVerified ?? false;
-                if (verified && mounted) {
-                  setState(() => _confirmedVerifiedUid = refreshed!.uid);
-                }
-                return verified;
-              },
-              onSignOut: () => signOut(widget.auth),
+            return WebPageMetadata(
+              title: 'Verify Your Email — Mediary',
+              description: 'Verify your email to continue using Mediary.',
+              child: EmailVerificationScreen(
+                email: user.email ?? 'your email address',
+                onResend: user.sendEmailVerification,
+                onRefresh: () async {
+                  await user.reload();
+                  final refreshed = widget.auth.currentUser;
+                  final verified = refreshed?.emailVerified ?? false;
+                  if (verified && mounted) {
+                    setState(() => _confirmedVerifiedUid = refreshed!.uid);
+                  }
+                  return verified;
+                },
+                onSignOut: () => signOut(widget.auth),
+              ),
             );
           }
           return AuthenticatedHome(
@@ -395,40 +419,48 @@ class _AuthGateState extends State<AuthGate> {
 
         _confirmedVerifiedUid = null;
 
-        return AuthForm(
-          initialCreateAccount: !_returningUser,
-          onOpenSettings: () => _openSettings(context),
-          onGoogleSignIn: () => signInWithGoogle(widget.auth),
-          onSubmit:
-              ({
-                required email,
-                required password,
-                required createAccount,
-              }) async {
-                if (createAccount) {
-                  final credential = await widget.auth
-                      .createUserWithEmailAndPassword(
-                        email: email,
-                        password: password,
-                      );
-                  final newUser = credential.user;
-                  if (newUser != null && !newUser.emailVerified) {
-                    try {
-                      await newUser.sendEmailVerification();
-                    } on FirebaseAuthException {
-                      // Account creation succeeded. The verification page lets
-                      // the user safely retry delivery without creating a
-                      // duplicate account.
+        return WebPageMetadata(
+          title: _returningUser
+              ? 'Sign in — Mediary'
+              : 'Create an Account — Mediary',
+          description: _returningUser
+              ? 'Sign in to manage your Mediary medication schedule.'
+              : 'Create a Mediary account to organize and track medications.',
+          child: AuthForm(
+            initialCreateAccount: !_returningUser,
+            onOpenSettings: () => _openSettings(context),
+            onGoogleSignIn: () => signInWithGoogle(widget.auth),
+            onSubmit:
+                ({
+                  required email,
+                  required password,
+                  required createAccount,
+                }) async {
+                  if (createAccount) {
+                    final credential = await widget.auth
+                        .createUserWithEmailAndPassword(
+                          email: email,
+                          password: password,
+                        );
+                    final newUser = credential.user;
+                    if (newUser != null && !newUser.emailVerified) {
+                      try {
+                        await newUser.sendEmailVerification();
+                      } on FirebaseAuthException {
+                        // Account creation succeeded. The verification page lets
+                        // the user safely retry delivery without creating a
+                        // duplicate account.
+                      }
                     }
+                    return;
                   }
-                  return;
-                }
 
-                await widget.auth.signInWithEmailAndPassword(
-                  email: email,
-                  password: password,
-                );
-              },
+                  await widget.auth.signInWithEmailAndPassword(
+                    email: email,
+                    password: password,
+                  );
+                },
+          ),
         );
       },
     );
@@ -585,6 +617,11 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                   Text(
                     'Verify Your Email',
                     style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Thank you for creating your Mediary account.',
+                    key: Key('thankYouMessage'),
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -892,6 +929,7 @@ class _AuthFormState extends State<AuthForm> {
             'assets/images/medication_auth_background.jpg',
             key: const Key('authMedicationBackground'),
             fit: BoxFit.cover,
+            excludeFromSemantics: true,
           ),
           DecoratedBox(
             decoration: BoxDecoration(
@@ -1112,6 +1150,36 @@ class _AuthFormState extends State<AuthForm> {
                                       : 'Need an account? Create one',
                                 ),
                               ),
+                              const SizedBox(height: 4),
+                              Wrap(
+                                alignment: WrapAlignment.center,
+                                spacing: 4,
+                                children: [
+                                  TextButton(
+                                    key: const Key('authPrivacyPolicyLink'),
+                                    onPressed: _isBusy
+                                        ? null
+                                        : () => Navigator.of(context).push(
+                                            MaterialPageRoute<void>(
+                                              builder: (_) =>
+                                                  const PrivacyPolicyPage(),
+                                            ),
+                                          ),
+                                    child: const Text('Privacy'),
+                                  ),
+                                  TextButton(
+                                    key: const Key('authTermsLink'),
+                                    onPressed: _isBusy
+                                        ? null
+                                        : () => Navigator.of(context).push(
+                                            MaterialPageRoute<void>(
+                                              builder: (_) => const TermsPage(),
+                                            ),
+                                          ),
+                                    child: const Text('Terms'),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                         ),
@@ -1177,8 +1245,6 @@ class AuthenticatedHome extends StatefulWidget {
 }
 
 enum _ScanAlternative { choosePhoto, pasteImage }
-
-enum _PhotoSource { file, clipboard }
 
 class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   late final MedicationCatalogClient _catalogClient =
@@ -1417,52 +1483,8 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     if (!mounted) return;
     switch (choice) {
       case _ScanAlternative.choosePhoto:
-        // Keep the same source chooser whether the user starts from the
-        // camera controls or from the camera-permission fallback dialog.
-        await _showPhotoSourceOptions();
-      case _ScanAlternative.pasteImage:
-        await _pasteMedicationPhoto();
-      case null:
-        break;
-    }
-  }
-
-  Future<void> _showPhotoSourceOptions() async {
-    if (!mounted) return;
-    final source = await showDialog<_PhotoSource>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Choose a medication image'),
-        content: const Text(
-          'Select a photo from your files or paste an image that is already '
-          'on your clipboard.',
-        ),
-        actions: [
-          TextButton(
-            key: const Key('photoSourceCancelButton'),
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
-          ),
-          OutlinedButton(
-            key: const Key('photoSourceFileButton'),
-            onPressed: () => Navigator.of(dialogContext).pop(_PhotoSource.file),
-            child: const Text('Choose from files'),
-          ),
-          OutlinedButton(
-            key: const Key('photoSourceClipboardButton'),
-            onPressed: () =>
-                Navigator.of(dialogContext).pop(_PhotoSource.clipboard),
-            child: const Text('Paste from clipboard'),
-          ),
-        ],
-      ),
-    );
-    if (!mounted) return;
-    switch (source) {
-      case _PhotoSource.file:
         await _chooseMedicationPhoto();
-      case _PhotoSource.clipboard:
+      case _ScanAlternative.pasteImage:
         await _pasteMedicationPhoto();
       case null:
         break;
@@ -1744,7 +1766,6 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       onUseOtherScanOptions: _showCameraAlternatives,
       onCapture: _runMedicationScan,
       onChoosePhoto: _chooseMedicationPhoto,
-      onChoosePhotoOptions: _showPhotoSourceOptions,
       onOpenSettings: widget.onOpenCameraSettings ?? openAppSettings,
       isActive: _selectedIndex == 2,
       bottomNavigationInset: _usesSidebarNavigation ? 16 : 112,
@@ -2356,6 +2377,39 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     return '${date.year}-$month-$day';
   }
 
+  ({String title, String description}) get _webPageMetadata {
+    if (_showScanResult) {
+      return (
+        title: 'Review Medication — Mediary',
+        description: 'Review and schedule a medication scan in Mediary.',
+      );
+    }
+    return switch (_selectedIndex) {
+      1 => (
+        title: 'Calendar — Mediary',
+        description: 'Plan medication doses and keep your schedule organized.',
+      ),
+      2 => (
+        title: 'Scan Medication — Mediary',
+        description: 'Scan or choose a medication image for review in Mediary.',
+      ),
+      3 => (
+        title: 'Medication Library — Mediary',
+        description: 'Explore medication reference information in Mediary.',
+      ),
+      4 => (
+        title: 'Settings — Mediary',
+        description:
+            'Manage Mediary preferences, privacy, and account settings.',
+      ),
+      _ => (
+        title: 'Dashboard — Mediary',
+        description:
+            'Track today’s medications and weekly progress with Mediary.',
+      ),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     // Only build a destination once it has been visited. IndexedStack keeps
@@ -2366,19 +2420,26 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
         ? build(context)
         : const SizedBox.shrink();
 
+    Widget activePage(int index, Widget page) {
+      return RepaintBoundary(
+        child: TickerMode(enabled: _selectedIndex == index, child: page),
+      );
+    }
+
     final pages = IndexedStack(
       index: _selectedIndex,
       children: [
-        lazy(0, _buildDashboard),
-        lazy(1, _buildCalendar),
-        TickerMode(enabled: _selectedIndex == 2, child: lazy(2, _buildScanner)),
-        lazy(3, _buildLibrary),
-        lazy(4, _buildSettings),
+        activePage(0, lazy(0, _buildDashboard)),
+        activePage(1, lazy(1, _buildCalendar)),
+        activePage(2, lazy(2, _buildScanner)),
+        activePage(3, lazy(3, _buildLibrary)),
+        activePage(4, lazy(4, _buildSettings)),
       ],
     );
 
+    late Widget appShell;
     if (_usesSidebarNavigation) {
-      final desktopWeb = kIsWeb && MediaQuery.sizeOf(context).width >= 900;
+      final desktopWeb = kIsWeb && AppBreakpoints.isDesktop(context);
       final shell = Scaffold(
         body: desktopWeb
             ? Stack(
@@ -2414,26 +2475,34 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
                 ],
               ),
       );
-      if (!desktopWeb) return _withWebMedicationNotifications(shell);
-      final mediaQuery = MediaQuery.of(context);
-      final baseTextSize = mediaQuery.textScaler.scale(1);
-      return MediaQuery(
-        data: mediaQuery.copyWith(
-          textScaler: TextScaler.linear(baseTextSize * 1.22),
-        ),
-        child: _withWebMedicationNotifications(shell),
-      );
-    }
-
-    return _withWebMedicationNotifications(
-      Scaffold(
+      if (!desktopWeb) {
+        appShell = shell;
+      } else {
+        final mediaQuery = MediaQuery.of(context);
+        final baseTextSize = mediaQuery.textScaler.scale(1);
+        appShell = MediaQuery(
+          data: mediaQuery.copyWith(
+            textScaler: TextScaler.linear(baseTextSize * 1.22),
+          ),
+          child: shell,
+        );
+      }
+    } else {
+      appShell = Scaffold(
         extendBody: true,
         body: pages,
         bottomNavigationBar: LiquidGlassTabBar(
           currentIndex: _selectedIndex,
           onTap: _selectDestination,
         ),
-      ),
+      );
+    }
+
+    final metadata = _webPageMetadata;
+    return WebPageMetadata(
+      title: metadata.title,
+      description: metadata.description,
+      child: _withWebMedicationNotifications(appShell),
     );
   }
 

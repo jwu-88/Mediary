@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://cacapp-3a771.web.app/sitemap.xml
