@@ -1,7 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:timezone/data/latest_all.dart' as tz_data;
+import 'package:timezone/timezone.dart' as tz;
 
 import 'mediary_models.dart';
+import 'schedule_occurrence_generator.dart';
+import '../time_formatting.dart';
 
 class ProfileWrite {
   const ProfileWrite({
@@ -162,6 +166,14 @@ class MediaryRepository {
 
   final FirebaseFirestore firestore;
   final FirebaseAuth auth;
+  static const _validFrequencies = {
+    'once',
+    'daily',
+    'weekly',
+    'every8Hours',
+    'every12Hours',
+    'asNeeded',
+  };
 
   String get uid {
     final currentUid = auth.currentUser?.uid;
@@ -232,6 +244,9 @@ class MediaryRepository {
           ? preferences['language']
           : 'English',
       'units': preferences['units'] is String ? preferences['units'] : 'Metric',
+      'timeFormat': ['12-hour', '24-hour'].contains(preferences['timeFormat'])
+          ? preferences['timeFormat']
+          : '12-hour',
     };
     await ref.set({
       'email': user.email ?? (data['email'] is String ? data['email'] : ''),
@@ -246,7 +261,11 @@ class MediaryRepository {
       'photoUrl': existingPhotoUrl.isNotEmpty
           ? existingPhotoUrl
           : (user.photoURL ?? ''),
-      'timezone': data['timezone'] is String ? data['timezone'] : 'UTC',
+      'timezone':
+          data['timezone'] is String &&
+              (data['timezone'] as String).trim().isNotEmpty
+          ? data['timezone']
+          : deviceScheduleTimezone(),
       'preferences': normalizedPreferences,
       'createdAt': data['createdAt'] is Timestamp
           ? data['createdAt']
@@ -320,6 +339,7 @@ class MediaryRepository {
       'reminderSound',
       'language',
       'units',
+      'timeFormat',
     };
     if (!allowedKeys.contains(key)) {
       throw ArgumentError.value(key, 'key', 'Unsupported preference.');
@@ -334,7 +354,8 @@ class MediaryRepository {
     final ref = medication.id == null
         ? _medications.doc()
         : _medications.doc(medication.id);
-    final exists = (await ref.get()).exists;
+    final snapshot = await ref.get();
+    final exists = snapshot.exists;
     final data = <String, dynamic>{
       'name': medication.name,
       'genericName': medication.genericName,
@@ -352,7 +373,9 @@ class MediaryRepository {
       'catalogVersion': ?medication.catalogVersion,
       'updatedAt': FieldValue.serverTimestamp(),
     };
-    if (!exists) data['createdAt'] = FieldValue.serverTimestamp();
+    if (!exists || snapshot.data()?['createdAt'] is! Timestamp) {
+      data['createdAt'] = FieldValue.serverTimestamp();
+    }
     await ref.set(data, SetOptions(merge: true));
     return ref.id;
   }
@@ -452,10 +475,12 @@ class MediaryRepository {
   }
 
   Future<String> upsertSchedule(ScheduleWrite schedule) async {
+    _validateSchedule(schedule);
     final ref = schedule.id == null
         ? _schedules.doc()
         : _schedules.doc(schedule.id);
-    final exists = (await ref.get()).exists;
+    final snapshot = await ref.get();
+    final exists = snapshot.exists;
     final data = <String, dynamic>{
       'medicationId': schedule.medicationId,
       'doseAmount': schedule.doseAmount,
@@ -474,7 +499,9 @@ class MediaryRepository {
     } else if (exists) {
       data['endDate'] = FieldValue.delete();
     }
-    if (!exists) data['createdAt'] = FieldValue.serverTimestamp();
+    if (!exists || snapshot.data()?['createdAt'] is! Timestamp) {
+      data['createdAt'] = FieldValue.serverTimestamp();
+    }
     await ref.set(data, SetOptions(merge: true));
     return ref.id;
   }
@@ -484,11 +511,14 @@ class MediaryRepository {
       'active': false,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    await cancelScheduleDoses(scheduleId);
   }
 
   Future<String> upsertDose(DoseWrite dose) async {
+    _validateDose(dose);
     final ref = dose.id == null ? _doseLogs.doc() : _doseLogs.doc(dose.id);
-    final exists = (await ref.get()).exists;
+    final snapshot = await ref.get();
+    final exists = snapshot.exists;
     final data = <String, dynamic>{
       'medicationId': dose.medicationId,
       'scheduleId': dose.scheduleId,
@@ -505,7 +535,9 @@ class MediaryRepository {
     if (dose.snoozedUntil != null) {
       data['snoozedUntil'] = Timestamp.fromDate(dose.snoozedUntil!);
     }
-    if (!exists) data['createdAt'] = FieldValue.serverTimestamp();
+    if (!exists || snapshot.data()?['createdAt'] is! Timestamp) {
+      data['createdAt'] = FieldValue.serverTimestamp();
+    }
     await ref.set(data, SetOptions(merge: true));
     return ref.id;
   }
@@ -534,6 +566,134 @@ class MediaryRepository {
       // on the next Firestore snapshot; surface permission/network failures.
       if (error.code != 'not-found') rethrow;
     }
+  }
+
+  /// Creates missing future occurrences and cancels obsolete future ones.
+  ///
+  /// Existing records are matched by schedule, local date, and local time so
+  /// older random document IDs remain compatible. New records always use the
+  /// generator's deterministic ID, making retries and app restarts idempotent.
+  Future<int> ensureUpcomingDoses({
+    required List<ScheduleRecord> schedules,
+    required List<DoseLogRecord> existing,
+    DateTime? now,
+    Duration lookahead = ScheduleOccurrenceGenerator.defaultLookahead,
+  }) async {
+    final current = now ?? DateTime.now();
+    final through = current.add(lookahead);
+    final generator = const ScheduleOccurrenceGenerator();
+    final occurrencesBySchedule = <String, List<ScheduleOccurrence>>{};
+    final operations = <void Function(WriteBatch)>[];
+    final existingByKey = <String, DoseLogRecord>{};
+
+    String key(String scheduleId, String localDate, String localTime) =>
+        '$scheduleId|$localDate|$localTime';
+
+    for (final dose in existing) {
+      existingByKey[key(dose.scheduleId, dose.localDate, dose.localTime)] =
+          dose;
+    }
+
+    for (final schedule in schedules.where((item) => item.active)) {
+      final occurrences = generator.generate(
+        schedule,
+        from: current,
+        through: through,
+      );
+      occurrencesBySchedule[schedule.id] = occurrences;
+      for (final occurrence in occurrences) {
+        final existingDose =
+            existingByKey[key(
+              schedule.id,
+              occurrence.localDate,
+              occurrence.localTime,
+            )];
+        if (existingDose == null) {
+          final ref = _doseLogs.doc(occurrence.id);
+          operations.add(
+            (batch) => batch.set(ref, {
+              'medicationId': occurrence.medicationId,
+              'scheduleId': occurrence.scheduleId,
+              'scheduledFor': Timestamp.fromDate(occurrence.scheduledFor),
+              'localDate': occurrence.localDate,
+              'localTime': occurrence.localTime,
+              'status': 'due',
+              'notes': '',
+              'createdAt': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true)),
+          );
+        } else if (_canReconcile(existingDose) &&
+            existingDose.scheduledFor.millisecondsSinceEpoch !=
+                occurrence.scheduledFor.millisecondsSinceEpoch) {
+          // A timezone or DST interpretation changed while the local slot
+          // stayed the same. Keep the user's dose record but repair its
+          // instant so notification scheduling follows the updated schedule.
+          final ref = _doseLogs.doc(existingDose.id);
+          operations.add(
+            (batch) => batch.update(ref, {
+              'scheduledFor': Timestamp.fromDate(occurrence.scheduledFor),
+              'updatedAt': FieldValue.serverTimestamp(),
+            }),
+          );
+        }
+      }
+    }
+
+    // A schedule edit can make an already-generated future dose obsolete.
+    // Preserve taken/missed history, but cancel anything still actionable.
+    final generatedKeys = <String>{
+      for (final entry in occurrencesBySchedule.entries)
+        for (final occurrence in entry.value)
+          key(entry.key, occurrence.localDate, occurrence.localTime),
+    };
+    final activeScheduleIds = occurrencesBySchedule.keys.toSet();
+    for (final dose in existing) {
+      if (!activeScheduleIds.contains(dose.scheduleId) ||
+          !_canReconcile(dose) ||
+          !dose.scheduledFor.isAfter(
+            current.subtract(const Duration(minutes: 2)),
+          )) {
+        continue;
+      }
+      final doseKey = key(dose.scheduleId, dose.localDate, dose.localTime);
+      if (!generatedKeys.contains(doseKey)) {
+        final ref = _doseLogs.doc(dose.id);
+        operations.add(
+          (batch) => batch.update(ref, {
+            'status': 'cancelled',
+            'snoozedUntil': FieldValue.delete(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }),
+        );
+      }
+    }
+
+    await _commitOperations(operations);
+    return occurrencesBySchedule.values.fold<int>(
+      0,
+      (total, items) => total + items.length,
+    );
+  }
+
+  /// Cancels actionable doses for an inactive schedule while preserving logs.
+  Future<void> cancelScheduleDoses(String scheduleId) async {
+    final snapshot = await _doseLogs
+        .where('scheduleId', isEqualTo: scheduleId)
+        .get();
+    final operations = <void Function(WriteBatch)>[];
+    for (final dose in snapshot.docs) {
+      final status = dose.data()['status'];
+      if (status != 'due' && status != 'snoozed') continue;
+      operations.add(
+        (batch) => batch.update(dose.reference, {
+          'status': 'cancelled',
+          'snoozedUntil': FieldValue.delete(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }),
+      );
+    }
+    await _commitOperations(operations);
   }
 
   Future<void> saveLibraryMedication({
@@ -591,15 +751,16 @@ class MediaryRepository {
   Future<void> commitScheduleAndDose({
     required MedicationWrite medication,
     required ScheduleWrite schedule,
-    required DoseWrite dose,
+    required DoseWrite? dose,
   }) async {
+    _validateSchedule(schedule);
+    if (dose != null) _validateDose(dose);
     final medicationRef = medication.id == null
         ? _medications.doc()
         : _medications.doc(medication.id);
     final scheduleRef = schedule.id == null
         ? _schedules.doc()
         : _schedules.doc(schedule.id);
-    final doseRef = dose.id == null ? _doseLogs.doc() : _doseLogs.doc(dose.id);
     final batch = firestore.batch();
 
     batch.set(medicationRef, {
@@ -635,20 +796,123 @@ class MediaryRepository {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
-    batch.set(doseRef, {
-      'medicationId': medicationRef.id,
-      'scheduleId': scheduleRef.id,
-      'scheduledFor': Timestamp.fromDate(dose.scheduledFor),
-      'localDate': dose.localDate,
-      'localTime': dose.localTime,
-      'status': dose.status,
-      'notes': dose.notes,
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-      if (dose.takenAt != null) 'takenAt': Timestamp.fromDate(dose.takenAt!),
-      if (dose.snoozedUntil != null)
-        'snoozedUntil': Timestamp.fromDate(dose.snoozedUntil!),
-    }, SetOptions(merge: true));
+    if (dose != null) {
+      final doseRef = dose.id == null
+          ? _doseLogs.doc()
+          : _doseLogs.doc(dose.id);
+      batch.set(doseRef, {
+        'medicationId': medicationRef.id,
+        'scheduleId': scheduleRef.id,
+        'scheduledFor': Timestamp.fromDate(dose.scheduledFor),
+        'localDate': dose.localDate,
+        'localTime': dose.localTime,
+        'status': dose.status,
+        'notes': dose.notes,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        if (dose.takenAt != null) 'takenAt': Timestamp.fromDate(dose.takenAt!),
+        if (dose.snoozedUntil != null)
+          'snoozedUntil': Timestamp.fromDate(dose.snoozedUntil!),
+      }, SetOptions(merge: true));
+    }
     await batch.commit();
+  }
+
+  bool _canReconcile(DoseLogRecord dose) =>
+      dose.status == 'due' || dose.status == 'snoozed';
+
+  Future<void> _commitOperations(
+    List<void Function(WriteBatch)> operations,
+  ) async {
+    const maxOperationsPerBatch = 450;
+    for (
+      var start = 0;
+      start < operations.length;
+      start += maxOperationsPerBatch
+    ) {
+      final end = (start + maxOperationsPerBatch).clamp(0, operations.length);
+      final batch = firestore.batch();
+      for (final operation in operations.sublist(start, end)) {
+        operation(batch);
+      }
+      await batch.commit();
+    }
+  }
+
+  void _validateSchedule(ScheduleWrite schedule) {
+    if (schedule.medicationId.trim().isEmpty) {
+      throw ArgumentError.value(schedule.medicationId, 'medicationId');
+    }
+    if (!schedule.doseAmount.isFinite || schedule.doseAmount <= 0) {
+      throw ArgumentError.value(schedule.doseAmount, 'doseAmount');
+    }
+    if (schedule.doseUnit.trim().isEmpty) {
+      throw ArgumentError.value(schedule.doseUnit, 'doseUnit');
+    }
+    if (!_validFrequencies.contains(schedule.frequency)) {
+      throw ArgumentError.value(schedule.frequency, 'frequency');
+    }
+    if (schedule.times.isEmpty ||
+        schedule.times.any((time) => !_isValidLocalTime(time))) {
+      throw ArgumentError.value(schedule.times, 'times');
+    }
+    if (DateTime.tryParse(schedule.startDate) == null) {
+      throw ArgumentError.value(schedule.startDate, 'startDate');
+    }
+    if (schedule.endDate != null &&
+        (DateTime.tryParse(schedule.endDate!) == null ||
+            DateTime.parse(schedule.endDate!)
+                .isBefore(DateTime.parse(schedule.startDate)))) {
+      throw ArgumentError.value(schedule.endDate, 'endDate');
+    }
+    if (schedule.daysOfWeek.any((day) => day < 1 || day > 7)) {
+      throw ArgumentError.value(schedule.daysOfWeek, 'daysOfWeek');
+    }
+    _validateTimezone(schedule.timezone);
+  }
+
+  void _validateDose(DoseWrite dose) {
+    if (dose.medicationId.trim().isEmpty || dose.scheduleId.trim().isEmpty) {
+      throw ArgumentError('Dose references must not be empty.');
+    }
+    if (dose.localDate.trim().isEmpty || !_isValidLocalTime(dose.localTime)) {
+      throw ArgumentError('Dose local date/time is invalid.');
+    }
+    const statuses = {
+      'due',
+      'taken',
+      'missed',
+      'skipped',
+      'cancelled',
+      'snoozed',
+    };
+    if (!statuses.contains(dose.status)) {
+      throw ArgumentError.value(dose.status, 'status');
+    }
+    if (dose.status == 'snoozed' && dose.snoozedUntil == null) {
+      throw ArgumentError('Snoozed doses require snoozedUntil.');
+    }
+  }
+
+  bool _isValidLocalTime(String value) {
+    final parts = value.split(':').map(int.tryParse).toList();
+    return (parts.length == 2 || parts.length == 3) &&
+        parts.every((part) => part != null) &&
+        parts[0]! >= 0 &&
+        parts[0]! <= 23 &&
+        parts[1]! >= 0 &&
+        parts[1]! <= 59 &&
+        (parts.length == 2 || (parts[2]! >= 0 && parts[2]! <= 59));
+  }
+
+  void _validateTimezone(String value) {
+    final normalized = value.trim();
+    if (normalized.isEmpty) throw ArgumentError.value(value, 'timezone');
+    tz_data.initializeTimeZones();
+    try {
+      tz.getLocation(normalized);
+    } catch (_) {
+      throw ArgumentError.value(value, 'timezone', 'Unknown IANA timezone.');
+    }
   }
 }

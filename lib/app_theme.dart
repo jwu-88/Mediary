@@ -31,6 +31,29 @@ abstract final class AppRadii {
   static const pill = 32.0;
 }
 
+/// Shared geometry and typography for interactive controls.
+abstract final class AppButtonMetrics {
+  static const minWidth = 64.0;
+  static const minHeight = 48.0;
+  static const height = minHeight;
+  static const compactHeight = 40.0;
+  static const iconButtonSize = 44.0;
+  static const navigationHeight = 64.0;
+  static const horizontalPadding = 18.0;
+  static const iconGap = 8.0;
+  static const radius = AppRadii.standard;
+  static const navigationRadius = AppRadii.pill;
+  static const loadingIndicatorSize = 20.0;
+  static const disabledOpacity = .46;
+  static const disabledForegroundOpacity = .38;
+  static const interactionDuration = Duration(milliseconds: 140);
+  static const labelStyle = TextStyle(
+    fontSize: 15,
+    fontWeight: FontWeight.w600,
+    height: 1.2,
+  );
+}
+
 /// User-selectable accent palettes. Blue remains Mediary's default.
 enum AppAccentColor {
   blue(
@@ -194,8 +217,14 @@ abstract final class AppTheme {
         ),
       ),
       iconButtonTheme: IconButtonThemeData(
-        style: _buttonInteractionStyle(colorScheme)
-            .copyWith(shape: const WidgetStatePropertyAll(CircleBorder())),
+        style: _buttonInteractionStyle(colorScheme).copyWith(
+          minimumSize: const WidgetStatePropertyAll(
+            Size.square(AppButtonMetrics.iconButtonSize),
+          ),
+          padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          shape: const WidgetStatePropertyAll(CircleBorder()),
+        ),
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: background,
@@ -228,7 +257,23 @@ abstract final class AppTheme {
     bool includeElevation = false,
   }) {
     return ButtonStyle(
-      animationDuration: const Duration(milliseconds: 140),
+      animationDuration: AppButtonMetrics.interactionDuration,
+      minimumSize: const WidgetStatePropertyAll(
+        Size(AppButtonMetrics.minWidth, AppButtonMetrics.minHeight),
+      ),
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: AppButtonMetrics.horizontalPadding),
+      ),
+      shape: const WidgetStatePropertyAll(
+        RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(
+            Radius.circular(AppButtonMetrics.radius),
+          ),
+        ),
+      ),
+      textStyle: const WidgetStatePropertyAll(AppButtonMetrics.labelStyle),
+      iconSize: const WidgetStatePropertyAll(20),
+      visualDensity: VisualDensity.standard,
       mouseCursor: WidgetStateProperty.resolveWith(
         (states) => states.contains(WidgetState.disabled)
             ? SystemMouseCursors.forbidden
@@ -249,7 +294,9 @@ abstract final class AppTheme {
       }),
       foregroundColor: WidgetStateProperty.resolveWith(
         (states) => states.contains(WidgetState.disabled)
-            ? colorScheme.onSurface.withValues(alpha: .38)
+            ? colorScheme.onSurface.withValues(
+                alpha: AppButtonMetrics.disabledForegroundOpacity,
+              )
             : null,
       ),
       elevation: includeElevation

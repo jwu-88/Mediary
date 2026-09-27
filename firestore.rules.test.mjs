@@ -39,6 +39,7 @@ function validUser() {
       reminderSound: 'Gentle Chime',
       language: 'English',
       units: 'Metric',
+      timeFormat: '12-hour',
     },
   };
 }
@@ -75,6 +76,24 @@ function validDoseLog() {
   };
 }
 
+function validSchedule() {
+  return {
+    medicationId: 'medication-1',
+    doseAmount: 1,
+    doseUnit: 'tablet',
+    times: ['08:00:00'],
+    frequency: 'weekly',
+    daysOfWeek: [1, 3, 5],
+    startDate: '2026-01-01',
+    endDate: '2026-12-31',
+    timezone: 'America/New_York',
+    instructions: '',
+    active: true,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
 describe('Firestore security rules', () => {
   before(async () => {
     testEnvironment = await initializeTestEnvironment({
@@ -106,6 +125,28 @@ describe('Firestore security rules', () => {
         doc(other, 'users/owner/medications/medication-1'),
         validMedication(),
       ),
+    );
+  });
+
+  it('allows a valid 24-hour time format preference', async () => {
+    const owner = testEnvironment.authenticatedContext('owner').firestore();
+    await assertSucceeds(
+      setDoc(doc(owner, 'users/owner'), {
+        ...validUser(),
+        preferences: {
+          ...validUser().preferences,
+          timeFormat: '24-hour',
+        },
+      }),
+    );
+    await assertFails(
+      setDoc(doc(owner, 'users/owner'), {
+        ...validUser(),
+        preferences: {
+          ...validUser().preferences,
+          timeFormat: '24-hours',
+        },
+      }),
     );
   });
 
@@ -218,5 +259,61 @@ describe('Firestore security rules', () => {
         snoozedUntil: timestamp,
       }),
     );
+  });
+
+  it('validates recurrence, dates, times, and timezone metadata', async () => {
+    const owner = testEnvironment.authenticatedContext('owner').firestore();
+    await assertSucceeds(
+      setDoc(doc(owner, 'users/owner/schedules/weekly-1'), validSchedule()),
+    );
+    await assertFails(
+      setDoc(doc(owner, 'users/owner/schedules/bad-frequency'), {
+        ...validSchedule(),
+        frequency: 'monthly',
+      }),
+    );
+    await assertFails(
+      setDoc(doc(owner, 'users/owner/schedules/bad-date'), {
+        ...validSchedule(),
+        startDate: '01/01/2026',
+      }),
+    );
+    await assertFails(
+      setDoc(doc(owner, 'users/owner/schedules/bad-timezone'), {
+        ...validSchedule(),
+        timezone: 'not a timezone',
+      }),
+    );
+    await assertFails(
+      setDoc(doc(owner, 'users/owner/doseLogs/bad-time'), {
+        ...validDoseLog(),
+        localTime: 'tomorrow morning',
+      }),
+    );
+  });
+
+  it('allows archive and cancel updates while preserving historical records', async () => {
+    const owner = testEnvironment.authenticatedContext('owner').firestore();
+    await assertSucceeds(
+      setDoc(doc(owner, 'users/owner/schedules/archive-1'), validSchedule()),
+    );
+    await assertSucceeds(
+      setDoc(doc(owner, 'users/owner/doseLogs/archive-dose'), validDoseLog()),
+    );
+    await assertSucceeds(
+      setDoc(doc(owner, 'users/owner/schedules/archive-1'), {
+        ...validSchedule(),
+        active: false,
+        updatedAt: timestamp,
+      }),
+    );
+    await assertSucceeds(
+      setDoc(doc(owner, 'users/owner/doseLogs/archive-dose'), {
+        ...validDoseLog(),
+        status: 'cancelled',
+        updatedAt: timestamp,
+      }),
+    );
+    await assertSucceeds(getDoc(doc(owner, 'users/owner/doseLogs/archive-dose')));
   });
 });

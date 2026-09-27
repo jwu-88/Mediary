@@ -38,6 +38,17 @@ void main() {
     );
   });
 
+  test(
+    'can send a test notification on hosts without native delivery',
+    () async {
+      final service = DefaultMedicationNotificationService();
+
+      await service.sendTestNotification();
+
+      await service.dispose();
+    },
+  );
+
   test('returns a recent due dose once and ignores duplicates', () async {
     final service = DefaultMedicationNotificationService();
     final now = DateTime(2026, 9, 13, 9, 1);
@@ -117,6 +128,37 @@ void main() {
     expect(due.single.medicationName, 'Cetirizine');
     await service.dispose();
   });
+
+  test(
+    'notifies at the exact configured local time, including seconds',
+    () async {
+      final service = DefaultMedicationNotificationService();
+      final now = DateTime.utc(2026, 9, 13, 9, 1, 7);
+      final due = DoseLogRecord(
+        id: 'exact-time',
+        medicationId: 'medication-1',
+        scheduleId: 'schedule-exact-time',
+        scheduledFor: now,
+        localDate: '2026-09-13',
+        localTime: '09:01:07',
+        status: 'due',
+      );
+
+      final result = await service.syncDueDoses(
+        doses: [due],
+        medicationNames: const {'medication-1': 'Levothyroxine'},
+        scheduleTimezones: const {'schedule-exact-time': 'UTC'},
+        now: now,
+      );
+
+      expect(
+        result.single.scheduledFor.millisecondsSinceEpoch,
+        now.millisecondsSinceEpoch,
+      );
+      expect(result.single.body, 'Time to take Levothyroxine');
+      await service.dispose();
+    },
+  );
 
   test(
     'uses the schedule timezone and local date/time when available',

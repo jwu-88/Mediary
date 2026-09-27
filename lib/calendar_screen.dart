@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
@@ -9,6 +10,10 @@ import 'dose_action_error.dart';
 import 'in_app_page.dart';
 import 'medication_artwork.dart';
 import 'text_formatting.dart';
+
+const _calendarHorizontalInset = 16.0;
+const _calendarNativeContentWidth = 520.0;
+const _calendarDesktopContentWidth = 760.0;
 
 /// A native, interactive medication calendar based on the calendar prototype.
 class CalendarScreen extends StatefulWidget {
@@ -67,7 +72,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
   late DateTime _selectedDate;
   late DateTime _visibleMonth;
   final Map<String, List<_CalendarDose>> _dosesByDate = {};
+  // A parent rebuild can briefly provide the old Firestore snapshot while a
+  // cancellation is propagating. Keep the local removal authoritative during
+  // that window so a dose cannot reappear when the user changes pages.
+  final Set<String> _removedDoseIds = <String>{};
   String? _announcement;
+  _RemovedCalendarDose? _undoDose;
+  Timer? _undoTimer;
 
   @override
   void initState() {
@@ -83,6 +94,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
       _setInitialDate(widget.initialDate!);
     }
     if (widget.initialDoses != oldWidget.initialDoses) _loadInitialDoses();
+  }
+
+  @override
+  void dispose() {
+    _undoTimer?.cancel();
+    super.dispose();
   }
 
   void _setInitialDate(DateTime value) {
@@ -101,6 +118,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void _loadInitialDoses() {
     _dosesByDate.clear();
     for (final dose in widget.initialDoses) {
+      if (dose.status == 'cancelled' || _removedDoseIds.contains(dose.id)) {
+        continue;
+      }
       _dosesByDate
           .putIfAbsent(dose.localDate, () => <_CalendarDose>[])
           .add(
@@ -157,6 +177,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       if (!mounted || addedDoses == null || addedDoses.isEmpty) return;
       setState(() {
         for (final dose in addedDoses) {
+          _removedDoseIds.remove(dose.id);
           final doses = _dosesByDate.putIfAbsent(
             dose.localDate,
             () => <_CalendarDose>[],
@@ -243,22 +264,101 @@ class _CalendarScreenState extends State<CalendarScreen> {
           _showConfirmation(doseActionErrorMessage(error, action: 'update'));
         }
       case _CalendarDoseAction.remove:
-        try {
-          await widget.onDoseStatusChanged?.call(dose.id, 'cancelled');
-          if (!mounted) return;
-          final currentIndex = doses.indexWhere((item) => item.id == dose.id);
-          if (currentIndex < 0) return;
-          setState(() => doses.removeAt(currentIndex));
-          _showConfirmation('${titleCaseDisplay(dose.name)} Removed');
-        } catch (error) {
-          _showConfirmation(doseActionErrorMessage(error, action: 'remove'));
-        }
+        await _removeDose(dose);
     }
+  }
+
+  Future<void> _removeDose(_CalendarDose dose) async {
+    final removedDateKey = _dateKey(_selectedDate);
+    final doses = _dosesByDate[removedDateKey];
+    final index = doses?.indexWhere((item) => item.id == dose.id) ?? -1;
+    if (index < 0) return;
+    setState(() {
+      _removedDoseIds.add(dose.id);
+      doses!.removeAt(index);
+    });
+    _setUndoDose(
+      _RemovedCalendarDose(dose: dose, dateKey: removedDateKey, index: index),
+    );
+    try {
+      await widget.onDoseStatusChanged?.call(dose.id, 'cancelled');
+      if (!mounted) return;
+      _showConfirmation('${titleCaseDisplay(dose.name)} Removed');
+    } catch (error) {
+      _restoreRemovedDose(dose.id);
+      _showConfirmation(doseActionErrorMessage(error, action: 'remove'));
+    }
+  }
+
+  Future<void> _removeDoseAt(int index) async {
+    final doses = _dosesByDate[_dateKey(_selectedDate)];
+    if (doses == null || index < 0 || index >= doses.length) return;
+    await _removeDose(doses[index]);
   }
 
   void _showConfirmation(String message) {
     if (!mounted) return;
     setState(() => _announcement = message);
+  }
+
+  void _setUndoDose(_RemovedCalendarDose removed) {
+    _undoTimer?.cancel();
+    setState(() => _undoDose = removed);
+    _undoTimer = Timer(const Duration(seconds: 6), () {
+      if (mounted) setState(() => _undoDose = null);
+    });
+  }
+
+  void _restoreRemovedDose(String doseId) {
+    final removed = _undoDose;
+    _undoTimer?.cancel();
+    if (!mounted) return;
+    if (removed?.dose.id == doseId) {
+      setState(() {
+        _removedDoseIds.remove(doseId);
+        final restored = _dosesByDate.putIfAbsent(
+          removed!.dateKey,
+          () => <_CalendarDose>[],
+        );
+        final index = removed.index.clamp(0, restored.length);
+        restored.insert(index, removed.dose);
+        _undoDose = null;
+      });
+    } else {
+      _removedDoseIds.remove(doseId);
+    }
+  }
+
+  Future<void> _undoRemovedDose() async {
+    final removed = _undoDose;
+    if (removed == null) return;
+    _undoTimer?.cancel();
+    setState(() {
+      _undoDose = null;
+      _removedDoseIds.remove(removed.dose.id);
+      final restored = _dosesByDate.putIfAbsent(
+        removed.dateKey,
+        () => <_CalendarDose>[],
+      );
+      final index = removed.index.clamp(0, restored.length);
+      restored.insert(index, removed.dose);
+    });
+    try {
+      await widget.onDoseStatusChanged?.call(removed.dose.id, 'due');
+      if (mounted) {
+        _showConfirmation('${titleCaseDisplay(removed.dose.name)} Restored');
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _removedDoseIds.add(removed.dose.id);
+          _dosesByDate[removed.dateKey]?.removeWhere(
+            (dose) => dose.id == removed.dose.id,
+          );
+        });
+        _showConfirmation(doseActionErrorMessage(error, action: 'restore'));
+      }
+    }
   }
 
   Future<void> _showOptions() async {
@@ -290,8 +390,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final palette = _CalendarPalette.of(context);
     final viewportWidth = MediaQuery.sizeOf(context).width;
     final contentWidth = viewportWidth >= 900
-        ? responsiveContentWidth(context, nativeMaxWidth: 760)
-        : 520.0;
+        ? responsiveContentWidth(
+            context,
+            nativeMaxWidth: _calendarDesktopContentWidth,
+          )
+        : _calendarNativeContentWidth;
     return ColoredBox(
       color: palette.background,
       child: SafeArea(
@@ -301,7 +404,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
             constraints: BoxConstraints(maxWidth: contentWidth),
             child: ListView(
               key: const Key('calendarScrollView'),
-              padding: EdgeInsets.fromLTRB(16, 7, 16, widget.bottomPadding),
+              padding: EdgeInsets.fromLTRB(
+                _calendarHorizontalInset,
+                12,
+                _calendarHorizontalInset,
+                widget.bottomPadding,
+              ),
               children: [
                 _CalendarHeader(onOptions: _showOptions),
                 AnimatedSwitcher(
@@ -315,16 +423,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             message: _announcement!,
                             onDismiss: () =>
                                 setState(() => _announcement = null),
+                            onUndo: _undoDose == null ? null : _undoRemovedDose,
                           ),
                         ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 _AdherenceSummary(
                   month: _months[_visibleMonth.month - 1],
                   taken: _monthTaken,
                   scheduled: _monthScheduled,
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 24),
                 _CalendarCard(
                   visibleMonth: _visibleMonth,
                   selectedDate: _selectedDate,
@@ -335,15 +444,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   onSelectDate: _selectDate,
                   statusFor: _statusFor,
                 ),
-                const SizedBox(height: 17),
+                const SizedBox(height: 24),
                 _SectionHeader(
+                  key: const Key('calendarSelectedDateHeader'),
                   title: _longDate(_selectedDate),
                   onAdd: _addDose,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 _DoseList(
                   doses: _dosesFor(_selectedDate),
                   onTapDose: _showDoseActions,
+                  onRemoveDose: _removeDoseAt,
                 ),
               ],
             ),
@@ -389,10 +500,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
 }
 
 class _CalendarInlineStatus extends StatelessWidget {
-  const _CalendarInlineStatus({required this.message, required this.onDismiss});
+  const _CalendarInlineStatus({
+    required this.message,
+    required this.onDismiss,
+    this.onUndo,
+  });
 
   final String message;
   final VoidCallback onDismiss;
+  final VoidCallback? onUndo;
 
   @override
   Widget build(BuildContext context) {
@@ -419,6 +535,8 @@ class _CalendarInlineStatus extends StatelessWidget {
                   ),
                 ),
               ),
+              if (onUndo != null)
+                TextButton(onPressed: onUndo, child: const Text('Undo')),
               IconButton(
                 tooltip: 'Dismiss',
                 onPressed: onDismiss,
@@ -460,6 +578,7 @@ class _CalendarHeader extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 'Calendar',
+                key: const Key('calendarTitle'),
                 style: TextStyle(
                   color: palette.ink,
                   fontSize: 28,
@@ -625,7 +744,7 @@ class _CalendarCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: palette.surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
         children: [
@@ -795,8 +914,8 @@ class _CalendarDay extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = _CalendarPalette.of(context);
     final statusLabel = switch (status) {
-      _DoseStatus.taken => 'dose taken',
-      _DoseStatus.missed => 'dose missed',
+      _DoseStatus.taken => 'Dose taken',
+      _DoseStatus.missed => 'Dose missed',
       null => null,
     };
     return Semantics(
@@ -859,7 +978,7 @@ class _CalendarDay extends StatelessWidget {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, required this.onAdd});
+  const _SectionHeader({super.key, required this.title, required this.onAdd});
 
   final String title;
   final VoidCallback onAdd;
@@ -910,10 +1029,15 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _DoseList extends StatelessWidget {
-  const _DoseList({required this.doses, required this.onTapDose});
+  const _DoseList({
+    required this.doses,
+    required this.onTapDose,
+    required this.onRemoveDose,
+  });
 
   final List<_CalendarDose> doses;
   final ValueChanged<int> onTapDose;
+  final ValueChanged<int> onRemoveDose;
 
   @override
   Widget build(BuildContext context) {
@@ -928,35 +1052,140 @@ class _DoseList extends StatelessWidget {
         ),
       );
     }
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(14),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 390;
+        return Semantics(
+          key: const Key('calendarDoseTable'),
+          container: true,
+          label: 'Medication dose list',
+          child: Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: palette.surface,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Column(
+              children: [
+                _DoseTableHeader(compact: compact),
+                Divider(
+                  key: const Key('calendarDoseTableHeaderDivider'),
+                  height: 1,
+                  thickness: 1,
+                  indent: compact ? 10 : 12,
+                  endIndent: compact ? 10 : 12,
+                  color: palette.separator,
+                ),
+                for (var doseIndex = 0; doseIndex < doses.length; doseIndex++)
+                  _DoseRow(
+                    artworkSeed: doses[doseIndex].id,
+                    artworkLabel: titleCaseDisplay(doses[doseIndex].name),
+                    name: doses[doseIndex].name,
+                    details: doses[doseIndex].details,
+                    status: doses[doseIndex].isTaken ? 'Taken' : 'Due',
+                    statusColor: doses[doseIndex].isTaken
+                        ? palette.positive
+                        : palette.muted,
+                    compact: compact,
+                    onTap: () => onTapDose(doseIndex),
+                    onRemove: () => onRemoveDose(doseIndex),
+                    showDivider: doseIndex < doses.length - 1,
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _DoseTableHeader extends StatelessWidget {
+  const _DoseTableHeader({required this.compact});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final artworkColumnWidth = compact ? 40.0 : 48.0;
+    final statusColumnWidth = compact ? 58.0 : 68.0;
+    const actionColumnWidth = 44.0;
+    return SizedBox(
+      height: compact ? 34 : 38,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 12),
+        child: Row(
+          children: [
+            SizedBox(width: artworkColumnWidth),
+            Expanded(
+              flex: compact ? 5 : 6,
+              child: _DoseTableHeaderText(
+                key: const Key('calendarDoseTableMedicationHeader'),
+                label: 'Medication',
+              ),
+            ),
+            _DoseTableVerticalDivider(
+              key: const Key('calendarDoseTableHeaderVerticalDivider0'),
+            ),
+            Expanded(
+              flex: compact ? 4 : 5,
+              child: _DoseTableHeaderText(
+                key: const Key('calendarDoseTableDoseHeader'),
+                label: 'Dose & Time',
+              ),
+            ),
+            _DoseTableVerticalDivider(
+              key: const Key('calendarDoseTableHeaderVerticalDivider1'),
+            ),
+            SizedBox(
+              width: statusColumnWidth,
+              child: _DoseTableHeaderText(
+                key: const Key('calendarDoseTableStatusHeader'),
+                label: 'Status',
+                textAlign: TextAlign.end,
+              ),
+            ),
+            const SizedBox(width: actionColumnWidth),
+          ],
+        ),
       ),
-      child: Column(
-        children: List.generate(doses.length * 2 - 1, (index) {
-          if (index.isOdd) {
-            return Divider(
-              height: 1,
-              thickness: 1,
-              indent: 62,
-              color: palette.separator,
-            );
-          }
-          final doseIndex = index ~/ 2;
-          final dose = doses[doseIndex];
-          return _DoseRow(
-            artworkSeed: dose.id,
-            artworkLabel: titleCaseDisplay(dose.name),
-            name: dose.name,
-            details: dose.details,
-            status: dose.isTaken ? 'Taken' : 'Due',
-            statusColor: dose.isTaken ? palette.positive : palette.muted,
-            onTap: () => onTapDose(doseIndex),
-          );
-        }),
+    );
+  }
+}
+
+class _DoseTableHeaderText extends StatelessWidget {
+  const _DoseTableHeaderText({super.key, required this.label, this.textAlign});
+
+  final String label;
+  final TextAlign? textAlign;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _CalendarPalette.of(context);
+    return Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      textAlign: textAlign,
+      style: TextStyle(
+        color: palette.muted,
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: .1,
       ),
+    );
+  }
+}
+
+class _DoseTableVerticalDivider extends StatelessWidget {
+  const _DoseTableVerticalDivider({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _CalendarPalette.of(context);
+    return SizedBox(
+      width: 13,
+      child: VerticalDivider(width: 1, thickness: .5, color: palette.separator),
     );
   }
 }
@@ -969,7 +1198,10 @@ class _DoseRow extends StatelessWidget {
     required this.details,
     required this.status,
     required this.statusColor,
+    required this.compact,
+    required this.showDivider,
     required this.onTap,
+    required this.onRemove,
   });
 
   final String artworkSeed;
@@ -978,12 +1210,18 @@ class _DoseRow extends StatelessWidget {
   final String details;
   final String status;
   final Color statusColor;
+  final bool compact;
+  final bool showDivider;
   final VoidCallback onTap;
+  final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
     final palette = _CalendarPalette.of(context);
-    return AppPressable(
+    final artworkColumnWidth = compact ? 40.0 : 48.0;
+    final statusColumnWidth = compact ? 58.0 : 68.0;
+    const actionColumnWidth = 44.0;
+    final row = AppPressable(
       onPressed: onTap,
       autoManageBusy: false,
       semanticLabel:
@@ -992,62 +1230,118 @@ class _DoseRow extends StatelessWidget {
       hoverScale: 1,
       hoverOffset: Offset.zero,
       pressedScale: .99,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        child: Row(
-          children: [
-            MedicationArtwork(
-              key: Key('calendarMedicationArtwork_$artworkSeed'),
-              seed: artworkSeed,
-              label: artworkLabel,
-              size: 42,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    titleCaseDisplay(name),
-                    style: TextStyle(
-                      color: palette.ink,
-                      fontSize: 14,
-                      height: 1.25,
-                      fontWeight: FontWeight.w700,
-                    ),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: compact ? 66 : 72),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 10 : 12,
+            vertical: compact ? 10 : 11,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: artworkColumnWidth,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: MedicationArtwork(
+                    key: Key('calendarMedicationArtwork_$artworkSeed'),
+                    seed: artworkSeed,
+                    label: artworkLabel,
+                    size: compact ? 34 : 38,
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    titleCaseDisplay(details),
-                    style: TextStyle(
-                      color: palette.muted,
-                      fontSize: 11,
-                      height: 1.3,
-                    ),
+                ),
+              ),
+              Expanded(
+                flex: compact ? 5 : 6,
+                child: Text(
+                  titleCaseDisplay(name),
+                  key: Key('calendarMedicationName_$artworkSeed'),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: palette.ink,
+                    fontSize: compact ? 12.5 : 13,
+                    height: 1.25,
+                    fontWeight: FontWeight.w700,
                   ),
-                ],
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              status,
-              style: TextStyle(
-                color: statusColor,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
+              _DoseTableVerticalDivider(
+                key: Key('calendarDoseTableRowVerticalDivider${artworkSeed}0'),
               ),
-            ),
-            const SizedBox(width: 5),
-            Icon(
-              CupertinoIcons.chevron_right,
-              color: palette.muted.withValues(alpha: .65),
-              size: 12,
-            ),
-          ],
+              Expanded(
+                flex: compact ? 4 : 5,
+                child: Text(
+                  _detailsForTable(details),
+                  key: Key('calendarDoseDetails_$artworkSeed'),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: palette.muted,
+                    fontSize: compact ? 10.5 : 11,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+              _DoseTableVerticalDivider(
+                key: Key('calendarDoseTableRowVerticalDivider${artworkSeed}1'),
+              ),
+              SizedBox(
+                width: statusColumnWidth,
+                child: Text(
+                  status,
+                  key: Key('calendarDoseStatus_$artworkSeed'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: compact ? 10.5 : 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: actionColumnWidth,
+                child: IconButton(
+                  key: Key('calendarDeleteDose_$artworkSeed'),
+                  onPressed: onRemove,
+                  tooltip: 'Remove ${titleCaseDisplay(name)} from day',
+                  icon: const Icon(CupertinoIcons.trash),
+                  iconSize: 17,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: actionColumnWidth,
+                    height: 44,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  color: palette.negative,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
+    return Column(
+      children: [
+        row,
+        if (showDivider)
+          Divider(
+            key: Key('calendarDoseTableRowDivider_$artworkSeed'),
+            height: 1,
+            thickness: 1,
+            indent: compact ? 10 : 12,
+            endIndent: compact ? 10 : 12,
+            color: palette.separator,
+          ),
+      ],
+    );
   }
+
+  String _detailsForTable(String value) =>
+      titleCaseDisplay(value.replaceFirst(' · ', '\n'));
 }
 
 enum _CalendarDoseAction { toggleTaken, remove }
@@ -1091,6 +1385,18 @@ class CalendarDoseData {
   final String name;
   final String details;
   final String status;
+}
+
+class _RemovedCalendarDose {
+  const _RemovedCalendarDose({
+    required this.dose,
+    required this.dateKey,
+    required this.index,
+  });
+
+  final _CalendarDose dose;
+  final String dateKey;
+  final int index;
 }
 
 class _CalendarPalette {

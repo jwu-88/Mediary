@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'app_theme.dart';
+
 /// Whether a backdrop blur is safe for the current rendering target.
 ///
 /// iOS can make a blurred surface over a scrolling or frequently updating
@@ -78,9 +80,16 @@ class ResponsiveCupertinoButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final radius = borderRadius ?? BorderRadius.circular(12);
-    final minimumSize = this.minimumSize ?? Size.zero;
-    final padding = this.padding ?? EdgeInsets.zero;
+    final radius =
+        borderRadius ?? BorderRadius.circular(AppButtonMetrics.radius);
+    final minimumSize =
+        this.minimumSize ??
+        const Size(AppButtonMetrics.minWidth, AppButtonMetrics.minHeight);
+    final padding =
+        this.padding ??
+        const EdgeInsets.symmetric(
+          horizontal: AppButtonMetrics.horizontalPadding,
+        );
     final content = ConstrainedBox(
       constraints: BoxConstraints(
         minWidth: minimumSize.width,
@@ -88,12 +97,15 @@ class ResponsiveCupertinoButton extends StatelessWidget {
       ),
       child: Padding(
         padding: padding,
-        child: color == null
-            ? child
-            : DecoratedBox(
-                decoration: BoxDecoration(color: color, borderRadius: radius),
-                child: child,
-              ),
+        child: DefaultTextStyle.merge(
+          style: AppButtonMetrics.labelStyle,
+          child: color == null
+              ? child
+              : DecoratedBox(
+                  decoration: BoxDecoration(color: color, borderRadius: radius),
+                  child: child,
+                ),
+        ),
       ),
     );
 
@@ -111,7 +123,7 @@ class ResponsiveCupertinoButton extends StatelessWidget {
       busyOverlayColor: colors.surface.withValues(alpha: .68),
       loadingIndicator: SizedBox.square(
         key: const Key('responsiveCupertinoLoadingIndicator'),
-        dimension: 20,
+        dimension: AppButtonMetrics.loadingIndicatorSize,
         child: CircularProgressIndicator(strokeWidth: 2, color: colors.primary),
       ),
       child: content,
@@ -169,13 +181,15 @@ class AppPressable extends StatefulWidget {
     this.hoverScale = 1.012,
     this.pressedScale = 0.985,
     this.hoverOffset = const Offset(0, -1),
-    this.motionDuration = const Duration(milliseconds: 140),
+    this.motionDuration = AppButtonMetrics.interactionDuration,
     this.motionCurve = Curves.easeOutCubic,
-    this.borderRadius = const BorderRadius.all(Radius.circular(12)),
+    this.borderRadius = const BorderRadius.all(
+      Radius.circular(AppButtonMetrics.radius),
+    ),
     this.hoverOverlayColor,
     this.pressedOverlayColor,
     this.focusOverlayColor,
-    this.disabledOpacity = .46,
+    this.disabledOpacity = AppButtonMetrics.disabledOpacity,
     this.mouseCursor,
     this.semanticLabel,
     this.semanticHint,
@@ -470,7 +484,7 @@ class _AppPressableState extends State<AppPressable> {
         widget.loadingIndicator ??
         SizedBox.square(
           key: const Key('appPressableLoadingIndicator'),
-          dimension: 20,
+          dimension: AppButtonMetrics.loadingIndicatorSize,
           child: CircularProgressIndicator(
             strokeWidth: 2,
             color: Theme.of(context).colorScheme.primary,

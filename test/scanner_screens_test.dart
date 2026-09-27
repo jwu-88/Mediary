@@ -95,6 +95,7 @@ void main() {
           onBack: () => backs++,
           onScanAgain: () => rescans++,
           onAdded: () => additions++,
+          now: DateTime(2026, 8, 23, 7),
           bottomNavigationInset: 0,
         ),
       ),
@@ -108,6 +109,12 @@ void main() {
     await tester.tap(find.text('2 capsules'));
     await tester.pumpAndSettle();
     expect(find.text('2 capsules'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('scanScheduleTimeField')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('scheduleTimePreset_Bedtime')));
+    await tester.tap(find.byKey(const Key('confirmScheduleTimeButton')));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('addScanResultButton')));
     await tester.pump();

@@ -862,7 +862,7 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final heroHeight = (media.size.height * .24).clamp(170.0, 210.0);
+    final heroHeight = (media.size.height * .17).clamp(142.0, 172.0);
     final contentWidth = media.size.width >= 900
         ? responsiveContentWidth(context, nativeMaxWidth: 760)
         : 520.0;
@@ -877,8 +877,6 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
             height: heroHeight,
             child: _DetailHero(
               topPadding: media.padding.top,
-              artworkSeed: _medication.rxcui,
-              artworkLabel: _medication.name,
               bookmarked: _isBookmarked,
               onBack: _goBack,
               onBookmark: _toggleBookmark,
@@ -947,16 +945,12 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
 class _DetailHero extends StatelessWidget {
   const _DetailHero({
     required this.topPadding,
-    required this.artworkSeed,
-    required this.artworkLabel,
     required this.bookmarked,
     required this.onBack,
     required this.onBookmark,
   });
 
   final double topPadding;
-  final String artworkSeed;
-  final String artworkLabel;
   final bool bookmarked;
   final VoidCallback onBack;
   final VoidCallback onBookmark;
@@ -968,16 +962,6 @@ class _DetailHero extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         ColoredBox(color: colors.surfaceContainerHighest),
-        Center(
-          child: Padding(
-            padding: EdgeInsets.only(top: topPadding + 30),
-            child: MedicationArtwork(
-              seed: artworkSeed,
-              label: titleCaseDisplay(artworkLabel),
-              size: 78,
-            ),
-          ),
-        ),
         Positioned(
           left: 10,
           right: 10,
@@ -1067,157 +1051,163 @@ class _DetailContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    titleCaseDisplay(medication.name),
-                    style: TextStyle(
-                      color: ink,
-                      fontSize: 28,
-                      height: 1.1,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -.8,
+    return DefaultTextStyle.merge(
+      style: const TextStyle(decoration: TextDecoration.none),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      titleCaseDisplay(medication.name),
+                      style: TextStyle(
+                        color: ink,
+                        fontSize: 28,
+                        height: 1.1,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -.8,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    titleCaseDisplay(
-                      [
-                        medication.genericName,
-                        medication.doseDescription,
-                        medication.route,
-                      ].where((value) => value.isNotEmpty).join(' · '),
+                    const SizedBox(height: 5),
+                    Text(
+                      titleCaseDisplay(
+                        [
+                          medication.genericName,
+                          medication.doseDescription,
+                          medication.route,
+                        ].where((value) => value.isNotEmpty).join(' · '),
+                      ),
+                      style: TextStyle(color: muted, fontSize: 12),
                     ),
-                    style: TextStyle(color: muted, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              decoration: BoxDecoration(
-                color: colors.primaryContainer,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                'Rx',
-                style: TextStyle(
-                  color: colors.onPrimaryContainer,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
+                  ],
                 ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 17),
-        if (loading) const LinearProgressIndicator(minHeight: 2),
-        _MedicationFacts(
-          medication: medication,
-          ink: ink,
-          muted: muted,
-          line: line,
-        ),
-        const SizedBox(height: 10),
-        Text(
-          'Source: RxNorm ${medication.sourceVersion.isEmpty ? 'current' : medication.sourceVersion}',
-          style: TextStyle(color: muted, fontSize: 11),
-        ),
-        if (medication.warnings.isNotEmpty ||
-            medication.indications.isNotEmpty) ...[
-          const SizedBox(height: 4),
+              const SizedBox(width: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.primaryContainer,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'Rx',
+                  style: TextStyle(
+                    color: colors.onPrimaryContainer,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 17),
+          if (loading) const LinearProgressIndicator(minHeight: 2),
+          _MedicationFacts(
+            medication: medication,
+            ink: ink,
+            muted: muted,
+            line: line,
+          ),
+          const SizedBox(height: 10),
           Text(
-            'Label enrichment: openFDA',
+            'Source: RxNorm ${medication.sourceVersion.isEmpty ? 'current' : medication.sourceVersion}',
             style: TextStyle(color: muted, fontSize: 11),
           ),
-        ],
-        if (medication.labelUrl != null) ...[
-          const SizedBox(height: 4),
-          TextButton.icon(
-            onPressed: () => launchUrl(
-              Uri.parse(medication.labelUrl!),
-              mode: LaunchMode.externalApplication,
+          if (medication.warnings.isNotEmpty ||
+              medication.indications.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Label enrichment: openFDA',
+              style: TextStyle(color: muted, fontSize: 11),
             ),
-            icon: const Icon(CupertinoIcons.link, size: 13),
-            label: const Text('Open the current label'),
-            style: TextButton.styleFrom(
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(44, 32),
-              alignment: Alignment.centerLeft,
-              textStyle: const TextStyle(fontSize: 11),
+          ],
+          if (medication.labelUrl != null) ...[
+            const SizedBox(height: 4),
+            TextButton.icon(
+              onPressed: () => launchUrl(
+                Uri.parse(medication.labelUrl!),
+                mode: LaunchMode.externalApplication,
+              ),
+              icon: const Icon(CupertinoIcons.link, size: 13),
+              label: const Text('Open the current label'),
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(44, 32),
+                alignment: Alignment.centerLeft,
+                textStyle: const TextStyle(fontSize: 11),
+              ),
             ),
+          ],
+          _CopySection(
+            title: 'What It Treats',
+            body: medication.indications.isEmpty
+                ? 'Review the current label for indications and usage.'
+                : medication.indications.join('\n\n'),
+            ink: ink,
+            muted: muted,
+            line: line,
+          ),
+          const SizedBox(height: 16),
+          _SafetyCallout(warnings: medication.warnings),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Common Side Effects',
+                  style: TextStyle(
+                    color: ink,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -.25,
+                  ),
+                ),
+              ),
+              ResponsiveCupertinoButton(
+                minimumSize: const Size(44, 36),
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                onPressed: onViewAllSideEffects,
+                semanticLabel: 'View all side effects',
+                child: Text(
+                  'View All',
+                  style: TextStyle(
+                    color: colors.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            children: [
+              for (final effect
+                  in medication.warnings.isEmpty
+                      ? ['See label for side effects']
+                      : medication.warnings.take(3))
+                Text(
+                  effect,
+                  style: TextStyle(
+                    color: muted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+            ],
           ),
         ],
-        _CopySection(
-          title: 'What It Treats',
-          body: medication.indications.isEmpty
-              ? 'Review the current label for indications and usage.'
-              : medication.indications.join('\n\n'),
-          ink: ink,
-          muted: muted,
-          line: line,
-        ),
-        const SizedBox(height: 16),
-        _SafetyCallout(warnings: medication.warnings),
-        const SizedBox(height: 20),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Common Side Effects',
-                style: TextStyle(
-                  color: ink,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -.25,
-                ),
-              ),
-            ),
-            ResponsiveCupertinoButton(
-              minimumSize: const Size(44, 36),
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              onPressed: onViewAllSideEffects,
-              semanticLabel: 'View all side effects',
-              child: Text(
-                'View All',
-                style: TextStyle(
-                  color: colors.primary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 7),
-        Wrap(
-          spacing: 10,
-          runSpacing: 8,
-          children: [
-            for (final effect
-                in medication.warnings.isEmpty
-                    ? ['See label for side effects']
-                    : medication.warnings.take(3))
-              Text(
-                effect,
-                style: TextStyle(
-                  color: muted,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-          ],
-        ),
-      ],
+      ),
     );
   }
 }
@@ -1343,23 +1333,31 @@ class _SafetyCallout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
     final visibleWarnings = warnings.isEmpty
         ? const ['Verify the current label with your pharmacist or care team.']
         : warnings.take(3).toList(growable: false);
+    final panelColor = dark ? const Color(0xFF2B251D) : const Color(0xFFFFF6E8);
+    final titleColor = dark ? const Color(0xFFFFC56B) : const Color(0xFF7F4B1D);
+    final bodyColor = dark ? const Color(0xFFE8DCCB) : const Color(0xFF7F4B1D);
+    final iconColor = dark ? const Color(0xFFFFB340) : const Color(0xFFA8641E);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF6E8),
+        color: panelColor,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: dark ? const Color(0xFF5A4528) : Colors.transparent,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Important Safety',
             style: TextStyle(
-              color: Color(0xFF7F4B1D),
+              color: titleColor,
               fontSize: 15,
               fontWeight: FontWeight.w700,
             ),
@@ -1371,11 +1369,11 @@ class _SafetyCallout extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.only(top: 1),
                     child: Icon(
                       CupertinoIcons.exclamationmark_circle_fill,
-                      color: Color(0xFFA8641E),
+                      color: iconColor,
                       size: 13,
                     ),
                   ),
@@ -1383,8 +1381,8 @@ class _SafetyCallout extends StatelessWidget {
                   Expanded(
                     child: Text(
                       warning,
-                      style: const TextStyle(
-                        color: Color(0xFF7F4B1D),
+                      style: TextStyle(
+                        color: bodyColor,
                         fontSize: 11,
                         height: 1.25,
                       ),

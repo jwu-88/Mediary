@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app_interactions.dart';
 import 'app_layout.dart';
+import 'app_theme.dart';
 import 'liquid_glass_back_button.dart';
 
 /// Opens app-owned content as a full routed page instead of a platform dialog
@@ -314,14 +315,19 @@ class _InAppOptionRow<T> extends StatelessWidget {
         pressedScale: .99,
         hoverOffset: Offset.zero,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 58),
+          constraints: const BoxConstraints(
+            minHeight: AppButtonMetrics.minHeight,
+          ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppButtonMetrics.horizontalPadding,
+              vertical: 8,
+            ),
             child: Row(
               children: [
                 if (option.icon != null) ...[
                   Icon(option.icon, color: foreground, size: 21),
-                  const SizedBox(width: 18),
+                  const SizedBox(width: AppButtonMetrics.iconGap),
                 ],
                 Expanded(
                   child: Column(

@@ -11,7 +11,9 @@ import 'in_app_page.dart';
 import 'liquid_glass_back_button.dart';
 import 'medication_artwork.dart';
 import 'medication_scan.dart';
+import 'medication_time_picker.dart';
 import 'text_formatting.dart';
+import 'time_formatting.dart';
 import 'web_camera.dart';
 
 /// Camera permission state used by [MedicationScannerScreen].
@@ -653,6 +655,9 @@ class ScanResultScreen extends StatefulWidget {
     this.scanRecordId,
     this.onSearchMedication,
     this.bottomNavigationInset = 106,
+    this.timeDisplayFormat = TimeDisplayFormat.twelveHour,
+    this.scheduledTimezone,
+    this.now,
   });
 
   final VoidCallback? onBack;
@@ -665,6 +670,9 @@ class ScanResultScreen extends StatefulWidget {
   final String? scanRecordId;
   final VoidCallback? onSearchMedication;
   final double bottomNavigationInset;
+  final TimeDisplayFormat timeDisplayFormat;
+  final String? scheduledTimezone;
+  final DateTime? now;
 
   @override
   State<ScanResultScreen> createState() => _ScanResultScreenState();
@@ -675,13 +683,18 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
   String _frequency = 'Every 8 hours';
   String _duration = '7 days';
   late DateTime _startDate;
-  TimeOfDay _time = const TimeOfDay(hour: 8, minute: 0);
+  late MedicationTime _time;
   bool _isAdded = false;
+  String? _scheduleError;
+
+  DateTime get _now => widget.now ?? DateTime.now();
 
   @override
   void initState() {
     super.initState();
-    _startDate = DateUtils.dateOnly(DateTime.now());
+    _startDate = DateUtils.dateOnly(_now);
+    final target = _now.add(const Duration(minutes: 2));
+    _time = MedicationTime(hour: target.hour, minute: target.minute);
     unawaited(_saveScanResult());
   }
 
@@ -782,16 +795,49 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
         ),
       ),
     );
-    if (selected != null && mounted) setState(() => _startDate = selected);
+    if (selected != null && mounted) {
+      setState(() {
+        _startDate = selected;
+        _scheduleError = null;
+      });
+    }
   }
 
   Future<void> _chooseTime() async {
-    final selected = await showTimePicker(context: context, initialTime: _time);
-    if (selected != null && mounted) setState(() => _time = selected);
+    final selected = await pushInAppPage<MedicationTime>(
+      context,
+      builder: (_) => MedicationTimeSelectionPage(
+        initialTime: _time.timeOfDay,
+        initialSecond: _time.second,
+        scheduledDate: _startDate,
+        minimumDateTime: _now,
+        scheduledTimezone: widget.scheduledTimezone,
+        use24HourFormat:
+            widget.timeDisplayFormat == TimeDisplayFormat.twentyFourHour,
+      ),
+    );
+    if (selected != null && mounted) {
+      setState(() {
+        _time = selected;
+        _scheduleError = null;
+      });
+    }
   }
 
   Future<void> _addToCalendar() async {
     if (_isAdded) return;
+    if (isMedicationTimeInPast(
+      _startDate,
+      _time,
+      now: _now,
+      timezone: widget.scheduledTimezone,
+    )) {
+      setState(
+        () => _scheduleError =
+            'Choose a future date and time for this medication.',
+      );
+      return;
+    }
     try {
       final added =
           await widget.onScheduleConfirmed?.call(
@@ -975,8 +1021,11 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                                   ),
                                   const SizedBox(height: 13),
                                   _ScheduleField(
+                                    key: const Key('scanScheduleTimeField'),
                                     label: 'TIME',
-                                    value: _time.format(context),
+                                    value: _time.format(
+                                      widget.timeDisplayFormat,
+                                    ),
                                     onTap: _chooseTime,
                                     icon: CupertinoIcons.time,
                                   ),
@@ -1012,6 +1061,19 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                                       ),
                                     ],
                                   ),
+                                  if (_scheduleError != null) ...[
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      _scheduleError!,
+                                      key: const Key('scanScheduleError'),
+                                      style: TextStyle(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .error,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -1251,7 +1313,7 @@ class ScanScheduleData {
   final String frequency;
   final String duration;
   final DateTime startDate;
-  final TimeOfDay time;
+  final MedicationTime time;
 }
 
 class _ExtractedTextCard extends StatelessWidget {
@@ -1627,6 +1689,7 @@ class _SafetyNotice extends StatelessWidget {
 
 class _ScheduleField extends StatelessWidget {
   const _ScheduleField({
+    super.key,
     required this.label,
     required this.value,
     required this.onTap,

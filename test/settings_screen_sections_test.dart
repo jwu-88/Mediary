@@ -98,7 +98,12 @@ void main() {
       'Follow-Up Alert',
       'Reminder Sound',
     ]);
-    expectRows('settingsAppPreferencesGroup', ['Language', 'Units']);
+    expectRows('settingsAppPreferencesGroup', ['Units']);
+    expectRows('settingsAppPreferencesGroup', [
+      'Time Format',
+      'How medication times are displayed',
+      '12-hour',
+    ]);
     expectRows('settingsAppearanceGroup', [
       'Theme',
       'Light, dark, or system',
@@ -110,9 +115,9 @@ void main() {
     expectRows('settingsPrivacyGroup', [
       'Privacy Controls',
       'Camera and data preferences',
-      'Export My Data',
     ]);
     expect(find.text('Connected Apps'), findsNothing);
+    expect(find.text('Language'), findsNothing);
     expect(find.text('Apple Health'), findsNothing);
     expect(find.byKey(const Key('settingsConnectedAppsGroup')), findsNothing);
 
@@ -132,5 +137,33 @@ void main() {
       findsNothing,
     );
     expect(find.byKey(const Key('settingsSignOutButton')), findsNothing);
+  });
+
+  testWidgets('send test notification invokes the notification service', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(402, 1500);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    var sent = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          embedded: true,
+          appearanceMode: ThemeMode.system,
+          onAppearanceModeChanged: (_) {},
+          accentColor: AppAccentColor.blue,
+          onAccentColorChanged: (_) {},
+          onSendTestNotification: () async => sent += 1,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('sendTestNotificationRow')));
+    await tester.pump();
+
+    expect(sent, 1);
   });
 }

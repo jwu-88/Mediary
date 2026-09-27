@@ -23,6 +23,7 @@ import 'firebase_options.dart';
 import 'in_app_page.dart';
 import 'library_screens.dart';
 import 'liquid_glass_tab_bar.dart';
+import 'medication_time_picker.dart';
 import 'medication_scan.dart';
 import 'notifications/medication_notification_service.dart';
 import 'profile_screen.dart';
@@ -33,6 +34,9 @@ import 'web_page_metadata.dart';
 import 'web_navigation_sidebar.dart';
 import 'weekly_report_screen.dart';
 import 'text_formatting.dart';
+import 'time_formatting.dart';
+
+export 'medication_time_picker.dart';
 
 final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 Future<void>? _googleSignInInitialization;
@@ -193,6 +197,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late final FirebaseAuth _auth = FirebaseAuth.instance;
   ThemeMode _appearanceMode = ThemeMode.system;
   AppAccentColor _accentColor = AppAccentColor.blue;
+  TimeDisplayFormat _timeDisplayFormat = TimeDisplayFormat.twelveHour;
 
   // Themes are expensive to build (ColorScheme.fromSeed + ~40 sub-themes).
   // Cache them so a setState for appearance/accent does not rebuild both
@@ -268,6 +273,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         },
         accentColor: _accentColor,
         onAccentColorChanged: _setAccentColor,
+        timeDisplayFormat: _timeDisplayFormat,
+        onTimeDisplayFormatChanged: (format) {
+          setState(() => _timeDisplayFormat = format);
+        },
       ),
     );
   }
@@ -281,6 +290,8 @@ class AuthGate extends StatefulWidget {
     required this.onAppearanceModeChanged,
     required this.accentColor,
     required this.onAccentColorChanged,
+    this.timeDisplayFormat = TimeDisplayFormat.twelveHour,
+    this.onTimeDisplayFormatChanged,
   });
 
   final FirebaseAuth auth;
@@ -288,6 +299,8 @@ class AuthGate extends StatefulWidget {
   final ValueChanged<ThemeMode> onAppearanceModeChanged;
   final AppAccentColor accentColor;
   final ValueChanged<AppAccentColor> onAccentColorChanged;
+  final TimeDisplayFormat timeDisplayFormat;
+  final ValueChanged<TimeDisplayFormat>? onTimeDisplayFormatChanged;
 
   @override
   State<AuthGate> createState() => _AuthGateState();
@@ -297,6 +310,7 @@ class _AuthGateState extends State<AuthGate> {
   late Stream<User?> _authStateChanges;
   User? _initialUser;
   bool _returningUser = false;
+  String? _dataStoreStartingUid;
   String? _confirmedVerifiedUid;
   MediaryDataStore? _dataStore;
 
@@ -325,15 +339,22 @@ class _AuthGateState extends State<AuthGate> {
     if (user == null) {
       _dataStore?.dispose();
       _dataStore = null;
+      _dataStoreStartingUid = null;
       return;
     }
     if (_dataStore?.userId == user.uid) return;
+    if (_dataStoreStartingUid == user.uid) return;
     _dataStore?.dispose();
     final store = MediaryDataStore(
       repository: MediaryRepository(auth: widget.auth),
     );
     _dataStore = store;
-    unawaited(store.start(user));
+    _dataStoreStartingUid = user.uid;
+    unawaited(
+      store.start(user).whenComplete(() {
+        if (identical(_dataStore, store)) _dataStoreStartingUid = null;
+      }),
+    );
   }
 
   @override
@@ -357,6 +378,8 @@ class _AuthGateState extends State<AuthGate> {
           onAppearanceModeChanged: widget.onAppearanceModeChanged,
           accentColor: widget.accentColor,
           onAccentColorChanged: widget.onAccentColorChanged,
+          timeDisplayFormat: widget.timeDisplayFormat,
+          onTimeDisplayFormatChanged: widget.onTimeDisplayFormatChanged,
         ),
       ),
     );
@@ -410,6 +433,8 @@ class _AuthGateState extends State<AuthGate> {
             onAppearanceModeChanged: widget.onAppearanceModeChanged,
             accentColor: widget.accentColor,
             onAccentColorChanged: widget.onAccentColorChanged,
+            timeDisplayFormat: widget.timeDisplayFormat,
+            onTimeDisplayFormatChanged: widget.onTimeDisplayFormatChanged,
             onSignOut: () => signOut(widget.auth),
             dataStore: _dataStore,
             cameraPermissionRequester: requestCameraAccess,
@@ -1207,6 +1232,8 @@ class AuthenticatedHome extends StatefulWidget {
     this.onAppearanceModeChanged,
     this.accentColor = AppAccentColor.blue,
     this.onAccentColorChanged,
+    this.timeDisplayFormat = TimeDisplayFormat.twelveHour,
+    this.onTimeDisplayFormatChanged,
     this.onSignOut,
     this.dataStore,
     this.catalogClient,
@@ -1227,6 +1254,8 @@ class AuthenticatedHome extends StatefulWidget {
   final ValueChanged<ThemeMode>? onAppearanceModeChanged;
   final AppAccentColor accentColor;
   final ValueChanged<AppAccentColor>? onAccentColorChanged;
+  final TimeDisplayFormat timeDisplayFormat;
+  final ValueChanged<TimeDisplayFormat>? onTimeDisplayFormatChanged;
   final Future<void> Function()? onSignOut;
   final MediaryDataStore? dataStore;
   final MedicationCatalogClient? catalogClient;
@@ -1261,6 +1290,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   String? _scanRecordId;
   DateTime? _calendarFocusDate;
   final List<CalendarDoseData> _pendingCalendarDoses = [];
+  final Set<String> _cancelledDoseIds = <String>{};
   final Set<String> _pendingScheduleKeys = <String>{};
   CameraAccessState _cameraAccess = CameraAccessState.notRequested;
   String? _appliedPreferenceSignature;
@@ -1285,6 +1315,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       oldWidget.dataStore?.removeListener(_onStoreChanged);
       widget.dataStore?.addListener(_onStoreChanged);
       _appliedPreferenceSignature = null;
+      _cancelledDoseIds.clear();
       if (oldWidget.dataStore == null && widget.dataStore != null) {
         _startNotificationMonitoring();
       }
@@ -1332,6 +1363,13 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     if (store == null || _notificationSyncInFlight || !mounted) return;
     _notificationSyncInFlight = true;
     try {
+      if (store.profile?.preferences.doseNotifications != true) {
+        await _notificationService.syncDueDoses(
+          doses: const <DoseLogRecord>[],
+          medicationNames: const <String, String>{},
+        );
+        return;
+      }
       final names = <String, String>{
         for (final medication in store.medications)
           medication.id: medication.name,
@@ -1339,8 +1377,15 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       final scheduleTimezones = <String, String>{
         for (final schedule in store.schedules) schedule.id: schedule.timezone,
       };
+      final automaticScheduleIds = {
+        for (final schedule in store.schedules)
+          if (schedule.frequency != 'asNeeded') schedule.id,
+      };
       final due = await _notificationService.syncDueDoses(
-        doses: store.doseLogs,
+        doses: [
+          for (final dose in store.doseLogs)
+            if (automaticScheduleIds.contains(dose.scheduleId)) dose,
+        ],
         medicationNames: names,
         scheduleTimezones: scheduleTimezones,
         now: DateTime.now(),
@@ -1357,6 +1402,20 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     } finally {
       _notificationSyncInFlight = false;
     }
+  }
+
+  Future<void> _sendTestMedicationNotification() async {
+    await _notificationService.sendTestNotification();
+  }
+
+  void _requestMedicationNotificationPermission() {
+    if (!kIsWeb) return;
+    unawaited(
+      _notificationService.requestPermission().catchError((_) {
+        // The in-app reminder remains available if the browser blocks the
+        // permission request outside a user gesture.
+      }),
+    );
   }
 
   void _showWebMedicationToast(MedicationDueNotification notification) {
@@ -1392,7 +1451,11 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     unawaited(_syncMedicationNotifications());
     final preferences = widget.dataStore?.profile?.preferences;
     if (preferences == null) return;
-    final signature = [preferences.theme, preferences.accentColor].join('|');
+    final signature = [
+      preferences.theme,
+      preferences.accentColor,
+      preferences.timeFormat,
+    ].join('|');
     if (signature != _appliedPreferenceSignature) {
       _appliedPreferenceSignature = signature;
       final mode = switch (preferences.theme) {
@@ -1404,10 +1467,56 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
         (value) => value.name == preferences.accentColor,
         orElse: () => AppAccentColor.blue,
       );
+      final timeFormat = TimeDisplayFormat.fromPreference(
+        preferences.timeFormat,
+      );
       widget.onAppearanceModeChanged?.call(mode);
       widget.onAccentColorChanged?.call(accent);
+      widget.onTimeDisplayFormatChanged?.call(timeFormat);
     }
     if (mounted) setState(() {});
+  }
+
+  Future<void> _updateDoseStatus(
+    String doseId,
+    String status, {
+    DateTime? snoozedUntil,
+  }) async {
+    final store = widget.dataStore;
+    if (store == null) return;
+
+    final cancelling = status == 'cancelled';
+    if ((cancelling || status == 'due') && mounted) {
+      setState(() {
+        if (cancelling) {
+          _cancelledDoseIds.add(doseId);
+        } else {
+          _cancelledDoseIds.remove(doseId);
+        }
+      });
+    }
+    try {
+      await store.updateDoseStatus(
+        doseId,
+        status,
+        takenAt: status == 'taken' ? DateTime.now() : null,
+        snoozedUntil: snoozedUntil,
+      );
+      if (status != 'due') {
+        try {
+          await _notificationService.cancelDose(doseId);
+        } catch (notificationError) {
+          if (kDebugMode) {
+            debugPrint('Dose reminder cancellation failed: $notificationError');
+          }
+        }
+      }
+    } catch (error) {
+      if (cancelling && mounted) {
+        setState(() => _cancelledDoseIds.remove(doseId));
+      }
+      rethrow;
+    }
   }
 
   bool get _usesSidebarNavigation => widget.useSidebarNavigation ?? kIsWeb;
@@ -1532,14 +1641,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       weeklyTaken: series.taken.reduce((a, b) => a + b),
       weeklyScheduled: series.scheduled.reduce((a, b) => a + b),
       onOpenCalendar: () => _selectDestination(1),
-      onDoseStatusChanged: store == null
-          ? null
-          : (doseId, status, {snoozedUntil}) => store.updateDoseStatus(
-              doseId,
-              status,
-              takenAt: status == 'taken' ? DateTime.now() : null,
-              snoozedUntil: snoozedUntil,
-            ),
+      onDoseStatusChanged: store == null ? null : _updateDoseStatus,
       onViewReport: () {
         Navigator.of(context).push(
           MaterialPageRoute<void>(
@@ -1626,7 +1728,8 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
           details: [
             if (medications[dose.medicationId]?.strength.isNotEmpty ?? false)
               medications[dose.medicationId]!.strength,
-            if (dose.localTime.isNotEmpty) dose.localTime,
+            if (dose.localTime.isNotEmpty)
+              formatLocalTime(dose.localTime, widget.timeDisplayFormat),
           ].join(' · '),
           status: dose.status,
         ),
@@ -1725,11 +1828,24 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       onAppearanceModeChanged: widget.onAppearanceModeChanged ?? (_) {},
       accentColor: widget.accentColor,
       onAccentColorChanged: widget.onAccentColorChanged ?? (_) {},
+      timeDisplayFormat: widget.timeDisplayFormat,
+      onTimeDisplayFormatChanged: widget.onTimeDisplayFormatChanged,
+      onSendTestNotification: widget.dataStore == null
+          ? null
+          : _sendTestMedicationNotification,
+      onReadNotificationPermission: widget.dataStore == null
+          ? null
+          : _notificationService.permissionState,
       accountEmail: widget.dataStore?.profile?.email ?? widget.email,
       accountDisplayName:
           widget.dataStore?.profile?.displayName ?? widget.displayName,
       accountPhotoUrl: profilePhotoUrl,
-      onPreferenceChanged: widget.dataStore?.updatePreference,
+      onPreferenceChanged: (key, value) async {
+        if (key == 'doseNotifications' && value == true) {
+          await _notificationService.requestPermission();
+        }
+        await widget.dataStore?.updatePreference(key, value);
+      },
       initialPreferences: widget.dataStore?.profile?.preferences,
       onOpenAccount: () => _openAccount(context),
       bottomPadding: _usesSidebarNavigation ? 32 : 120,
@@ -1748,6 +1864,8 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
         medication: _scanMedication,
         onScheduleConfirmed: store == null ? null : _commitScanSchedule,
         onSearchMedication: () => _openMedicationSearchFromScan(context),
+        timeDisplayFormat: widget.timeDisplayFormat,
+        scheduledTimezone: preferredScheduleTimezone(store?.profile?.timezone),
         bottomNavigationInset: _usesSidebarNavigation ? 16 : 106,
       );
     }
@@ -1944,8 +2062,8 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     final doseUnit = _scanDoseUnit(schedule.dose, catalog);
     final frequency = _scanFrequency(schedule.frequency);
     final localDate = _dateKey(schedule.startDate);
-    final localTime =
-        '${schedule.time.hour.toString().padLeft(2, '0')}:${schedule.time.minute.toString().padLeft(2, '0')}';
+    final localTime = schedule.time.localTime;
+    final scheduleTimezone = preferredScheduleTimezone(store.profile?.timezone);
     final scheduleId = _scheduleId(
       catalog.rxcui,
       localDate: localDate,
@@ -1954,12 +2072,10 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       doseAmount: doseAmount,
     );
     final endDate = _scanEndDate(schedule.startDate, schedule.duration);
-    final scheduledFor = DateTime(
-      schedule.startDate.year,
-      schedule.startDate.month,
-      schedule.startDate.day,
-      schedule.time.hour,
-      schedule.time.minute,
+    final scheduledFor = medicationScheduledDate(
+      schedule.startDate,
+      schedule.time,
+      scheduleTimezone,
     );
 
     if (_isDuplicateSchedule(
@@ -1999,22 +2115,29 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
         doseUnit: doseUnit,
         times: [localTime],
         frequency: frequency,
+        daysOfWeek: frequency == 'weekly'
+            ? [schedule.startDate.weekday]
+            : const <int>[],
         startDate: localDate,
         endDate: endDate,
-        timezone: store.profile?.timezone.trim().isNotEmpty == true
-            ? store.profile!.timezone
-            : 'UTC',
+        timezone: scheduleTimezone,
         instructions: 'Confirmed from scanned medication label.',
       ),
-      dose: DoseWrite(
-        id: scheduleId,
-        medicationId: medicationId,
-        scheduleId: scheduleId,
-        scheduledFor: scheduledFor,
-        localDate: localDate,
-        localTime: localTime,
-      ),
+      dose: frequency == 'asNeeded'
+          ? null
+          : DoseWrite(
+              id: scheduleId,
+              medicationId: medicationId,
+              scheduleId: scheduleId,
+              scheduledFor: scheduledFor,
+              localDate: localDate,
+              localTime: localTime,
+            ),
     );
+
+    if (frequency != 'asNeeded') {
+      _requestMedicationNotificationPermission();
+    }
 
     final calendarDose = CalendarDoseData(
       id: scheduleId,
@@ -2023,12 +2146,13 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       details: [
         if ((existingMedication?.strength ?? catalog.strength).isNotEmpty)
           existingMedication?.strength ?? catalog.strength,
-        localTime,
+        formatLocalTime(localTime, widget.timeDisplayFormat),
       ].join(' · '),
       status: 'due',
     );
-    if (mounted) {
+    if (mounted && frequency != 'asNeeded') {
       setState(() {
+        _cancelledDoseIds.remove(scheduleId);
         _calendarFocusDate = schedule.startDate;
         _pendingCalendarDoses.removeWhere((dose) => dose.id == scheduleId);
         _pendingCalendarDoses.add(calendarDose);
@@ -2104,7 +2228,11 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
           medicationIds.contains(schedule.medicationId) &&
           (schedule.doseAmount - doseAmount).abs() < 0.0001 &&
           _normalizeDoseUnit(schedule.doseUnit) == normalizedUnit &&
-          schedule.times.any((time) => time.trim() == localTime),
+          schedule.times.any(
+            (time) =>
+                MedicationTime.fromLocalTime(time).localTime ==
+                MedicationTime.fromLocalTime(localTime).localTime,
+          ),
     );
   }
 
@@ -2114,7 +2242,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     required String doseUnit,
     required String localTime,
   }) =>
-      '$catalogId|${doseAmount.toStringAsFixed(4)}|${_normalizeDoseUnit(doseUnit)}|$localTime';
+      '$catalogId|${doseAmount.toStringAsFixed(4)}|${_normalizeDoseUnit(doseUnit)}|${MedicationTime.fromLocalTime(localTime).localTime}';
 
   String _normalizeDoseUnit(String value) {
     final normalized = value.trim().toLowerCase();
@@ -2168,13 +2296,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       initialDate: _calendarFocusDate ?? widget.now,
       bottomPadding: _usesSidebarNavigation ? 32 : 120,
       initialDoses: _calendarDoses(store),
-      onDoseStatusChanged: store == null
-          ? null
-          : (doseId, status) => store.updateDoseStatus(
-              doseId,
-              status,
-              takenAt: status == 'taken' ? DateTime.now() : null,
-            ),
+      onDoseStatusChanged: store == null ? null : _updateDoseStatus,
       onAddDose: store == null
           ? null
           : (date) async {
@@ -2188,22 +2310,22 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
               if (!context.mounted) return const <CalendarDoseData>[];
               final scheduleDraft = await _showScheduleDetails(
                 context,
-                initialTimezone: store.profile?.timezone ?? 'UTC',
+                initialTimezone: preferredScheduleTimezone(
+                  store.profile?.timezone,
+                ),
+                scheduleDate: date,
               );
               if (scheduleDraft == null || !mounted) {
                 return const <CalendarDoseData>[];
               }
               final time = scheduleDraft.time;
-              final scheduledFor = DateTime(
-                date.year,
-                date.month,
-                date.day,
-                time.hour,
-                time.minute,
+              final scheduledFor = medicationScheduledDate(
+                date,
+                time,
+                scheduleDraft.timezone,
               );
               final localDate = _dateKey(date);
-              final localTime =
-                  '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+              final localTime = time.localTime;
               final addedDoses = <CalendarDoseData>[];
               for (final medication in selections) {
                 final catalog = await _catalogDetailsFor(medication);
@@ -2261,21 +2383,25 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
                     doseUnit: doseUnit,
                     times: [localTime],
                     frequency: scheduleDraft.frequency,
+                    daysOfWeek: scheduleDraft.daysOfWeek,
                     startDate: localDate,
                     endDate: scheduleDraft.frequency == 'once'
                         ? localDate
                         : null,
                     timezone: scheduleDraft.timezone,
                   ),
-                  dose: DoseWrite(
-                    id: scheduleId,
-                    medicationId: medicationId,
-                    scheduleId: scheduleId,
-                    scheduledFor: scheduledFor,
-                    localDate: localDate,
-                    localTime: localTime,
-                  ),
+                  dose: scheduleDraft.frequency == 'asNeeded'
+                      ? null
+                      : DoseWrite(
+                          id: scheduleId,
+                          medicationId: medicationId,
+                          scheduleId: scheduleId,
+                          scheduledFor: scheduledFor,
+                          localDate: localDate,
+                          localTime: localTime,
+                        ),
                 );
+                _cancelledDoseIds.remove(scheduleId);
                 _pendingScheduleKeys.add(
                   _scanScheduleKey(
                     catalogId: catalog.rxcui,
@@ -2284,18 +2410,23 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
                     localTime: localTime,
                   ),
                 );
-                addedDoses.add(
-                  CalendarDoseData(
-                    id: scheduleId,
-                    localDate: localDate,
-                    name: catalog.name,
-                    details: [
-                      '${_formatDoseAmount(scheduleDraft.doseAmount)} $doseUnit',
-                      localTime,
-                    ].join(' · '),
-                    status: 'due',
-                  ),
-                );
+                if (scheduleDraft.frequency != 'asNeeded') {
+                  addedDoses.add(
+                    CalendarDoseData(
+                      id: scheduleId,
+                      localDate: localDate,
+                      name: catalog.name,
+                      details: [
+                        '${_formatDoseAmount(scheduleDraft.doseAmount)} $doseUnit',
+                        formatLocalTime(localTime, widget.timeDisplayFormat),
+                      ].join(' · '),
+                      status: 'due',
+                    ),
+                  );
+                }
+              }
+              if (addedDoses.isNotEmpty) {
+                _requestMedicationNotificationPermission();
               }
               return addedDoses;
             },
@@ -2305,12 +2436,15 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   Future<_ScheduleDraft?> _showScheduleDetails(
     BuildContext context, {
     required String initialTimezone,
+    required DateTime scheduleDate,
   }) {
     return pushInAppPage<_ScheduleDraft>(
       context,
       builder: (context) => _ScheduleDetailsPage(
         initialTimezone: initialTimezone,
-        initialTime: TimeOfDay.fromDateTime(DateTime.now()),
+        scheduleDate: scheduleDate,
+        initialTime: defaultMedicationTime(),
+        timeDisplayFormat: widget.timeDisplayFormat,
       ),
     );
   }
@@ -2358,7 +2492,8 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
           details: [
             if (medications[dose.medicationId]?.strength.isNotEmpty ?? false)
               medications[dose.medicationId]!.strength,
-            if (dose.localTime.isNotEmpty) dose.localTime,
+            if (dose.localTime.isNotEmpty)
+              formatLocalTime(dose.localTime, widget.timeDisplayFormat),
           ].join(' · '),
           status: dose.status,
         ),
@@ -2367,7 +2502,9 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     return [
       ...persisted,
       for (final dose in _pendingCalendarDoses)
-        if (!persistedIds.contains(dose.id)) dose,
+        if (!persistedIds.contains(dose.id) &&
+            !_cancelledDoseIds.contains(dose.id))
+          dose,
     ];
   }
 
@@ -2621,24 +2758,30 @@ class _ScheduleDraft {
   const _ScheduleDraft({
     required this.doseAmount,
     required this.frequency,
+    required this.daysOfWeek,
     required this.timezone,
     required this.time,
   });
 
   final double doseAmount;
   final String frequency;
+  final List<int> daysOfWeek;
   final String timezone;
-  final TimeOfDay time;
+  final MedicationTime time;
 }
 
 class _ScheduleDetailsPage extends StatefulWidget {
   const _ScheduleDetailsPage({
     required this.initialTimezone,
+    required this.scheduleDate,
     required this.initialTime,
+    required this.timeDisplayFormat,
   });
 
   final String initialTimezone;
-  final TimeOfDay initialTime;
+  final DateTime scheduleDate;
+  final MedicationTime initialTime;
+  final TimeDisplayFormat timeDisplayFormat;
 
   @override
   State<_ScheduleDetailsPage> createState() => _ScheduleDetailsPageState();
@@ -2656,8 +2799,9 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
 
   late final TextEditingController _doseController;
   late String _frequency;
+  late Set<int> _daysOfWeek;
   late String _timezone;
-  late TimeOfDay _time;
+  late MedicationTime _time;
   String? _errorMessage;
 
   @override
@@ -2665,8 +2809,9 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
     super.initState();
     _doseController = TextEditingController(text: '1');
     _frequency = 'once';
+    _daysOfWeek = {widget.scheduleDate.weekday};
     _timezone = widget.initialTimezone.trim().isEmpty
-        ? 'UTC'
+        ? deviceScheduleTimezone()
         : widget.initialTimezone.trim();
     _time = widget.initialTime;
   }
@@ -2732,9 +2877,17 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
   }
 
   Future<void> _chooseTime() async {
-    final selected = await pushInAppPage<TimeOfDay>(
+    final selected = await pushInAppPage<MedicationTime>(
       context,
-      builder: (context) => MedicationTimeSelectionPage(initialTime: _time),
+      builder: (context) => MedicationTimeSelectionPage(
+        initialTime: _time.timeOfDay,
+        initialSecond: _time.second,
+        scheduledDate: widget.scheduleDate,
+        minimumDateTime: DateTime.now(),
+        scheduledTimezone: _timezone,
+        use24HourFormat:
+            widget.timeDisplayFormat == TimeDisplayFormat.twentyFourHour,
+      ),
     );
     if (selected != null && mounted) setState(() => _time = selected);
   }
@@ -2745,10 +2898,26 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
       setState(() => _errorMessage = 'Enter a dose amount greater than zero.');
       return;
     }
+    if (isMedicationTimeInPast(
+      widget.scheduleDate,
+      _time,
+      timezone: _timezone,
+    )) {
+      setState(
+        () => _errorMessage =
+            'Choose a future date and time for this medication.',
+      );
+      return;
+    }
+    if (_frequency == 'weekly' && _daysOfWeek.isEmpty) {
+      setState(() => _errorMessage = 'Choose at least one day of the week.');
+      return;
+    }
     Navigator.of(context).pop(
       _ScheduleDraft(
         doseAmount: amount,
         frequency: _frequency,
+        daysOfWeek: _daysOfWeek.toList()..sort(),
         timezone: _timezone,
         time: _time,
       ),
@@ -2758,7 +2927,7 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final timeLabel = _time.format(context);
+    final timeLabel = _time.format(widget.timeDisplayFormat);
     return InAppPageScaffold(
       title: 'Schedule Medication',
       child: ListView(
@@ -2793,6 +2962,22 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
             value: _frequencyLabel,
             onTap: _chooseFrequency,
           ),
+          if (_frequency == 'weekly') ...[
+            const SizedBox(height: 10),
+            _WeekdaySelector(
+              selectedDays: _daysOfWeek,
+              onChanged: (day, selected) {
+                setState(() {
+                  if (selected) {
+                    _daysOfWeek.add(day);
+                  } else {
+                    _daysOfWeek.remove(day);
+                  }
+                  _errorMessage = null;
+                });
+              },
+            ),
+          ],
           const SizedBox(height: 10),
           _TimeSelectionCard(
             key: const Key('scheduleTimeChoice'),
@@ -2829,18 +3014,18 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
   }
 }
 
-class MedicationTimeSelectionPage extends StatefulWidget {
-  const MedicationTimeSelectionPage({super.key, required this.initialTime});
+class _LegacyMedicationTimeSelectionPage extends StatefulWidget {
+  const _LegacyMedicationTimeSelectionPage({required this.initialTime});
 
   final TimeOfDay initialTime;
 
   @override
-  State<MedicationTimeSelectionPage> createState() =>
-      _MedicationTimeSelectionPageState();
+  State<_LegacyMedicationTimeSelectionPage> createState() =>
+      _LegacyMedicationTimeSelectionPageState();
 }
 
-class _MedicationTimeSelectionPageState
-    extends State<MedicationTimeSelectionPage> {
+class _LegacyMedicationTimeSelectionPageState
+    extends State<_LegacyMedicationTimeSelectionPage> {
   static const _presets = [
     ('Morning', TimeOfDay(hour: 8, minute: 0)),
     ('Noon', TimeOfDay(hour: 12, minute: 0)),
@@ -2964,6 +3149,65 @@ class _MedicationTimeSelectionPageState
           ),
         ],
       ),
+    );
+  }
+}
+
+class _WeekdaySelector extends StatelessWidget {
+  const _WeekdaySelector({required this.selectedDays, required this.onChanged});
+
+  static const _labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  static const _fullNames = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
+
+  final Set<int> selectedDays;
+  final void Function(int day, bool selected) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Days of the Week',
+          style: TextStyle(
+            color: colors.onSurface,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            for (var index = 0; index < _labels.length; index++) ...[
+              Expanded(
+                child: Semantics(
+                  label: _fullNames[index],
+                  selected: selectedDays.contains(index + 1),
+                  child: FilterChip(
+                    key: Key('scheduleWeekdayChip_${index + 1}'),
+                    label: Text(_labels[index]),
+                    selected: selectedDays.contains(index + 1),
+                    onSelected: (selected) => onChanged(index + 1, selected),
+                    showCheckmark: false,
+                    padding: EdgeInsets.zero,
+                    labelPadding: EdgeInsets.zero,
+                    materialTapTargetSize: MaterialTapTargetSize.padded,
+                  ),
+                ),
+              ),
+              if (index < _labels.length - 1) const SizedBox(width: 4),
+            ],
+          ],
+        ),
+      ],
     );
   }
 }

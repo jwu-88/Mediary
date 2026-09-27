@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import 'app_interactions.dart';
+import 'app_theme.dart';
 
 class LiquidGlassTabBar extends StatelessWidget {
   const LiquidGlassTabBar({
@@ -60,7 +61,9 @@ class LiquidGlassTabBar extends StatelessWidget {
       minimum: const EdgeInsets.fromLTRB(16, 0, 16, 9),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(32),
+          borderRadius: BorderRadius.circular(
+            AppButtonMetrics.navigationRadius,
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: dark ? .26 : .13),
@@ -71,15 +74,19 @@ class LiquidGlassTabBar extends StatelessWidget {
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(32),
+          borderRadius: BorderRadius.circular(
+            AppButtonMetrics.navigationRadius,
+          ),
           // Keep the base surface solid. Blurring the camera canvas behind
           // the bar creates a visible pixel/grid pattern on some iOS devices.
           // The selected destination still uses its own glass lens below.
           child: Container(
             key: const Key('liquidGlassTabBar'),
-            height: 64,
+            height: AppButtonMetrics.navigationHeight,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(32),
+              borderRadius: BorderRadius.circular(
+                AppButtonMetrics.navigationRadius,
+              ),
               color: surfaceColor,
               border: Border.all(
                 color: dark

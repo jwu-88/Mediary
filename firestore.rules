@@ -23,6 +23,22 @@ service cloud.firestore {
         || (data[field] is string && data[field].size() > 0);
     }
 
+    function validDate(value) {
+      return value is string
+        && value.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    function validLocalTime(value) {
+      return value is string
+        && value.matches('^[0-9]{2}:[0-9]{2}(:[0-9]{2})?$');
+    }
+
+    function validTimezone(value) {
+      return value is string
+        && value.size() > 0
+        && value.matches('^(UTC|[A-Za-z_]+(/[A-Za-z0-9_+.-]+)*)$');
+    }
+
     function validCatalogMetadata(data) {
       return optionalNonEmptyString(data, 'catalogId')
         && (!data.keys().hasAny(['catalogSource'])
@@ -44,7 +60,8 @@ service cloud.firestore {
           'followUpAlerts',
           'reminderSound',
           'language',
-          'units'
+          'units',
+          'timeFormat'
         ])
         && (!data.keys().hasAny(['theme'])
           || data.theme in ['system', 'light', 'dark'])
@@ -59,7 +76,9 @@ service cloud.firestore {
         && (!data.keys().hasAny(['language'])
           || data.language is string)
         && (!data.keys().hasAny(['units'])
-          || data.units is string);
+          || data.units is string)
+        && (!data.keys().hasAny(['timeFormat'])
+          || data.timeFormat in ['12-hour', '24-hour']);
     }
 
     function validUser(data) {
@@ -143,6 +162,7 @@ service cloud.firestore {
         && data.doseAmount > 0
         && data.doseUnit is string
         && data.times is list
+        && data.times.size() > 0
         && data.frequency in [
           'daily',
           'weekly',
@@ -152,9 +172,10 @@ service cloud.firestore {
           'once'
         ]
         && data.daysOfWeek is list
-        && data.startDate is string
-        && optionalString(data, 'endDate')
-        && data.timezone is string
+        && data.daysOfWeek.hasOnly([1, 2, 3, 4, 5, 6, 7])
+        && validDate(data.startDate)
+        && (!data.keys().hasAny(['endDate']) || validDate(data.endDate))
+        && validTimezone(data.timezone)
         && data.instructions is string
         && data.active is bool
         && data.createdAt is timestamp
@@ -178,8 +199,8 @@ service cloud.firestore {
         && data.medicationId is string
         && data.scheduleId is string
         && data.scheduledFor is timestamp
-        && data.localDate is string
-        && data.localTime is string
+        && validDate(data.localDate)
+        && validLocalTime(data.localTime)
         && data.status in [
           'due',
           'taken',

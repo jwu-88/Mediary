@@ -5,6 +5,9 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../data/mediary_models.dart';
 import '../text_formatting.dart';
+import '../time_formatting.dart';
+import 'web_notification_stub.dart'
+    if (dart.library.html) 'web_notification_web.dart';
 
 /// A due dose that can be presented by a native notification or the web UI.
 class MedicationDueNotification {
@@ -33,6 +36,17 @@ abstract interface class MedicationNotificationService {
   Future<void> initialize();
 
   Future<void> requestPermission();
+
+  /// Returns a user-facing permission state such as granted, denied, or
+  /// unavailable. Web reads this without requesting permission.
+  Future<String> permissionState();
+
+  /// Sends an immediate notification so the user can verify notification
+  /// permissions and platform delivery before scheduling a dose.
+  Future<void> sendTestNotification();
+
+  /// Cancels one dose reminder without requiring a full data synchronization.
+  Future<void> cancelDose(String doseId);
 
   /// Synchronizes notifications for the current dose-log snapshot.
   ///
@@ -81,6 +95,12 @@ class DefaultMedicationNotificationService
     if (_initialized || _disposed) return;
     if (!_timeZonesInitialized) {
       tz_data.initializeTimeZones();
+      try {
+        tz.setLocalLocation(tz.getLocation(deviceScheduleTimezone()));
+      } catch (_) {
+        // Keep the package's default location if the platform zone cannot be
+        // mapped to an IANA name.
+      }
       _timeZonesInitialized = true;
     }
 
@@ -99,7 +119,6 @@ class DefaultMedicationNotificationService
       await _plugin.initialize(
         settings: const InitializationSettings(android: android, iOS: darwin),
       );
-      await _clearOwnedPendingNotifications();
     } catch (_) {
       // Flutter widget tests and desktop hosts do not register a native
       // notifications platform implementation. Keep the web/in-app portion
@@ -112,20 +131,66 @@ class DefaultMedicationNotificationService
   @override
   Future<void> requestPermission() async {
     await initialize();
-    if (!_supportsNativeNotifications || _disposed) return;
+    if (_disposed) return;
+
+    if (kIsWeb) {
+      await requestWebNotificationPermission();
+      return;
+    }
+    if (!_supportsNativeNotifications) return;
 
     if (defaultTargetPlatform == TargetPlatform.android) {
-      await _plugin
+      final android = _plugin
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
-          >()
-          ?.requestNotificationsPermission();
+          >();
+      await android?.requestNotificationsPermission();
+      // Android 12+ can defer inexact alarms by several minutes. Medication
+      // reminders need the exact alarm permission so the alert is delivered at
+      // the time selected by the user, including while the device is idle.
+      await android?.requestExactAlarmsPermission();
     } else if (defaultTargetPlatform == TargetPlatform.iOS) {
       await _plugin
           .resolvePlatformSpecificImplementation<
             IOSFlutterLocalNotificationsPlugin
           >()
           ?.requestPermissions(alert: true, badge: true, sound: true);
+    }
+  }
+
+  @override
+  Future<String> permissionState() async {
+    await initialize();
+    if (kIsWeb) return webNotificationPermissionState();
+    return _supportsNativeNotifications ? 'available' : 'unavailable';
+  }
+
+  @override
+  Future<void> sendTestNotification() async {
+    await requestPermission();
+    if (_disposed) return;
+
+    const title = 'Mediary notifications are working';
+    const body = 'Test notification from Mediary';
+    if (!_supportsNativeNotifications) {
+      if (kIsWeb) showWebNotification(title: title, body: body);
+      return;
+    }
+    await _showImmediateNotification(
+      id: _testNotificationId,
+      title: title,
+      body: body,
+      payload: '$_payloadPrefix:test',
+    );
+  }
+
+  @override
+  Future<void> cancelDose(String doseId) async {
+    await initialize();
+    _notifiedDoseIds.remove(doseId);
+    _scheduledDoseIds.remove(doseId);
+    if (_supportsNativeNotifications) {
+      await _plugin.cancel(id: notificationIdForDose(doseId));
     }
   }
 
@@ -177,7 +242,17 @@ class DefaultMedicationNotificationService
 
     _notifiedDoseIds.removeWhere((id) => !activeIds.contains(id));
 
-    if (!_supportsNativeNotifications) return newlyDue;
+    if (!_supportsNativeNotifications) {
+      if (kIsWeb) {
+        for (final notification in newlyDue) {
+          showWebNotification(
+            title: notification.title,
+            body: notification.body,
+          );
+        }
+      }
+      return newlyDue;
+    }
 
     final futureDoses = activeDoses
         .where(
@@ -199,19 +274,44 @@ class DefaultMedicationNotificationService
       await _plugin.cancel(id: notificationIdForDose(doseId));
       _scheduledDoseIds.remove(doseId);
     }
+    // Native pending requests survive an app restart. Reconcile those that
+    // were created by an older in-memory service instance as well.
+    final pending = await _plugin.pendingNotificationRequests();
+    for (final request in pending) {
+      final payload = request.payload;
+      if (payload == null || !payload.startsWith(_payloadPrefix)) continue;
+      final doseId = payload.substring(_payloadPrefix.length);
+      if (doseId != 'test' && !futureIds.contains(doseId)) {
+        await _plugin.cancel(id: request.id);
+      }
+    }
 
     // If the app was open when the due time passed, show the native reminder
     // immediately. Background delivery is handled by the scheduled request.
     for (final notification in newlyDue) {
-      await _plugin.show(
+      await _showImmediateNotification(
         id: notificationIdForDose(notification.doseId),
         title: notification.title,
         body: notification.body,
-        notificationDetails: _notificationDetails,
         payload: '$_payloadPrefix${notification.doseId}',
       );
     }
     return newlyDue;
+  }
+
+  Future<void> _showImmediateNotification({
+    required int id,
+    required String title,
+    required String body,
+    required String payload,
+  }) {
+    return _plugin.show(
+      id: id,
+      title: title,
+      body: body,
+      notificationDetails: _notificationDetails,
+      payload: payload,
+    );
   }
 
   Future<void> _schedule(
@@ -220,16 +320,34 @@ class DefaultMedicationNotificationService
     required DateTime scheduledDate,
   }) async {
     final notificationId = notificationIdForDose(dose.id);
-    await _plugin.zonedSchedule(
-      id: notificationId,
-      title: 'Medication reminder',
-      body:
-          'Time to take ${titleCaseDisplay(medicationName ?? 'your medication')}',
-      scheduledDate: tz.TZDateTime.from(scheduledDate, tz.local),
-      notificationDetails: _notificationDetails,
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-      payload: '$_payloadPrefix${dose.id}',
-    );
+    final title = 'Medication reminder';
+    final body =
+        'Time to take ${titleCaseDisplay(medicationName ?? 'your medication')}';
+    final scheduled = tz.TZDateTime.from(scheduledDate, tz.local);
+    try {
+      await _plugin.zonedSchedule(
+        id: notificationId,
+        title: title,
+        body: body,
+        scheduledDate: scheduled,
+        notificationDetails: _notificationDetails,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        payload: '$_payloadPrefix${dose.id}',
+      );
+    } catch (_) {
+      // If Android exact-alarm access was declined or revoked, retain a
+      // deliverable reminder rather than dropping it altogether. The normal
+      // path remains exact and the active-app sync still catches equality.
+      await _plugin.zonedSchedule(
+        id: notificationId,
+        title: title,
+        body: body,
+        scheduledDate: scheduled,
+        notificationDetails: _notificationDetails,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: '$_payloadPrefix${dose.id}',
+      );
+    }
     _scheduledDoseIds.add(dose.id);
   }
 
@@ -247,14 +365,39 @@ class DefaultMedicationNotificationService
         dateParts.every((part) => part != null) &&
         timeParts.length >= 2 &&
         timeParts.take(2).every((part) => part != null)) {
-      return tz.TZDateTime(
+      final metadataDate = tz.TZDateTime(
         location,
         dateParts[0]!,
         dateParts[1]!,
         dateParts[2]!,
         timeParts[0]!,
         timeParts[1]!,
+        timeParts.length > 2 && timeParts[2] != null ? timeParts[2]! : 0,
       );
+      if (normalizedTimezone == 'UTC') {
+        // Before schedules stored the device's IANA timezone, the app
+        // defaulted to UTC while scheduledFor was still written from the
+        // device clock. Recognize only that legacy shape; an explicitly
+        // selected UTC schedule continues to use its metadata as the source
+        // of truth.
+        final deviceLocation = _locationFor(deviceScheduleTimezone());
+        final deviceTime = tz.TZDateTime.from(
+          dose.scheduledFor,
+          deviceLocation,
+        );
+        final matchesLegacyLocalTime =
+            deviceTime.year == dateParts[0] &&
+            deviceTime.month == dateParts[1] &&
+            deviceTime.day == dateParts[2] &&
+            deviceTime.hour == timeParts[0] &&
+            deviceTime.minute == timeParts[1] &&
+            deviceTime.second ==
+                (timeParts.length > 2 && timeParts[2] != null
+                    ? timeParts[2]
+                    : 0);
+        if (matchesLegacyLocalTime) return dose.scheduledFor;
+      }
+      return metadataDate;
     }
     return tz.TZDateTime.from(dose.scheduledFor, location);
   }
@@ -269,16 +412,6 @@ class DefaultMedicationNotificationService
     }
   }
 
-  Future<void> _clearOwnedPendingNotifications() async {
-    final pending = await _plugin.pendingNotificationRequests();
-    for (final request in pending) {
-      if (request.payload?.startsWith(_payloadPrefix) ?? false) {
-        await _plugin.cancel(id: request.id);
-      }
-    }
-    _scheduledDoseIds.clear();
-  }
-
   NotificationDetails get _notificationDetails => const NotificationDetails(
     android: AndroidNotificationDetails(
       'medication_reminders',
@@ -287,7 +420,15 @@ class DefaultMedicationNotificationService
       importance: Importance.high,
       priority: Priority.high,
     ),
-    iOS: DarwinNotificationDetails(),
+    iOS: DarwinNotificationDetails(
+      // Keep reminders visible even when the app is currently in the
+      // foreground. The scheduled notification is still delivered by iOS in
+      // the background or after the app is closed.
+      presentAlert: true,
+      presentBanner: true,
+      presentList: true,
+      presentSound: true,
+    ),
   );
 
   /// Stable positive ID so a Firestore dose update replaces its old request.
@@ -299,6 +440,8 @@ class DefaultMedicationNotificationService
     }
     return hash == 0 ? 1 : hash;
   }
+
+  static const _testNotificationId = 0x4d454449;
 
   @override
   Future<void> dispose() async {
