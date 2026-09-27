@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'app_theme.dart';
+import 'app_legal.dart';
 import 'app_interactions.dart';
 import 'app_layout.dart';
 import 'data/mediary_models.dart';
@@ -311,6 +311,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  void _openLegalPage(Widget page) {
+    unawaited(pushInAppPage<void>(context, builder: (_) => page));
+  }
+
   Future<void> _exportData() async {
     if (_isExportingData) return;
     setState(() {
@@ -545,6 +549,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onTap: _isExportingData ? null : _exportData,
                     ),
                   ]),
+                  _sectionTitle(
+                    'Legal & Support',
+                    key: const Key('settingsLegalSectionTitle'),
+                  ),
+                  _group(key: const Key('settingsLegalGroup'), [
+                    _SettingsRow(
+                      icon: CupertinoIcons.doc_text,
+                      iconColor: _accent,
+                      title: 'Privacy Policy',
+                      subtitle: 'How Mediary handles information',
+                      trailing: _chevron(),
+                      onTap: () => _openLegalPage(const PrivacyPolicyPage()),
+                    ),
+                    _SettingsRow(
+                      icon: CupertinoIcons.doc_plaintext,
+                      iconColor: _accent,
+                      title: 'Terms of Use',
+                      subtitle: 'Rules for using Mediary',
+                      trailing: _chevron(),
+                      onTap: () => _openLegalPage(const TermsPage()),
+                    ),
+                    _SettingsRow(
+                      icon: CupertinoIcons.mail,
+                      iconColor: _accent,
+                      title: 'Contact Support',
+                      subtitle: mediarySupportEmail.isEmpty
+                          ? 'Support contact not configured'
+                          : mediarySupportEmail,
+                      trailing: _chevron(),
+                      onTap: () => _openLegalPage(const ContactSupportPage()),
+                    ),
+                  ]),
                   const SizedBox(height: 13),
                   Text(
                     'Mediary 1.0.0 · Reference only',
@@ -580,8 +616,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ClipRRect(
       key: key,
       borderRadius: BorderRadius.circular(AppRadii.standard),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+      child: WebAwareBlur(
+        sigma: 18,
         child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppRadii.standard),
@@ -938,6 +974,7 @@ class _AccountAvatar extends StatelessWidget {
         child: Image(
           image: profileImage,
           fit: BoxFit.cover,
+          semanticLabel: 'Account profile photo',
           errorBuilder: (context, error, stackTrace) => fallback,
         ),
       ),

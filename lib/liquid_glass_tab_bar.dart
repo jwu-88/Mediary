@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -181,8 +179,8 @@ class _SlidingGlassIndicator extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: WebAwareBlur(
+          sigma: 14,
           child: DecoratedBox(
             key: const Key('liquidGlassSelectedGradient'),
             decoration: BoxDecoration(

@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/services.dart';
 
 const _nativeOcrChannel = MethodChannel('com.mediary/medication_ocr');

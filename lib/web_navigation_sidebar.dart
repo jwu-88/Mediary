@@ -160,6 +160,7 @@ class _BrandHeader extends StatelessWidget {
                   width: 28,
                   height: 28,
                   fit: BoxFit.cover,
+                  semanticLabel: 'Mediary logo',
                 ),
               ),
             ),

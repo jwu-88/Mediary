@@ -87,6 +87,7 @@ class _LiquidGlassSearchFieldState extends State<LiquidGlassSearchField> {
     final dark = theme.brightness == Brightness.dark;
     final highContrast = MediaQuery.maybeOf(context)?.highContrast ?? false;
     final useGlass = widget.useLiquidGlass ?? !kIsWeb;
+    final useBlur = useGlass && shouldUseBackdropBlur(context);
     const radius = BorderRadius.all(Radius.circular(32));
 
     final surface = Container(
@@ -162,7 +163,7 @@ class _LiquidGlassSearchFieldState extends State<LiquidGlassSearchField> {
       ),
       child: ClipRRect(
         borderRadius: radius,
-        child: useGlass
+        child: useBlur
             ? BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 34, sigmaY: 34),
                 child: surface,

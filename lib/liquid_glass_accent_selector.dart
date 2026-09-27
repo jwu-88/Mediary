@@ -1,7 +1,6 @@
 import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'app_interactions.dart';
@@ -215,7 +214,7 @@ class _NativeGlassBlur extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (kIsWeb) {
+    if (!shouldUseBackdropBlur(context)) {
       return child;
     }
     return BackdropFilter(

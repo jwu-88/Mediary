@@ -47,7 +47,7 @@ void main() {
       find.byKey(const Key('medicationSearchField')),
       'metformin',
     );
-    await tester.pump(const Duration(milliseconds: 299));
+    await tester.pump(const Duration(milliseconds: 179));
     expect(client.requests, isEmpty);
     await tester.pump(const Duration(milliseconds: 1));
     await tester.pump();

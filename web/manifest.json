@@ -6,6 +6,7 @@
     "background_color": "#F2F2F7",
     "theme_color": "#0A84FF",
     "description": "Identify, organize, and track medications with Mediary.",
+    "lang": "en",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

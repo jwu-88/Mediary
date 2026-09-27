@@ -106,6 +106,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
   Timer? _searchDebounce;
   var _searchRequest = 0;
   var _isSearching = false;
+  var _hasSearchQuery = false;
   String? _searchError;
   List<MedicationOption> _results = const [];
   late final Set<String> _selectedIds = {...widget.initiallySelectedIds};
@@ -146,13 +147,23 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     _searchDebounce?.cancel();
     final request = ++_searchRequest;
     final query = value.trim();
-    setState(() {
-      _searchError = null;
-      _results = const [];
-      _isSearching = query.length >= 2;
-    });
+    final hasQuery = query.isNotEmpty;
+    final isSearching = query.length >= 2;
+    final shouldRefreshResults =
+        _hasSearchQuery != hasQuery ||
+        _isSearching != isSearching ||
+        _results.isNotEmpty ||
+        _searchError != null;
+    _hasSearchQuery = hasQuery;
+    if (shouldRefreshResults) {
+      setState(() {
+        _searchError = null;
+        _results = const [];
+        _isSearching = isSearching;
+      });
+    }
     if (query.length < 2) return;
-    _searchDebounce = Timer(const Duration(milliseconds: 300), () async {
+    _searchDebounce = Timer(const Duration(milliseconds: 180), () async {
       try {
         final page = await widget.catalogClient!.search(query);
         if (!mounted || request != _searchRequest) return;
