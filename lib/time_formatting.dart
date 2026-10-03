@@ -54,16 +54,29 @@ class MedicationTime {
 
   String format(TimeDisplayFormat displayFormat) {
     if (displayFormat == TimeDisplayFormat.twentyFourHour) {
-      return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}:${second.toString().padLeft(2, '0')}';
+      return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
     }
     final hour12 = hour % 12 == 0 ? 12 : hour % 12;
     final period = hour < 12 ? 'AM' : 'PM';
-    return '$hour12:${minute.toString().padLeft(2, '0')}:${second.toString().padLeft(2, '0')} $period';
+    return '$hour12:${minute.toString().padLeft(2, '0')} $period';
   }
 }
 
 String formatLocalTime(String value, TimeDisplayFormat displayFormat) =>
     MedicationTime.fromLocalTime(value).format(displayFormat);
+
+String formatLocalDate(String value) {
+  final parts = value.split('-').map(int.tryParse).toList();
+  if (parts.length != 3 || parts.any((part) => part == null)) return value;
+  final year = parts[0]!;
+  final month = parts[1]!;
+  final day = parts[2]!;
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > 31) {
+    return value;
+  }
+  return '${month.toString().padLeft(2, '0')}/'
+      '${day.toString().padLeft(2, '0')}/$year';
+}
 
 /// Returns a best-effort IANA timezone for the device's current timezone.
 ///

@@ -293,21 +293,21 @@ service cloud.firestore {
         allow read: if isOwner(userId);
         allow create, update: if isOwner(userId)
           && validMedication(request.resource.data);
-        allow delete: if false;
+        allow delete: if isOwner(userId);
       }
 
       match /schedules/{scheduleId} {
         allow read: if isOwner(userId);
         allow create, update: if isOwner(userId)
           && validSchedule(request.resource.data);
-        allow delete: if false;
+        allow delete: if isOwner(userId);
       }
 
       match /doseLogs/{doseLogId} {
         allow read: if isOwner(userId);
         allow create, update: if isOwner(userId)
           && validDoseLog(request.resource.data);
-        allow delete: if false;
+        allow delete: if isOwner(userId);
       }
 
       match /savedMedications/{medicationId} {

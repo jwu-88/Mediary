@@ -1360,7 +1360,16 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
 
   Future<void> _syncMedicationNotifications() async {
     final store = widget.dataStore;
-    if (store == null || _notificationSyncInFlight || !mounted) return;
+    // Wait for the complete authenticated snapshot before deciding which
+    // native reminders should remain. The store starts empty while Firestore
+    // listeners hydrate; syncing that transient state can consume the
+    // notification service's initial-sync protection.
+    if (store == null ||
+        !store.hasInitialData ||
+        _notificationSyncInFlight ||
+        !mounted) {
+      return;
+    }
     _notificationSyncInFlight = true;
     try {
       if (store.profile?.preferences.doseNotifications != true) {
@@ -1642,6 +1651,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       weeklyScheduled: series.scheduled.reduce((a, b) => a + b),
       onOpenCalendar: () => _selectDestination(1),
       onDoseStatusChanged: store == null ? null : _updateDoseStatus,
+      onRemoveMedication: store?.removeMedication,
       onViewReport: () {
         Navigator.of(context).push(
           MaterialPageRoute<void>(
@@ -1724,12 +1734,17 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       for (final dose in doses.take(12))
         DashboardDoseData(
           id: dose.id,
+          medicationId: dose.medicationId,
           name: medications[dose.medicationId]?.name ?? 'Medication',
           details: [
             if (medications[dose.medicationId]?.strength.isNotEmpty ?? false)
               medications[dose.medicationId]!.strength,
-            if (dose.localTime.isNotEmpty)
-              formatLocalTime(dose.localTime, widget.timeDisplayFormat),
+            if (dose.localDate.isNotEmpty || dose.localTime.isNotEmpty)
+              [
+                if (dose.localDate.isNotEmpty) formatLocalDate(dose.localDate),
+                if (dose.localTime.isNotEmpty)
+                  formatLocalTime(dose.localTime, widget.timeDisplayFormat),
+              ].join(' · '),
           ].join(' · '),
           status: dose.status,
         ),
@@ -2881,7 +2896,6 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
       context,
       builder: (context) => MedicationTimeSelectionPage(
         initialTime: _time.timeOfDay,
-        initialSecond: _time.second,
         scheduledDate: widget.scheduleDate,
         minimumDateTime: DateTime.now(),
         scheduledTimezone: _timezone,

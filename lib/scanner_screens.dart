@@ -808,7 +808,6 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
       context,
       builder: (_) => MedicationTimeSelectionPage(
         initialTime: _time.timeOfDay,
-        initialSecond: _time.second,
         scheduledDate: _startDate,
         minimumDateTime: _now,
         scheduledTimezone: widget.scheduledTimezone,

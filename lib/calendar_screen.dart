@@ -13,7 +13,7 @@ import 'text_formatting.dart';
 
 const _calendarHorizontalInset = 16.0;
 const _calendarNativeContentWidth = 520.0;
-const _calendarDesktopContentWidth = 760.0;
+const _calendarDesktopContentWidth = 1120.0;
 
 /// A native, interactive medication calendar based on the calendar prototype.
 class CalendarScreen extends StatefulWidget {
@@ -445,17 +445,60 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   statusFor: _statusFor,
                 ),
                 const SizedBox(height: 24),
-                _SectionHeader(
-                  key: const Key('calendarSelectedDateHeader'),
-                  title: _longDate(_selectedDate),
-                  onAdd: _addDose,
-                ),
-                const SizedBox(height: 12),
-                _DoseList(
-                  doses: _dosesFor(_selectedDate),
-                  onTapDose: _showDoseActions,
-                  onRemoveDose: _removeDoseAt,
-                ),
+                if (viewportWidth >= 1000)
+                  Row(
+                    key: const Key('calendarLandscapeContent'),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(width: 0),
+                      Expanded(
+                        flex: 6,
+                        child: _CalendarCard(
+                          visibleMonth: _visibleMonth,
+                          selectedDate: _selectedDate,
+                          referenceDate: _referenceDate,
+                          monthLabel: _monthYear(_visibleMonth),
+                          onPreviousMonth: () => _moveMonth(-1),
+                          onNextMonth: () => _moveMonth(1),
+                          onSelectDate: _selectDate,
+                          statusFor: _statusFor,
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                      Expanded(
+                        flex: 5,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _SectionHeader(
+                              key: const Key('calendarSelectedDateHeader'),
+                              title: _longDate(_selectedDate),
+                              onAdd: _addDose,
+                            ),
+                            const SizedBox(height: 12),
+                            _DoseList(
+                              doses: _dosesFor(_selectedDate),
+                              onTapDose: _showDoseActions,
+                              onRemoveDose: _removeDoseAt,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  )
+                else ...[
+                  _SectionHeader(
+                    key: const Key('calendarSelectedDateHeader'),
+                    title: _longDate(_selectedDate),
+                    onAdd: _addDose,
+                  ),
+                  const SizedBox(height: 12),
+                  _DoseList(
+                    doses: _dosesFor(_selectedDate),
+                    onTapDose: _showDoseActions,
+                    onRemoveDose: _removeDoseAt,
+                  ),
+                ],
               ],
             ),
           ),
