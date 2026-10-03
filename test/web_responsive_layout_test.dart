@@ -44,7 +44,7 @@ void main() {
         ),
         content: find.byKey(const Key('dashboardScrollView')),
       ),
-      760,
+      1120,
     );
     expect(
       await renderWidth(
@@ -55,7 +55,7 @@ void main() {
         ),
         content: find.byKey(const Key('calendarScrollView')),
       ),
-      760,
+      1120,
     );
     expect(
       await renderWidth(
@@ -63,7 +63,7 @@ void main() {
         screen: const MedicationLibraryScreen(bottomPadding: 24),
         content: find.byKey(const Key('medicationLibraryScrollView')),
       ),
-      760,
+      1120,
     );
     expect(
       await renderWidth(
@@ -75,7 +75,7 @@ void main() {
         ),
         content: find.byKey(const Key('profileScrollView')),
       ),
-      760,
+      1120,
     );
     expect(
       await renderWidth(
@@ -92,7 +92,7 @@ void main() {
           const PageStorageKey<String>('settingsScrollPosition'),
         ),
       ),
-      760,
+      1120,
     );
   });
 
@@ -107,7 +107,7 @@ void main() {
         screen: WeeklyReportScreen(weekEnding: DateTime(2026, 8, 30)),
         content: find.byKey(const Key('weeklyReportScrollView')),
       ),
-      760,
+      1120,
     );
     expect(
       await renderWidth(
@@ -115,7 +115,7 @@ void main() {
         screen: const AddMedicationScreen(),
         content: find.byKey(const Key('medicationSearchField')),
       ),
-      726,
+      1086,
     );
     expect(
       await renderWidth(
@@ -123,8 +123,39 @@ void main() {
         screen: const ScanResultScreen(bottomNavigationInset: 0),
         content: find.byKey(const Key('scanResultScrollView')),
       ),
-      720,
+      1120,
     );
+  });
+
+  testWidgets('landscape destinations use horizontal desktop compositions', (
+    tester,
+  ) async {
+    useSize(tester, const Size(1280, 720));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DashboardScreen(
+            email: 'person@example.com',
+            now: DateTime(2026, 8, 30),
+            bottomPadding: 24,
+          ),
+        ),
+      ),
+    );
+    expect(find.byKey(const Key('dashboardLandscapeSummary')), findsOneWidget);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CalendarScreen(
+            initialDate: DateTime(2026, 8, 30),
+            bottomPadding: 24,
+          ),
+        ),
+      ),
+    );
+    expect(find.byKey(const Key('calendarLandscapeContent')), findsOneWidget);
   });
 
   testWidgets('content contracts to a narrow web window without overflow', (

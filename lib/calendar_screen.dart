@@ -434,23 +434,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   scheduled: _monthScheduled,
                 ),
                 const SizedBox(height: 24),
-                _CalendarCard(
-                  visibleMonth: _visibleMonth,
-                  selectedDate: _selectedDate,
-                  referenceDate: _referenceDate,
-                  monthLabel: _monthYear(_visibleMonth),
-                  onPreviousMonth: () => _moveMonth(-1),
-                  onNextMonth: () => _moveMonth(1),
-                  onSelectDate: _selectDate,
-                  statusFor: _statusFor,
-                ),
-                const SizedBox(height: 24),
                 if (viewportWidth >= 1000)
                   Row(
                     key: const Key('calendarLandscapeContent'),
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(width: 0),
                       Expanded(
                         flex: 6,
                         child: _CalendarCard(
@@ -487,6 +475,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ],
                   )
                 else ...[
+                  _CalendarCard(
+                    visibleMonth: _visibleMonth,
+                    selectedDate: _selectedDate,
+                    referenceDate: _referenceDate,
+                    monthLabel: _monthYear(_visibleMonth),
+                    onPreviousMonth: () => _moveMonth(-1),
+                    onNextMonth: () => _moveMonth(1),
+                    onSelectDate: _selectDate,
+                    statusFor: _statusFor,
+                  ),
+                  const SizedBox(height: 24),
                   _SectionHeader(
                     key: const Key('calendarSelectedDateHeader'),
                     title: _longDate(_selectedDate),

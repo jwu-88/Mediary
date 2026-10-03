@@ -250,7 +250,7 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
     final medications = _visibleMedications;
     final viewportWidth = MediaQuery.sizeOf(context).width;
     final contentWidth = viewportWidth >= 900
-        ? responsiveContentWidth(context, nativeMaxWidth: 760)
+        ? responsiveContentWidth(context, nativeMaxWidth: 1120)
         : 520.0;
     return ColoredBox(
       color: _background,
@@ -558,19 +558,44 @@ class _MedicationList extends StatelessWidget {
   Widget build(BuildContext context) {
     return _LibraryGlassSurface(
       baseColor: surface,
-      child: Column(
-        children: [
-          for (var index = 0; index < medications.length; index++) ...[
-            _MedicationRow(
-              medication: medications[index],
-              ink: ink,
-              muted: muted,
-              onTap: () => onOpenMedication(medications[index]),
-            ),
-            if (index != medications.length - 1)
-              Divider(height: 1, indent: 11, color: line, thickness: .7),
-          ],
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final landscape = constraints.maxWidth >= 760;
+          Widget rowFor(int index) => _MedicationRow(
+            medication: medications[index],
+            ink: ink,
+            muted: muted,
+            onTap: () => onOpenMedication(medications[index]),
+          );
+
+          if (landscape) {
+            final columnWidth = (constraints.maxWidth - 12) / 2;
+            return Wrap(
+              key: const Key('medicationLibraryLandscapeGrid'),
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (var index = 0; index < medications.length; index++)
+                  SizedBox(width: columnWidth, child: rowFor(index)),
+              ],
+            );
+          }
+
+          return Column(
+            children: [
+              for (var index = 0; index < medications.length; index++) ...[
+                rowFor(index),
+                if (index != medications.length - 1)
+                  Divider(
+                    height: 1,
+                    indent: 11,
+                    color: line,
+                    thickness: .7,
+                  ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -864,7 +889,7 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
     final media = MediaQuery.of(context);
     final heroHeight = (media.size.height * .17).clamp(142.0, 172.0);
     final contentWidth = media.size.width >= 900
-        ? responsiveContentWidth(context, nativeMaxWidth: 760)
+        ? responsiveContentWidth(context, nativeMaxWidth: 1120)
         : 520.0;
     return ColoredBox(
       color: _background,

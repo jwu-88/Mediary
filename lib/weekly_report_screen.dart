@@ -13,7 +13,7 @@ import 'liquid_glass_back_button.dart';
 
 const _weeklyReportHorizontalInset = 16.0;
 const _weeklyReportNativeContentWidth = 520.0;
-const _weeklyReportDesktopContentWidth = 760.0;
+const _weeklyReportDesktopContentWidth = 1120.0;
 const _weeklyChartHorizontalPadding = 10.0;
 
 /// A weekly medication-adherence report that can be pushed as a standalone

@@ -88,7 +88,7 @@ void main() {
     tester,
   ) async {
     useSize(tester, const Size(1280, 720));
-    const expectedLeft = 276.0; // (1280 - 760) / 2 + 16 inset.
+    const expectedLeft = 96.0; // (1280 - 1120) / 2 + 16 inset.
 
     await pumpScreen(tester, dashboard());
     expect(

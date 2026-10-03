@@ -195,6 +195,7 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
                     maxWidth: responsiveContentWidth(
                       context,
                       nativeMaxWidth: 390,
+                      webMaxWidth: 720,
                     ),
                   ),
                   child: SizedBox(
@@ -863,7 +864,7 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
     final palette = _ScannerPalette.of(context);
     final viewportWidth = MediaQuery.sizeOf(context).width;
     final contentWidth = viewportWidth >= 900
-        ? responsiveContentWidth(context, nativeMaxWidth: 720)
+        ? responsiveContentWidth(context, nativeMaxWidth: 1120)
         : 520.0;
     return Scaffold(
       backgroundColor: palette.background,

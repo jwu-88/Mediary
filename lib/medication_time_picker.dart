@@ -190,65 +190,78 @@ class _MedicationTimeSelectionPageState
             ),
           ],
           const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-            decoration: BoxDecoration(
-              color: colors.primaryContainer.withValues(alpha: .42),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: colors.primary.withValues(alpha: .22)),
-            ),
-            child: Column(
-              children: [
-                Icon(
-                  Icons.notifications_active_outlined,
-                  color: colors.primary,
-                  size: 26,
+          Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: desktopLayout ? 760 : double.infinity,
+              ),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 18,
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  selectedLabel,
-                  key: const Key('selectedScheduleTime'),
-                  style: TextStyle(
-                    color: colors.onPrimaryContainer,
-                    fontSize: 32,
-                    fontWeight: FontWeight.w700,
+                decoration: BoxDecoration(
+                  color: colors.primaryContainer.withValues(alpha: .42),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: colors.primary.withValues(alpha: .22),
                   ),
                 ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  key: const Key('medicationTimePickerWheelGroup'),
-                  width: wheelGroupWidth,
-                  height: 184,
-                  child: Row(
-                    children: [
-                      _wheel(
-                        controller: _hourController,
-                        labels: hourLabels,
-                        onSelectedItemChanged: _setHourWheelValue,
-                        semanticLabel: 'Hours',
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.notifications_active_outlined,
+                      color: colors.primary,
+                      size: 26,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      selectedLabel,
+                      key: const Key('selectedScheduleTime'),
+                      style: TextStyle(
+                        color: colors.onPrimaryContainer,
+                        fontSize: 32,
+                        fontWeight: FontWeight.w700,
                       ),
-                      const Text(':', style: TextStyle(fontSize: 24)),
-                      _wheel(
-                        controller: _minuteController,
-                        labels: minuteLabels,
-                        onSelectedItemChanged: (value) =>
-                            setState(() => _minute = value),
-                        semanticLabel: 'Minutes',
+                    ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      key: const Key('medicationTimePickerWheelGroup'),
+                      width: wheelGroupWidth,
+                      height: 184,
+                      child: Row(
+                        children: [
+                          _wheel(
+                            controller: _hourController,
+                            labels: hourLabels,
+                            onSelectedItemChanged: _setHourWheelValue,
+                            semanticLabel: 'Hours',
+                          ),
+                          const Text(':', style: TextStyle(fontSize: 24)),
+                          _wheel(
+                            controller: _minuteController,
+                            labels: minuteLabels,
+                            onSelectedItemChanged: (value) =>
+                                setState(() => _minute = value),
+                            semanticLabel: 'Minutes',
+                          ),
+                          if (!widget.use24HourFormat) ...[
+                            const SizedBox(width: 4),
+                            _wheel(
+                              controller: _periodController,
+                              labels: const ['AM', 'PM'],
+                              onSelectedItemChanged: (value) =>
+                                  _setPeriod(value == 1),
+                              semanticLabel: 'AM or PM',
+                            ),
+                          ],
+                        ],
                       ),
-                      if (!widget.use24HourFormat) ...[
-                        const SizedBox(width: 4),
-                        _wheel(
-                          controller: _periodController,
-                          labels: const ['AM', 'PM'],
-                          onSelectedItemChanged: (value) =>
-                              _setPeriod(value == 1),
-                          semanticLabel: 'AM or PM',
-                        ),
-                      ],
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
           const SizedBox(height: 22),
