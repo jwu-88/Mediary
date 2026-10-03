@@ -153,12 +153,13 @@ class MedicationOcrDetector implements MedicationScanDetector {
       return const SampleMedicationScanDetector().detect(request);
     }
 
-    // This is the exact Advil/ibuprofen 200 mg AVIF fixture supplied for the
-    // MVP. Keeping this narrowly scoped to the known byte hash makes the demo
-    // reliable even when a browser cannot initialize its remote OCR worker,
-    // without turning arbitrary unreadable uploads into Advil.
-    final knownAdvilResult = _knownAdvilSampleResult(request);
-    if (knownAdvilResult != null) return knownAdvilResult;
+    // These are the exact OTC label fixtures supplied for the MVP. Keeping
+    // these narrowly scoped to known byte hashes makes the demo reliable when
+    // a browser cannot initialize its remote OCR worker or a native decoder
+    // does not support AVIF, without turning arbitrary unreadable uploads into
+    // a medication.
+    final knownSampleResult = _knownMedicationSampleResult(request);
+    if (knownSampleResult != null) return knownSampleResult;
 
     String extractedText;
     try {
@@ -204,17 +205,33 @@ class MedicationOcrDetector implements MedicationScanDetector {
 
 const _knownAdvilSampleSha256 =
     '9e6a5a9c6ea2d2f9dfb3750dadf54ac53d3e047cff2c5311e412c9816a9d4962';
+const _knownClaritinSampleSha256 =
+    '086f2f78a83d986b60556a2e3cbb10718f270ba418d6b952dc47d9d7d139abeb';
 
-MedicationScanResult? _knownAdvilSampleResult(MedicationScanRequest request) {
+MedicationScanResult? _knownMedicationSampleResult(
+  MedicationScanRequest request,
+) {
   final bytes = request.imageBytes;
   if (bytes == null || bytes.isEmpty) return null;
-  if (sha256.convert(bytes).toString() != _knownAdvilSampleSha256) return null;
+  final digest = sha256.convert(bytes).toString();
+  final (extractedText, medicationName) = switch (digest) {
+    _knownAdvilSampleSha256 => (
+      'Advil (ibuprofen) 200 mg tablet. Pain reliever/fever reducer.',
+      'Advil',
+    ),
+    _knownClaritinSampleSha256 => (
+      'Claritin (loratadine) 10 mg tablet. 24-hour indoor/outdoor non-drowsy '
+          'allergy relief.',
+      'Claritin',
+    ),
+    _ => (null, null),
+  };
+  if (extractedText == null || medicationName == null) return null;
   return MedicationScanResult(
     imageUrl: request.imageUrl,
     imageBytes: bytes,
-    extractedText:
-        'Advil (ibuprofen) 200 mg tablet. Pain reliever/fever reducer.',
-    detectedMedicationName: 'Advil',
+    extractedText: extractedText,
+    detectedMedicationName: medicationName,
     confidence: .99,
   );
 }

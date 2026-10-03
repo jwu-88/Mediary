@@ -83,42 +83,195 @@
             langPath: 'https://tessdata.projectnaptha.com/4.0.0',
             corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@4.0.4'
           });
-          await window.MediaryOcr._worker.setParameters({
-            tessedit_pageseg_mode: '6',
-            preserve_interword_spaces: '1'
-          });
         }
 
-        // Normalizing through a canvas lets browsers decode AVIF/HEIC uploads
-        // before Tesseract receives them and also gives OCR a predictable PNG
-        // input. If the browser cannot decode the format, retain the original
-        // data URL so Tesseract can still try it directly.
-        var normalizedImage = await new Promise(function (resolve) {
+        // Normalize through a canvas so browsers decode AVIF/HEIC uploads
+        // before Tesseract receives them. Small product photos often have
+        // label text that is only a few pixels high, so an upscale is
+        // important here: the old max(1, ...) scale silently left a 768px
+        // image at 768px and sent its soft text to OCR unchanged.
+        var sourceCanvas = await new Promise(function (resolve) {
           var image = new Image();
           image.onload = function () {
             try {
               var maxDimension = 2400;
+              var sourceDimension = Math.max(
+                image.naturalWidth,
+                image.naturalHeight
+              );
+              // Upscale small labels, but never enlarge an already large
+              // upload beyond the OCR worker's practical input size.
               var scale = Math.min(
-                1,
-                maxDimension / Math.max(image.naturalWidth, image.naturalHeight)
+                2.5,
+                Math.max(1, maxDimension / sourceDimension)
               );
               var canvas = document.createElement('canvas');
               canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
               canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
               var context = canvas.getContext('2d');
-              if (!context) return resolve(imageDataUrl);
+              if (!context) return resolve(null);
+              context.imageSmoothingEnabled = true;
+              context.imageSmoothingQuality = 'high';
+              // Remove transparent-image artifacts before OCR. A transparent
+              // canvas can otherwise turn otherwise valid label pixels into
+              // zero-alpha text for the OCR worker.
+              context.fillStyle = '#ffffff';
+              context.fillRect(0, 0, canvas.width, canvas.height);
               context.drawImage(image, 0, 0, canvas.width, canvas.height);
-              resolve(canvas.toDataURL('image/png'));
+              resolve(canvas);
             } catch (_) {
-              resolve(imageDataUrl);
+              resolve(null);
             }
           };
-          image.onerror = function () { resolve(imageDataUrl); };
+          image.onerror = function () { resolve(null); };
           image.src = imageDataUrl;
         });
 
-        var result = await window.MediaryOcr._worker.recognize(normalizedImage);
-        return result && result.data ? (result.data.text || '') : '';
+        if (!sourceCanvas) {
+          // If the browser cannot decode the format, retain the original data
+          // URL so Tesseract can still attempt recognition directly.
+          await window.MediaryOcr._worker.setParameters({
+            tessedit_pageseg_mode: '11',
+            preserve_interword_spaces: '1'
+          });
+          var fallback = await window.MediaryOcr._worker.recognize(imageDataUrl);
+          return fallback && fallback.data ? (fallback.data.text || '') : '';
+        }
+
+        // Create a high-contrast grayscale pass as well as a binary pass. The
+        // Claritin package has pale text and uneven lighting, which can leave
+        // the default color pass with no detectable glyphs. Auto-leveling
+        // from the image histogram keeps this useful for both bright and dark
+        // labels without hard-coding a brand or background color.
+        var enhancedCanvas = document.createElement('canvas');
+        enhancedCanvas.width = sourceCanvas.width;
+        enhancedCanvas.height = sourceCanvas.height;
+        var enhancedContext = enhancedCanvas.getContext('2d');
+        var sourceContext = sourceCanvas.getContext('2d');
+        var imageData = sourceContext
+          ? sourceContext.getImageData(
+              0,
+              0,
+              sourceCanvas.width,
+              sourceCanvas.height
+            )
+          : null;
+        if (!enhancedContext || !sourceContext || !imageData) {
+          await window.MediaryOcr._worker.setParameters({
+            tessedit_pageseg_mode: '11',
+            preserve_interword_spaces: '1'
+          });
+          var contextFallback = await window.MediaryOcr._worker.recognize(
+            sourceCanvas.toDataURL('image/png')
+          );
+          return contextFallback && contextFallback.data
+            ? (contextFallback.data.text || '')
+            : '';
+        }
+
+        var histogram = new Uint32Array(256);
+        for (var pixel = 0; pixel < imageData.data.length; pixel += 4) {
+          var luminance = Math.round(
+            imageData.data[pixel] * 0.299 +
+            imageData.data[pixel + 1] * 0.587 +
+            imageData.data[pixel + 2] * 0.114
+          );
+          histogram[luminance]++;
+        }
+        var pixelCount = sourceCanvas.width * sourceCanvas.height;
+        var lowTarget = pixelCount * 0.02;
+        var highTarget = pixelCount * 0.98;
+        var low = 0;
+        var high = 255;
+        var running = 0;
+        for (var lowIndex = 0; lowIndex < 256; lowIndex++) {
+          running += histogram[lowIndex];
+          if (running >= lowTarget) {
+            low = lowIndex;
+            break;
+          }
+        }
+        running = 0;
+        for (var highIndex = 0; highIndex < 256; highIndex++) {
+          running += histogram[highIndex];
+          if (running >= highTarget) {
+            high = highIndex;
+            break;
+          }
+        }
+        if (high - low < 32) {
+          low = 0;
+          high = 255;
+        }
+
+        var binaryCanvas = document.createElement('canvas');
+        binaryCanvas.width = sourceCanvas.width;
+        binaryCanvas.height = sourceCanvas.height;
+        var binaryContext = binaryCanvas.getContext('2d');
+        var enhancedPixels = enhancedContext.createImageData(
+          sourceCanvas.width,
+          sourceCanvas.height
+        );
+        var binaryPixels = binaryContext
+          ? binaryContext.createImageData(sourceCanvas.width, sourceCanvas.height)
+          : null;
+        for (var index = 0; index < imageData.data.length; index += 4) {
+          var gray = Math.round(
+            imageData.data[index] * 0.299 +
+            imageData.data[index + 1] * 0.587 +
+            imageData.data[index + 2] * 0.114
+          );
+          var leveled = Math.max(
+            0,
+            Math.min(255, ((gray - low) * 255) / Math.max(1, high - low))
+          );
+          var contrast = Math.max(
+            0,
+            Math.min(255, (leveled - 128) * 1.35 + 128)
+          );
+          enhancedPixels.data[index] = contrast;
+          enhancedPixels.data[index + 1] = contrast;
+          enhancedPixels.data[index + 2] = contrast;
+          enhancedPixels.data[index + 3] = imageData.data[index + 3];
+          if (binaryPixels) {
+            var threshold = contrast > 175 ? 255 : 0;
+            binaryPixels.data[index] = threshold;
+            binaryPixels.data[index + 1] = threshold;
+            binaryPixels.data[index + 2] = threshold;
+            binaryPixels.data[index + 3] = imageData.data[index + 3];
+          }
+        }
+        enhancedContext.putImageData(enhancedPixels, 0, 0);
+        if (binaryContext && binaryPixels) {
+          binaryContext.putImageData(binaryPixels, 0, 0);
+        }
+
+        var variants = [
+          { canvas: enhancedCanvas, pageSegMode: '6' },
+          { canvas: enhancedCanvas, pageSegMode: '11' },
+          { canvas: binaryCanvas, pageSegMode: '11' },
+          { canvas: sourceCanvas, pageSegMode: '11' }
+        ];
+        var bestText = '';
+        var bestScore = -1;
+        for (var variant of variants) {
+          await window.MediaryOcr._worker.setParameters({
+            tessedit_pageseg_mode: variant.pageSegMode,
+            preserve_interword_spaces: '1'
+          });
+          var attempt = await window.MediaryOcr._worker.recognize(
+            variant.canvas.toDataURL('image/png')
+          );
+          var text = attempt && attempt.data ? (attempt.data.text || '') : '';
+          var letters = (text.match(/[A-Za-z]/g) || []).length;
+          var digits = (text.match(/[0-9]/g) || []).length;
+          var score = letters * 2 + digits + Math.min(24, text.length) * 0.15;
+          if (score > bestScore) {
+            bestScore = score;
+            bestText = text;
+          }
+        }
+        return bestText;
       } catch (error) {
         if (window.MediaryOcr._worker) {
           try { await window.MediaryOcr._worker.terminate(); } catch (_) {}

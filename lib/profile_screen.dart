@@ -1522,7 +1522,7 @@ class _ActiveMedicationManagementPageState
       builder: (context) => AlertDialog(
         title: Text('Remove ${titleCaseDisplay(medication.name)}?'),
         content: const Text(
-          'This removes it from your active medications and cancels future doses. Your past dose history is kept.',
+          'This permanently deletes the medication, its schedules, and its dose history.',
         ),
         actions: [
           TextButton(
@@ -1566,7 +1566,7 @@ class _ActiveMedicationManagementPageState
         padding: EdgeInsets.zero,
         children: [
           Text(
-            'Manage the medications in your private regimen. Removing one cancels future reminders but preserves your history.',
+            'Manage the medications in your private regimen. Removing one permanently deletes its schedules and dose history.',
             style: TextStyle(color: colors.onSurfaceVariant, height: 1.45),
           ),
           const SizedBox(height: 18),

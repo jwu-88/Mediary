@@ -217,12 +217,17 @@ class DefaultMedicationNotificationService
               !dose.snoozedUntil!.isAfter(currentTime),
         )
         .toList(growable: false);
-    final activeIds = activeDoses.map((dose) => dose.id).toSet();
+    final uniqueActiveDoses = _deduplicateActiveDoses(activeDoses);
+    final activeIds = uniqueActiveDoses.map((dose) => dose.id).toSet();
     final isInitialSync = _isFirstSync ??= true;
-    _isFirstSync = false;
+    // AuthenticatedHome starts notification monitoring before Firestore has
+    // delivered its first profile/schedule/dose snapshots. Do not consume the
+    // initial-sync guard on that empty bootstrap call, or every stale due dose
+    // in the first real snapshot will be shown immediately.
+    if (doses.isNotEmpty) _isFirstSync = false;
 
     final newlyDue = <MedicationDueNotification>[];
-    for (final dose in activeDoses) {
+    for (final dose in uniqueActiveDoses) {
       final scheduledFor = scheduledTimes[dose.id] ?? dose.scheduledFor;
       final notification = MedicationDueNotification(
         doseId: dose.id,
@@ -254,7 +259,15 @@ class DefaultMedicationNotificationService
       return newlyDue;
     }
 
-    final futureDoses = activeDoses
+    if (doses.isEmpty) {
+      // An empty snapshot is also how sign-out, notification opt-out, and a
+      // deleted schedule are represented. Clear alerts that were already
+      // delivered as well as requests still waiting in the OS queue.
+      await _clearNativeNotifications();
+      return newlyDue;
+    }
+
+    final futureDoses = uniqueActiveDoses
         .where(
           (dose) => (scheduledTimes[dose.id] ?? dose.scheduledFor).isAfter(
             currentTime,
@@ -349,6 +362,36 @@ class DefaultMedicationNotificationService
       );
     }
     _scheduledDoseIds.add(dose.id);
+  }
+
+  List<DoseLogRecord> _deduplicateActiveDoses(Iterable<DoseLogRecord> doses) {
+    final byOccurrence = <String, DoseLogRecord>{};
+    for (final dose in doses) {
+      final key = _occurrenceKey(dose);
+      final existing = byOccurrence[key];
+      // Prefer the lexically smallest id so a Firestore snapshot reordering
+      // cannot make the notification identity change between syncs.
+      if (existing == null || dose.id.compareTo(existing.id) < 0) {
+        byOccurrence[key] = dose;
+      }
+    }
+    return byOccurrence.values.toList(growable: false);
+  }
+
+  String _occurrenceKey(DoseLogRecord dose) =>
+      '${dose.scheduleId}|${dose.localDate}|${dose.localTime}';
+
+  Future<void> _clearNativeNotifications() async {
+    try {
+      // This service is the sole owner of this app's local notifications, so
+      // cancelAll also removes medication alerts that were already displayed
+      // and are therefore absent from pendingNotificationRequests().
+      await _plugin.cancelAll();
+    } catch (_) {
+      // Cleanup must not prevent the authenticated shell from continuing.
+    }
+    _notifiedDoseIds.clear();
+    _scheduledDoseIds.clear();
   }
 
   DateTime _scheduledDateFor(DoseLogRecord dose, String? timezone) {
@@ -446,14 +489,8 @@ class DefaultMedicationNotificationService
   @override
   Future<void> dispose() async {
     if (_disposed) return;
-    if (_supportsNativeNotifications) {
-      for (final doseId in _scheduledDoseIds) {
-        try {
-          await _plugin.cancel(id: notificationIdForDose(doseId));
-        } catch (_) {
-          // Sign-out should not be blocked by a native cancellation failure.
-        }
-      }
+    if (_supportsNativeNotifications && _initialized) {
+      await _clearNativeNotifications();
     }
     _disposed = true;
     _notifiedDoseIds.clear();

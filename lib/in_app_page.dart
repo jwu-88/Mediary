@@ -59,6 +59,10 @@ class InAppPageScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final contentWidth = responsiveContentWidth(
+      context,
+      nativeMaxWidth: maxContentWidth,
+    );
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
@@ -93,18 +97,14 @@ class InAppPageScaffold extends StatelessWidget {
         top: false,
         child: Center(
           child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: responsiveContentWidth(
-                context,
-                nativeMaxWidth: maxContentWidth,
-              ),
-            ),
+            constraints: BoxConstraints(maxWidth: contentWidth),
             child: Padding(padding: padding, child: child),
           ),
         ),
       ),
     );
   }
+
 }
 
 @immutable

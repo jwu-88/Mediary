@@ -9,11 +9,12 @@ void main() {
     required DateTime scheduledFor,
     String status = 'due',
     DateTime? snoozedUntil,
+    String? scheduleId,
   }) {
     return DoseLogRecord(
       id: id,
       medicationId: 'medication-1',
-      scheduleId: 'schedule-$id',
+      scheduleId: scheduleId ?? 'schedule-$id',
       scheduledFor: scheduledFor,
       localDate: '2026-09-13',
       localTime: '09:00',
@@ -69,6 +70,37 @@ void main() {
     expect(second, isEmpty);
     await service.dispose();
   });
+
+  test(
+    'does not treat stale doses as new after an empty bootstrap sync',
+    () async {
+      final service = DefaultMedicationNotificationService();
+      final now = DateTime(2026, 9, 13, 12);
+      final stale = dose(
+        id: 'stale-after-bootstrap',
+        scheduledFor: now.subtract(const Duration(hours: 2)),
+      );
+
+      expect(
+        await service.syncDueDoses(
+          doses: const <DoseLogRecord>[],
+          medicationNames: const <String, String>{},
+          now: now,
+        ),
+        isEmpty,
+      );
+      expect(
+        await service.syncDueDoses(
+          doses: [stale],
+          medicationNames: const {'medication-1': 'Metformin'},
+          now: now,
+        ),
+        isEmpty,
+      );
+
+      await service.dispose();
+    },
+  );
 
   test(
     'does not notify stale initial doses, snoozed doses, or non-due doses',
@@ -221,4 +253,31 @@ void main() {
     expect(next, isEmpty);
     await service.dispose();
   });
+
+  test(
+    'only notifies once for duplicate records of one schedule slot',
+    () async {
+      final service = DefaultMedicationNotificationService();
+      final now = DateTime(2026, 9, 13, 9, 1);
+      final first = dose(
+        id: 'duplicate-a',
+        scheduledFor: now.subtract(const Duration(minutes: 1)),
+        scheduleId: 'same-schedule',
+      );
+      final duplicate = dose(
+        id: 'duplicate-b',
+        scheduledFor: now.subtract(const Duration(minutes: 1)),
+        scheduleId: 'same-schedule',
+      );
+
+      final result = await service.syncDueDoses(
+        doses: [first, duplicate],
+        medicationNames: const {'medication-1': 'Medication'},
+        now: now,
+      );
+
+      expect(result, hasLength(1));
+      await service.dispose();
+    },
+  );
 }

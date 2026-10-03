@@ -83,7 +83,7 @@ private.
 | `catalogVersion` | string | no | Source version observed when the user selected the medication. |
 | `createdAt` | timestamp | yes | Server timestamp. |
 | `updatedAt` | timestamp | yes | Server timestamp. |
-| `archivedAt` | timestamp | no | Set instead of deleting historical medication data. |
+| `archivedAt` | timestamp | no | Legacy field retained only for older archived records. |
 
 Catalog fields are a snapshot of the public source at the time the user
 selected the medication. They are not a cache of the public catalog and must
@@ -232,7 +232,9 @@ Create these composite indexes only when the corresponding queries are added:
   insurance information in Firestore.
 - Do not add image, image-byte, image-URL, or file fields to these documents.
 - Keep scan results as text and numeric confidence values only.
-- Prefer archive fields over deleting medications or dose history.
+- Medication deletion is an explicit owner action: delete the medication and
+  every schedule and dose-log document whose `medicationId` matches it in the
+  same bounded batch operation. Never delete records for another medication.
 - Treat scanner output as unverified until the user confirms it.
 - Keep public catalog data read-only and store only user-selected snapshots;
   never mirror the entire RxNorm or openFDA catalog into Firestore.

@@ -14,7 +14,7 @@ import 'text_formatting.dart';
 
 const _dashboardHorizontalInset = 16.0;
 const _dashboardNativeContentWidth = 520.0;
-const _dashboardDesktopContentWidth = 760.0;
+const _dashboardDesktopContentWidth = 1120.0;
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
@@ -31,6 +31,7 @@ class DashboardScreen extends StatefulWidget {
     this.weeklyTaken = 0,
     this.weeklyScheduled = 0,
     this.onDoseStatusChanged,
+    this.onRemoveMedication,
   });
 
   final String email;
@@ -50,6 +51,7 @@ class DashboardScreen extends StatefulWidget {
     DateTime? snoozedUntil,
   })?
   onDoseStatusChanged;
+  final Future<void> Function(String medicationId)? onRemoveMedication;
 
   static const _lightTaken = Color(0xFF279F49);
   static const _darkTaken = Color(0xFF30D158);
@@ -142,6 +144,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (!_removedDoseIds.contains(dose.id))
           _DashboardDose(
             id: dose.id,
+            medicationId: dose.medicationId,
             name: dose.name,
             details: dose.details,
             status: dose.displayStatus,
@@ -293,7 +296,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _removeDoseAt(int index) async {
     if (index < 0 || index >= _doses.length) return;
-    await _removeDose(_doses[index]);
+    final dose = _doses[index];
+    final medicationId = dose.medicationId;
+    final removeMedication = widget.onRemoveMedication;
+    if (medicationId == null || removeMedication == null) {
+      await _removeDose(dose);
+      return;
+    }
+
+    final removed = <({int index, _DashboardDose dose})>[];
+    for (var doseIndex = 0; doseIndex < _doses.length; doseIndex++) {
+      final candidate = _doses[doseIndex];
+      if (candidate.medicationId == medicationId) {
+        removed.add((index: doseIndex, dose: candidate));
+      }
+    }
+    setState(() {
+      _removedDoseIds.addAll(removed.map((item) => item.dose.id));
+      _doses.removeWhere((item) => item.medicationId == medicationId);
+    });
+
+    try {
+      await removeMedication(medicationId);
+      if (mounted) {
+        _showConfirmation('${titleCaseDisplay(dose.name)} Removed');
+      }
+    } catch (error) {
+      if (kDebugMode) debugPrint('Medication removal failed: $error');
+      if (mounted) {
+        setState(() {
+          for (final item in removed.reversed) {
+            final restoreIndex = item.index.clamp(0, _doses.length);
+            _doses.insert(restoreIndex, item.dose);
+            _removedDoseIds.remove(item.dose.id);
+          }
+        });
+        _showConfirmation(doseActionErrorMessage(error, action: 'remove'));
+      }
+    }
   }
 
   void _showConfirmation(String message) {
@@ -443,23 +483,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                 ),
                 const SizedBox(height: 20),
-                _DashboardFocusCard(
-                  completedToday: completedToday,
-                  scheduledToday: _doses.length,
-                  nextDose: nextDose,
-                  onReviewNext: nextDose == null
-                      ? null
-                      : () => unawaited(_showDoseActions(nextDoseIndex)),
-                  onOpenCalendar: widget.onOpenCalendar,
-                ),
-                const SizedBox(height: 16),
-                _DashboardMetricStrip(
-                  completedToday: completedToday,
-                  scheduledToday: _doses.length,
-                  weeklyTaken: widget.weeklyTaken,
-                  weeklyScheduled: widget.weeklyScheduled,
-                  onOpenCalendar: widget.onOpenCalendar,
-                  onViewReport: _handleViewReport,
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final focus = _DashboardFocusCard(
+                      completedToday: completedToday,
+                      scheduledToday: _doses.length,
+                      nextDose: nextDose,
+                      onReviewNext: nextDose == null
+                          ? null
+                          : () => unawaited(_showDoseActions(nextDoseIndex)),
+                      onOpenCalendar: widget.onOpenCalendar,
+                    );
+                    final metrics = _DashboardMetricStrip(
+                      completedToday: completedToday,
+                      scheduledToday: _doses.length,
+                      weeklyTaken: widget.weeklyTaken,
+                      weeklyScheduled: widget.weeklyScheduled,
+                      onOpenCalendar: widget.onOpenCalendar,
+                      onViewReport: _handleViewReport,
+                    );
+                    if (constraints.maxWidth < 900) {
+                      return Column(
+                        children: [focus, const SizedBox(height: 16), metrics],
+                      );
+                    }
+                    return Row(
+                      key: const Key('dashboardLandscapeSummary'),
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(flex: 3, child: focus),
+                        const SizedBox(width: 16),
+                        Expanded(flex: 2, child: metrics),
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 24),
                 _SectionHeader(
@@ -1375,6 +1432,9 @@ class _ScheduleTable extends StatelessWidget {
               statusColor: doses[index].tone == _DoseTone.taken ? taken : null,
               onTap: () => onTapDose(index),
               onRemove: () => onRemoveDose(index),
+              removeTooltip: doses[index].medicationId == null
+                  ? 'Remove ${titleCaseDisplay(doses[index].name)} from today'
+                  : 'Delete ${titleCaseDisplay(doses[index].name)}',
             ),
             if (index < doses.length - 1)
               Divider(
@@ -1503,6 +1563,7 @@ class _ScheduleHeader extends StatelessWidget {
               constraints.maxWidth,
             );
             return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(width: metrics.artworkSlotWidth),
                 SizedBox(
@@ -1596,6 +1657,7 @@ class _DoseRow extends StatelessWidget {
     this.statusColor,
     required this.onTap,
     required this.onRemove,
+    required this.removeTooltip,
   });
 
   final int rowIndex;
@@ -1607,6 +1669,7 @@ class _DoseRow extends StatelessWidget {
   final Color? statusColor;
   final VoidCallback onTap;
   final VoidCallback onRemove;
+  final String removeTooltip;
 
   @override
   Widget build(BuildContext context) {
@@ -1733,7 +1796,7 @@ class _DoseRow extends StatelessWidget {
                       child: IconButton(
                         key: Key('dashboardDeleteDose_$artworkSeed'),
                         onPressed: onRemove,
-                        tooltip: 'Remove ${titleCaseDisplay(name)} from today',
+                        tooltip: removeTooltip,
                         icon: const Icon(CupertinoIcons.trash),
                         iconSize: 17,
                         padding: EdgeInsets.zero,
@@ -1816,6 +1879,7 @@ enum _DoseAction { toggleTaken, snooze, remove }
 class _DashboardDose {
   const _DashboardDose({
     this.id = '',
+    this.medicationId,
     required this.name,
     required this.details,
     required this.status,
@@ -1824,6 +1888,7 @@ class _DashboardDose {
   });
 
   final String id;
+  final String? medicationId;
   final String name;
   final String details;
   final String status;
@@ -1837,6 +1902,7 @@ class _DashboardDose {
   }) {
     return _DashboardDose(
       id: id,
+      medicationId: medicationId,
       name: name,
       details: details,
       status: status ?? this.status,
@@ -1856,12 +1922,14 @@ class _RemovedDashboardDose {
 class DashboardDoseData {
   const DashboardDoseData({
     required this.id,
+    this.medicationId,
     required this.name,
     required this.details,
     required this.status,
   });
 
   final String id;
+  final String? medicationId;
   final String name;
   final String details;
   final String status;

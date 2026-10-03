@@ -384,11 +384,21 @@ class MediaryRepository {
     await removeMedication(medicationId);
   }
 
-  /// Removes a medication from the user's active regimen without deleting
-  /// history. Firestore rules intentionally disallow destructive deletes, so
-  /// the medication is archived, its schedules are deactivated, and its dose
-  /// logs are marked cancelled in the same write set.
+  /// Permanently removes one medication and all of its regimen records.
+  ///
+  /// Every query is constrained to this exact medication ID, so deleting one
+  /// medication cannot affect another medication in the same account. The
+  /// operation is committed in bounded batches so users with many schedules or
+  /// dose logs are handled without exceeding Firestore's batch limit.
   Future<void> removeMedication(String medicationId) async {
+    if (medicationId.trim().isEmpty) {
+      throw ArgumentError.value(
+        medicationId,
+        'medicationId',
+        'A non-empty medication ID is required.',
+      );
+    }
+
     final medicationRef = _medications.doc(medicationId);
     final medicationSnapshot = await medicationRef.get();
     final schedules = await _schedules
@@ -400,49 +410,16 @@ class MediaryRepository {
 
     final operations = <void Function(WriteBatch)>[];
     if (medicationSnapshot.exists) {
-      operations.add(
-        (batch) => batch.update(medicationRef, {
-          'active': false,
-          'archivedAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        }),
-      );
+      operations.add((batch) => batch.delete(medicationRef));
     }
     for (final schedule in schedules.docs) {
-      operations.add(
-        (batch) => batch.update(schedule.reference, {
-          'active': false,
-          'updatedAt': FieldValue.serverTimestamp(),
-        }),
-      );
+      operations.add((batch) => batch.delete(schedule.reference));
     }
     for (final dose in doses.docs) {
-      operations.add(
-        (batch) => batch.update(dose.reference, {
-          'status': 'cancelled',
-          'takenAt': FieldValue.delete(),
-          'snoozedUntil': FieldValue.delete(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        }),
-      );
+      operations.add((batch) => batch.delete(dose.reference));
     }
 
-    // Keep each commit below Firestore's 500-write batch limit. This is
-    // normally one batch, but the chunking makes cleanup safe for users with a
-    // long medication history as well.
-    const maxOperationsPerBatch = 450;
-    for (
-      var start = 0;
-      start < operations.length;
-      start += maxOperationsPerBatch
-    ) {
-      final end = (start + maxOperationsPerBatch).clamp(0, operations.length);
-      final batch = firestore.batch();
-      for (final operation in operations.sublist(start, end)) {
-        operation(batch);
-      }
-      await batch.commit();
-    }
+    await _commitOperations(operations);
   }
 
   /// Annotates legacy private medication documents with live catalog aliases.

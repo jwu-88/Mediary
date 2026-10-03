@@ -24,7 +24,7 @@ void main() {
               DashboardDoseData(
                 id: 'layout-dose',
                 name: 'Ibuprofen 200 MG Oral Capsule',
-                details: '200 MG · 10:36:00 AM',
+                details: '200 MG · 09/27/2026 · 10:36 AM',
                 status: 'due',
               ),
             ],
@@ -88,6 +88,22 @@ void main() {
     expect(find.text('Dose & Time'), findsOneWidget);
     expect(find.text('Status'), findsOneWidget);
 
+    final medicationHeaderCell = tester.getRect(
+      find.byKey(const Key('dashboardScheduleMedicationHeaderCell')),
+    );
+    final doseHeaderCell = tester.getRect(
+      find.byKey(const Key('dashboardScheduleDoseHeaderCell')),
+    );
+    final statusHeaderCell = tester.getRect(
+      find.byKey(const Key('dashboardScheduleStatusHeaderCell')),
+    );
+    expect(
+      tester.getRect(find.text('Medication')).top,
+      medicationHeaderCell.top,
+    );
+    expect(tester.getRect(find.text('Dose & Time')).top, doseHeaderCell.top);
+    expect(tester.getRect(find.text('Status')).top, statusHeaderCell.top);
+
     final medicationText = tester.widget<Text>(
       find.descendant(
         of: find.byKey(const ValueKey('dashboardScheduleMedicationCell0')),
@@ -104,6 +120,7 @@ void main() {
     expect(medicationText.overflow, TextOverflow.ellipsis);
     expect(doseText.maxLines, 2);
     expect(doseText.overflow, TextOverflow.ellipsis);
+    expect(find.text('200 MG\n09/27/2026 · 10:36 AM'), findsOneWidget);
   });
 
   testWidgets(
@@ -195,5 +212,70 @@ void main() {
     expect(changedStatus, 'cancelled');
     expect(find.text('Ibuprofen 200 MG Oral Capsule'), findsNothing);
     expect(find.text('Remove From Today'), findsNothing);
+  });
+
+  testWidgets('dashboard delete control removes the medication regimen', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    String? removedMedicationId;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DashboardScreen(
+            email: 'person@example.com',
+            displayName: 'Taylor Morgan',
+            now: DateTime(2026, 8, 23, 9),
+            bottomPadding: 24,
+            initialDoses: const [
+              DashboardDoseData(
+                id: 'delete-medication-morning',
+                medicationId: 'medication-1',
+                name: 'Ibuprofen',
+                details: '200 MG · 8:00 AM',
+                status: 'due',
+              ),
+              DashboardDoseData(
+                id: 'delete-medication-evening',
+                medicationId: 'medication-1',
+                name: 'Ibuprofen',
+                details: '200 MG · 8:00 PM',
+                status: 'due',
+              ),
+            ],
+            onRemoveMedication: (medicationId) async {
+              removedMedicationId = medicationId;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('dashboardDeleteDose_delete-medication-morning')),
+      240,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('dashboardScrollView')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.ensureVisible(
+      find.byKey(const Key('dashboardDeleteDose_delete-medication-morning')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('dashboardDeleteDose_delete-medication-morning')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(removedMedicationId, 'medication-1');
+    expect(find.text('Ibuprofen'), findsNothing);
   });
 }

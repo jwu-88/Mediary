@@ -64,6 +64,15 @@ void main() {
     expect(detectMedicationName('ADVI1 200 mg tablets'), 'Advil');
   });
 
+  test('recognizes Claritin from a detailed OTC label', () {
+    expect(
+      detectMedicationName(
+        'CLARITIN\nLoratadine 10 mg tablet\n24-hour non-drowsy allergy relief',
+      ),
+      'Claritin',
+    );
+  });
+
   test('does not invent a medication name from instruction text', () {
     expect(detectMedicationName('Take two tablets with water'), isNull);
   });

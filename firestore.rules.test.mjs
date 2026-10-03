@@ -1,4 +1,5 @@
 import { after, before, describe, it } from 'node:test';
+import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -224,14 +225,51 @@ describe('Firestore security rules', () => {
     );
   });
 
-  it('rejects historical deletes but permits unsaving a library medication', async () => {
+  it('allows an owner to delete one medication regimen and its records', async () => {
     const owner = testEnvironment.authenticatedContext('owner').firestore();
     await assertFails(deleteDoc(doc(owner, 'users/owner')));
-    await assertFails(
-      deleteDoc(doc(owner, 'users/owner/medications/medication-1')),
+    await assertSucceeds(
+      setDoc(doc(owner, 'users/owner/medications/medication-delete-1'), {
+        ...validMedication(),
+      }),
     );
-    await assertFails(
-      deleteDoc(doc(owner, 'users/owner/doseLogs/dose-1')),
+    await assertSucceeds(
+      setDoc(doc(owner, 'users/owner/schedules/schedule-delete-1'), {
+        ...validSchedule(),
+        medicationId: 'medication-delete-1',
+      }),
+    );
+    await assertSucceeds(
+      setDoc(doc(owner, 'users/owner/doseLogs/dose-delete-1'), {
+        ...validDoseLog(),
+        medicationId: 'medication-delete-1',
+        scheduleId: 'schedule-delete-1',
+      }),
+    );
+    await assertSucceeds(
+      deleteDoc(doc(owner, 'users/owner/medications/medication-delete-1')),
+    );
+    await assertSucceeds(
+      deleteDoc(doc(owner, 'users/owner/schedules/schedule-delete-1')),
+    );
+    await assertSucceeds(
+      deleteDoc(doc(owner, 'users/owner/doseLogs/dose-delete-1')),
+    );
+    assert.equal(
+      (await getDoc(
+        doc(owner, 'users/owner/medications/medication-delete-1'),
+      )).exists(),
+      false,
+    );
+    assert.equal(
+      (await getDoc(
+        doc(owner, 'users/owner/schedules/schedule-delete-1'),
+      )).exists(),
+      false,
+    );
+    assert.equal(
+      (await getDoc(doc(owner, 'users/owner/doseLogs/dose-delete-1'))).exists(),
+      false,
     );
     await assertSucceeds(
       setDoc(doc(owner, 'users/owner/savedMedications/medication-1'), {
@@ -241,6 +279,19 @@ describe('Firestore security rules', () => {
     );
     await assertSucceeds(
       deleteDoc(doc(owner, 'users/owner/savedMedications/medication-1')),
+    );
+  });
+
+  it('rejects another user from deleting the owner regimen', async () => {
+    const other = testEnvironment.authenticatedContext('other').firestore();
+    await assertFails(
+      deleteDoc(doc(other, 'users/owner/medications/medication-1')),
+    );
+    await assertFails(
+      deleteDoc(doc(other, 'users/owner/schedules/schedule-1')),
+    );
+    await assertFails(
+      deleteDoc(doc(other, 'users/owner/doseLogs/dose-1')),
     );
   });
 

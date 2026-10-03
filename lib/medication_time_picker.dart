@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'app_layout.dart';
 import 'in_app_page.dart';
 import 'time_formatting.dart';
 
@@ -8,7 +9,6 @@ class MedicationTimeSelectionPage extends StatefulWidget {
   const MedicationTimeSelectionPage({
     super.key,
     required this.initialTime,
-    this.initialSecond = 0,
     this.scheduledDate,
     this.minimumDateTime,
     this.scheduledTimezone,
@@ -16,7 +16,6 @@ class MedicationTimeSelectionPage extends StatefulWidget {
   });
 
   final TimeOfDay initialTime;
-  final int initialSecond;
   final DateTime? scheduledDate;
   final DateTime? minimumDateTime;
   final String? scheduledTimezone;
@@ -38,14 +37,11 @@ class _MedicationTimeSelectionPageState
 
   late int _hour = widget.initialTime.hour;
   late int _minute = widget.initialTime.minute;
-  late int _second = widget.initialSecond.clamp(0, 59);
   late bool _isPm = _hour >= 12;
   late final FixedExtentScrollController _hourController =
       FixedExtentScrollController(initialItem: _hourWheelIndex);
   late final FixedExtentScrollController _minuteController =
       FixedExtentScrollController(initialItem: _minute);
-  late final FixedExtentScrollController _secondController =
-      FixedExtentScrollController(initialItem: _second);
   late final FixedExtentScrollController _periodController =
       FixedExtentScrollController(initialItem: _isPm ? 1 : 0);
 
@@ -54,7 +50,7 @@ class _MedicationTimeSelectionPageState
       : ((_hour % 12 == 0 ? 12 : _hour % 12) - 1);
 
   MedicationTime get _selectedTime =>
-      MedicationTime(hour: _hour, minute: _minute, second: _second);
+      MedicationTime(hour: _hour, minute: _minute);
 
   bool get _isPastSelection {
     final date = widget.scheduledDate;
@@ -71,13 +67,12 @@ class _MedicationTimeSelectionPageState
   }
 
   bool _isSelected(MedicationTime time) =>
-      time.hour == _hour && time.minute == _minute && time.second == _second;
+      time.hour == _hour && time.minute == _minute;
 
   @override
   void dispose() {
     _hourController.dispose();
     _minuteController.dispose();
-    _secondController.dispose();
     _periodController.dispose();
     super.dispose();
   }
@@ -86,12 +81,10 @@ class _MedicationTimeSelectionPageState
     setState(() {
       _hour = time.hour;
       _minute = time.minute;
-      _second = time.second;
       _isPm = _hour >= 12;
     });
     _hourController.jumpToItem(_hourWheelIndex);
     _minuteController.jumpToItem(_minute);
-    _secondController.jumpToItem(_second);
     _periodController.jumpToItem(_isPm ? 1 : 0);
   }
 
@@ -162,15 +155,13 @@ class _MedicationTimeSelectionPageState
       for (var minute = 0; minute < 60; minute++)
         minute.toString().padLeft(2, '0'),
     ];
-    final secondLabels = [
-      for (var second = 0; second < 60; second++)
-        second.toString().padLeft(2, '0'),
-    ];
     final selectedLabel = _selectedTime.format(
       widget.use24HourFormat
           ? TimeDisplayFormat.twentyFourHour
           : TimeDisplayFormat.twelveHour,
     );
+    final desktopLayout = AppBreakpoints.isDesktop(context);
+    final wheelGroupWidth = desktopLayout ? 560.0 : double.infinity;
 
     return InAppPageScaffold(
       title: 'Choose Time',
@@ -187,7 +178,7 @@ class _MedicationTimeSelectionPageState
         padding: EdgeInsets.zero,
         children: [
           Text(
-            'Scroll through the wheels to set the exact reminder time.',
+            'Scroll through the wheels to set the reminder time in hours and minutes.',
             style: TextStyle(color: colors.onSurfaceVariant, height: 1.45),
           ),
           if (_isPastSelection) ...[
@@ -225,6 +216,8 @@ class _MedicationTimeSelectionPageState
                 ),
                 const SizedBox(height: 14),
                 SizedBox(
+                  key: const Key('medicationTimePickerWheelGroup'),
+                  width: wheelGroupWidth,
                   height: 184,
                   child: Row(
                     children: [
@@ -241,14 +234,6 @@ class _MedicationTimeSelectionPageState
                         onSelectedItemChanged: (value) =>
                             setState(() => _minute = value),
                         semanticLabel: 'Minutes',
-                      ),
-                      const Text(':', style: TextStyle(fontSize: 24)),
-                      _wheel(
-                        controller: _secondController,
-                        labels: secondLabels,
-                        onSelectedItemChanged: (value) =>
-                            setState(() => _second = value),
-                        semanticLabel: 'Seconds',
                       ),
                       if (!widget.use24HourFormat) ...[
                         const SizedBox(width: 4),
@@ -293,7 +278,7 @@ class _MedicationTimeSelectionPageState
           ),
           const SizedBox(height: 12),
           Text(
-            'Seconds are saved with the reminder and default to 00 for existing schedules.',
+            'Reminder times use hours and minutes.',
             textAlign: TextAlign.center,
             style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
           ),
