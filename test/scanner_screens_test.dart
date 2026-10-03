@@ -103,6 +103,8 @@ void main() {
 
     expect(find.text('Review Medication'), findsOneWidget);
     expect(find.text('SET YOUR SCHEDULE'), findsOneWidget);
+    expect(find.text('REPEAT'), findsOneWidget);
+    expect(find.text('No Repeat'), findsOneWidget);
 
     await tester.tap(find.text('1 capsule'));
     await tester.pumpAndSettle();

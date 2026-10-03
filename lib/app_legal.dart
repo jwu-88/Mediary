@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'app_theme.dart';
 import 'in_app_page.dart';
+import 'web_floating_notice_card.dart';
 
 /// Supply this at build time with `--dart-define=MEDIARY_SUPPORT_EMAIL=...`.
 /// Keeping it configurable avoids publishing an unverified personal address.
@@ -188,64 +189,42 @@ class CookieBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     return Align(
-      alignment: Alignment.bottomCenter,
+      alignment: Alignment.bottomRight,
       child: SafeArea(
-        minimum: const EdgeInsets.all(16),
+        minimum: const EdgeInsets.all(webFloatingNoticeInset),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
-          child: Material(
-            elevation: 8,
-            color: colors.surface,
-            borderRadius: BorderRadius.circular(16),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 12, 12),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final compact = constraints.maxWidth < 560;
-                  final actions = Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextButton(
-                        key: const Key('cookiePrivacyButton'),
-                        onPressed: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const PrivacyPolicyPage(),
-                          ),
-                        ),
-                        child: const Text('Privacy'),
-                      ),
-                      FilledButton(
-                        key: const Key('cookieDismissButton'),
-                        onPressed: onDismiss,
-                        child: const Text('Got it'),
-                      ),
-                    ],
-                  );
-                  return Flex(
-                    direction: compact ? Axis.vertical : Axis.horizontal,
-                    crossAxisAlignment: compact
-                        ? CrossAxisAlignment.stretch
-                        : CrossAxisAlignment.center,
-                    children: [
-                      if (compact)
-                        const Text(
-                          'Mediary uses essential browser storage. Optional analytics is currently off.',
-                        )
-                      else
-                        const Expanded(
-                          child: Text(
-                            'Mediary uses essential browser storage. Optional analytics is currently off.',
-                          ),
-                        ),
-                      SizedBox(height: compact ? 8 : 0, width: compact ? 0 : 8),
-                      actions,
-                    ],
-                  );
-                },
+          constraints: const BoxConstraints(
+            maxWidth: webFloatingNoticeMaxWidth,
+          ),
+          child: WebFloatingNoticeCard(
+            key: const Key('cookieBanner'),
+            icon: Icons.privacy_tip_outlined,
+            title: 'Privacy & terms',
+            body: 'Mediary uses essential browser storage. Optional analytics is currently off.',
+            actions: [
+              TextButton(
+                key: const Key('cookiePrivacyButton'),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const PrivacyPolicyPage(),
+                  ),
+                ),
+                child: const Text('Privacy'),
               ),
-            ),
+              TextButton(
+                key: const Key('cookieTermsButton'),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const TermsPage()),
+                ),
+                child: const Text('Terms'),
+              ),
+              FilledButton(
+                key: const Key('cookieDismissButton'),
+                onPressed: onDismiss,
+                child: const Text('Got it'),
+              ),
+            ],
           ),
         ),
       ),
