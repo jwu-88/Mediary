@@ -249,11 +249,17 @@ class DefaultMedicationNotificationService
 
     if (!_supportsNativeNotifications) {
       if (kIsWeb) {
-        for (final notification in newlyDue) {
-          showWebNotification(
-            title: notification.title,
-            body: notification.body,
-          );
+        // Keep browser-level alerts singular per sync pass. The shell still
+        // receives the full due list for its deduplicated in-app toast stack,
+        // but a burst of simultaneous records must not become a browser alert
+        // flood.
+        if (newlyDue.isNotEmpty) {
+          final notification = newlyDue.first;
+          final body = newlyDue.length == 1
+              ? notification.body
+              : '${newlyDue.length} medication reminders are due. Open '
+                    'Mediary to review them.';
+          showWebNotification(title: notification.title, body: body);
         }
       }
       return newlyDue;

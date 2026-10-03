@@ -681,8 +681,8 @@ class ScanResultScreen extends StatefulWidget {
 
 class _ScanResultScreenState extends State<ScanResultScreen> {
   String _dose = '1 capsule';
-  String _frequency = 'Every 8 hours';
-  String _duration = '7 days';
+  String _frequency = 'No Repeat';
+  String _duration = '1 day';
   late DateTime _startDate;
   late MedicationTime _time;
   bool _isAdded = false;
@@ -757,7 +757,7 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
               value: option,
               selected: switch (title) {
                 'Dose' => option == _dose,
-                'Frequency' => option == _frequency,
+                'Repeat' => option == _frequency,
                 'Duration' => option == _duration,
                 _ => false,
               },
@@ -1001,11 +1001,15 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: _ScheduleField(
-                                          label: 'FREQUENCY',
+                                          key: const Key(
+                                            'scanScheduleRepeatField',
+                                          ),
+                                          label: 'REPEAT',
                                           value: _frequency,
                                           onTap: () => _chooseOption(
-                                            title: 'Frequency',
+                                            title: 'Repeat',
                                             options: const [
+                                              'No Repeat',
                                               'Once daily',
                                               'Every 8 hours',
                                               'Every 12 hours',
@@ -1048,6 +1052,7 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                                           onTap: () => _chooseOption(
                                             title: 'Duration',
                                             options: const [
+                                              '1 day',
                                               '5 days',
                                               '7 days',
                                               '10 days',

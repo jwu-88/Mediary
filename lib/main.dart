@@ -31,6 +31,7 @@ import 'scanner_screens.dart';
 import 'settings_screen.dart';
 import 'web_camera.dart';
 import 'web_page_metadata.dart';
+import 'web_floating_notice_card.dart';
 import 'web_navigation_sidebar.dart';
 import 'weekly_report_screen.dart';
 import 'text_formatting.dart';
@@ -1428,32 +1429,28 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   }
 
   void _showWebMedicationToast(MedicationDueNotification notification) {
-    if (!mounted ||
-        _webMedicationToasts.any(
-          (toast) => toast.notification.doseId == notification.doseId,
-        )) {
+    final toastKey = _webMedicationToastKey(notification);
+    if (!mounted || _webMedicationToasts.isNotEmpty) {
       return;
     }
-    final toast = _MedicationToast(notification);
+    final toast = _MedicationToast(notification, toastKey);
     setState(() {
       _webMedicationToasts.add(toast);
-      if (_webMedicationToasts.length > 3) {
-        final removed = _webMedicationToasts.removeAt(0);
-        _webMedicationToastTimers.remove(removed.notification.doseId)?.cancel();
-      }
     });
-    _webMedicationToastTimers[notification.doseId] = Timer(
-      const Duration(seconds: 5),
-      () {
-        if (!mounted) return;
-        setState(() {
-          _webMedicationToasts.removeWhere(
-            (item) => item.notification.doseId == notification.doseId,
-          );
-        });
-        _webMedicationToastTimers.remove(notification.doseId);
-      },
-    );
+    _webMedicationToastTimers[toastKey] = Timer(const Duration(seconds: 5), () {
+      if (!mounted) return;
+      setState(() {
+        _webMedicationToasts.removeWhere((item) => item.key == toastKey);
+      });
+      _webMedicationToastTimers.remove(toastKey);
+    });
+  }
+
+  String _webMedicationToastKey(MedicationDueNotification notification) {
+    final scheduled = notification.scheduledFor;
+    final medication = notification.medicationName.trim().toLowerCase();
+    return '$medication|${scheduled.year}-${scheduled.month}-'
+        '${scheduled.day}-${scheduled.hour}-${scheduled.minute}';
   }
 
   void _onStoreChanged() {
@@ -2291,6 +2288,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   }
 
   String _scanFrequency(String label) => switch (label) {
+    'No Repeat' => 'once',
     'Once daily' => 'daily',
     'Every 8 hours' => 'every8Hours',
     'Every 12 hours' => 'every12Hours',
@@ -2666,20 +2664,23 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
         child,
         Positioned(
           key: const Key('webMedicationNotificationToast'),
-          top: MediaQuery.paddingOf(context).top + 16,
-          right: 16,
+          bottom: MediaQuery.paddingOf(context).bottom + webFloatingNoticeInset,
+          right: webFloatingNoticeInset,
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.sizeOf(context).width < 392
-                  ? MediaQuery.sizeOf(context).width - 32
-                  : 360,
+              maxWidth:
+                  MediaQuery.sizeOf(context).width <
+                      webFloatingNoticeMaxWidth + (webFloatingNoticeInset * 2)
+                  ? MediaQuery.sizeOf(context).width -
+                        (webFloatingNoticeInset * 2)
+                  : webFloatingNoticeMaxWidth,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 for (final toast in _webMedicationToasts)
                   _MedicationToastCard(
-                    key: ValueKey(toast.notification.doseId),
+                    key: ValueKey(toast.key),
                     notification: toast.notification,
                   ),
               ],
@@ -2692,9 +2693,10 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
 }
 
 class _MedicationToast {
-  const _MedicationToast(this.notification);
+  const _MedicationToast(this.notification, this.key);
 
   final MedicationDueNotification notification;
+  final String key;
 }
 
 class _MedicationToastCard extends StatefulWidget {
@@ -2719,50 +2721,17 @@ class _MedicationToastCardState extends State<_MedicationToastCard> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: AnimatedSlide(
         offset: _visible ? Offset.zero : const Offset(1.2, 0),
         duration: const Duration(milliseconds: 260),
         curve: Curves.easeOutCubic,
-        child: Material(
-          elevation: 8,
-          color: colors.surface,
-          borderRadius: BorderRadius.circular(18),
-          child: Container(
-            key: const Key('medicationNotificationCard'),
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(16, 14, 18, 14),
-            decoration: BoxDecoration(
-              border: Border.all(color: colors.outlineVariant),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.notifications_active_outlined,
-                  color: colors.primary,
-                ),
-                const SizedBox(width: 12),
-                Flexible(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        widget.notification.title,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(widget.notification.body),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+        child: WebFloatingNoticeCard(
+          key: const Key('medicationNotificationCard'),
+          icon: Icons.notifications_active_outlined,
+          title: widget.notification.title,
+          body: widget.notification.body,
         ),
       ),
     );
@@ -2804,7 +2773,7 @@ class _ScheduleDetailsPage extends StatefulWidget {
 
 class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
   static const _frequencyOptions = [
-    ('once', 'Once', 'Only on the selected calendar day'),
+    ('once', 'No Repeat', 'Only on the selected calendar day'),
     ('daily', 'Every Day', 'Repeat daily at this time'),
     ('weekly', 'Every Week', 'Repeat weekly at this time'),
     ('every8Hours', 'Every 8 Hours', 'Repeat every 8 hours'),
@@ -2840,12 +2809,41 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
   String get _frequencyLabel =>
       _frequencyOptions.firstWhere((option) => option.$1 == _frequency).$2;
 
+  String get _scheduleDateLabel {
+    const weekdays = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return '${weekdays[widget.scheduleDate.weekday - 1]}, '
+        '${months[widget.scheduleDate.month - 1]} '
+        '${widget.scheduleDate.day}, ${widget.scheduleDate.year}';
+  }
+
   Future<void> _chooseFrequency() async {
     final selected = await pushInAppPage<String>(
       context,
       builder: (context) => InAppOptionPage<String>(
-        title: 'Frequency',
-        subtitle: 'Choose how often this schedule repeats.',
+        title: 'Repeat',
+        subtitle: 'Choose how often this medication repeats.',
         options: [
           for (final option in _frequencyOptions)
             InAppPageOption<String>(
@@ -2948,7 +2946,7 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
         padding: EdgeInsets.zero,
         children: [
           Text(
-            'Set the dose, timing, and time zone for the selected calendar day.',
+            'Set the dose, date, time, and repeat behavior for this medication.',
             style: TextStyle(
               color: colors.onSurfaceVariant,
               fontSize: 14,
@@ -2971,9 +2969,24 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
           ),
           const SizedBox(height: 14),
           _ScheduleChoiceTile(
+            key: const Key('scheduleDateChoice'),
+            label: 'Date',
+            value: _scheduleDateLabel,
+            leadingIcon: Icons.calendar_today_outlined,
+            showChevron: false,
+          ),
+          const SizedBox(height: 10),
+          _TimeSelectionCard(
+            key: const Key('scheduleTimeChoice'),
+            time: timeLabel,
+            onTap: _chooseTime,
+          ),
+          const SizedBox(height: 10),
+          _ScheduleChoiceTile(
             key: const Key('scheduleFrequencyChoice'),
-            label: 'Frequency',
+            label: 'Repeat',
             value: _frequencyLabel,
+            leadingIcon: Icons.repeat,
             onTap: _chooseFrequency,
           ),
           if (_frequency == 'weekly') ...[
@@ -2992,12 +3005,6 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
               },
             ),
           ],
-          const SizedBox(height: 10),
-          _TimeSelectionCard(
-            key: const Key('scheduleTimeChoice'),
-            time: timeLabel,
-            onTap: _chooseTime,
-          ),
           const SizedBox(height: 10),
           _ScheduleChoiceTile(
             key: const Key('scheduleTimezoneChoice'),
@@ -3240,56 +3247,19 @@ class _TimeSelectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Material(
-      color: colors.primaryContainer.withValues(alpha: .35),
+      color: colors.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colors.primary.withValues(alpha: .22)),
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: colors.outlineVariant),
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-          child: Row(
-            children: [
-              Icon(Icons.access_time, color: colors.primary, size: 22),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Time',
-                      style: TextStyle(
-                        color: colors.onSurface,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      time,
-                      key: const Key('scheduleTimeValue'),
-                      style: TextStyle(
-                        color: colors.onSurfaceVariant,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Tap to choose a quick option or custom time',
-                      style: TextStyle(
-                        color: colors.onSurfaceVariant,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.edit_outlined, color: colors.onSurfaceVariant),
-            ],
-          ),
+        borderRadius: BorderRadius.circular(12),
+        child: ListTile(
+          leading: Icon(Icons.access_time, color: colors.primary),
+          title: const Text('Time'),
+          subtitle: Text(time, key: const Key('scheduleTimeValue')),
+          trailing: Icon(Icons.chevron_right, color: colors.onSurfaceVariant),
         ),
       ),
     );
@@ -3301,12 +3271,16 @@ class _ScheduleChoiceTile extends StatelessWidget {
     super.key,
     required this.label,
     required this.value,
-    required this.onTap,
+    this.onTap,
+    this.leadingIcon,
+    this.showChevron = true,
   });
 
   final String label;
   final String value;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final IconData? leadingIcon;
+  final bool showChevron;
 
   @override
   Widget build(BuildContext context) {
@@ -3319,9 +3293,14 @@ class _ScheduleChoiceTile extends StatelessWidget {
       ),
       child: ListTile(
         onTap: onTap,
+        leading: leadingIcon == null
+            ? null
+            : Icon(leadingIcon, color: colors.primary),
         title: Text(titleCaseDisplay(label)),
         subtitle: Text(value),
-        trailing: Icon(Icons.chevron_right, color: colors.onSurfaceVariant),
+        trailing: showChevron
+            ? Icon(Icons.chevron_right, color: colors.onSurfaceVariant)
+            : null,
       ),
     );
   }
