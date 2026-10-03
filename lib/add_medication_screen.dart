@@ -214,10 +214,10 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     final selectionCount = _selectedIds.length;
     final viewportWidth = MediaQuery.sizeOf(context).width;
     final contentWidth = viewportWidth >= 900
-        ? responsiveContentWidth(context, nativeMaxWidth: 760)
+        ? responsiveContentWidth(context, nativeMaxWidth: 1120)
         : 560.0;
     final actionWidth = viewportWidth >= 900
-        ? responsiveContentWidth(context, nativeMaxWidth: 728)
+        ? responsiveContentWidth(context, nativeMaxWidth: 1088)
         : 528.0;
 
     return Scaffold(

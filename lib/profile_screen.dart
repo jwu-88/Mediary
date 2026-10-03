@@ -646,7 +646,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   constraints: BoxConstraints(
                     maxWidth: responsiveContentWidth(
                       context,
-                      nativeMaxWidth: 760,
+                      nativeMaxWidth: 1120,
                     ),
                   ),
                   child: ListView(
