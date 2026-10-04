@@ -254,7 +254,7 @@ class MediaryRepository {
       'displayName':
           user.displayName ??
           (data['displayName'] is String ? data['displayName'] : ''),
-      'bloodType': data['bloodType'] is String ? data['bloodType'] : 'O+',
+      'bloodType': data['bloodType'] is String ? data['bloodType'] : '',
       'allergies': data['allergies'] is Iterable
           ? (data['allergies'] as Iterable).whereType<String>().toList()
           : const <String>[],
