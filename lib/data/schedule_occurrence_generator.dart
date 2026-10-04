@@ -42,7 +42,7 @@ class ScheduleOccurrenceGenerator {
       return const <ScheduleOccurrence>[];
     }
 
-    final startDate = DateTime.tryParse(schedule.startDate);
+    final startDate = parseLocalDate(schedule.startDate);
     if (startDate == null || schedule.times.isEmpty) {
       return const <ScheduleOccurrence>[];
     }
@@ -51,13 +51,15 @@ class ScheduleOccurrenceGenerator {
     if (!horizon.isAfter(current)) return const <ScheduleOccurrence>[];
 
     final location = _locationFor(schedule.timezone);
+    if (location == null) return const <ScheduleOccurrence>[];
     final localStart = tz.TZDateTime(
       location,
       startDate.year,
       startDate.month,
       startDate.day,
     );
-    final endDate = DateTime.tryParse(schedule.endDate ?? '');
+    final endDate = parseLocalDate(schedule.endDate ?? '');
+    if (schedule.endDate != null && endDate == null) return const [];
     final endInstant = endDate == null
         ? horizon
         : tz.TZDateTime(
@@ -87,18 +89,19 @@ class ScheduleOccurrenceGenerator {
     final matchingDays = frequency == 'weekly'
         ? _weeklyDays(schedule, localStart)
         : const <int>[];
-    final firstDate = DateTime(
+    final firstDate = DateTime.utc(
       localStart.year,
       localStart.month,
       localStart.day,
     );
     final lastLocalDate = tz.TZDateTime.from(upperBound, location);
-    final lastDate = DateTime(
+    final lastDate = DateTime.utc(
       lastLocalDate.year,
       lastLocalDate.month,
       lastLocalDate.day,
     );
     final occurrences = <ScheduleOccurrence>[];
+    final seenIds = <String>{};
     for (
       var date = firstDate;
       !date.isAfter(lastDate);
@@ -114,7 +117,8 @@ class ScheduleOccurrenceGenerator {
         continue;
       }
       for (final rawTime in schedule.times) {
-        final time = MedicationTime.fromLocalTime(rawTime);
+        final time = MedicationTime.tryFromLocalTime(rawTime);
+        if (time == null) continue;
         final scheduledFor = tz.TZDateTime(
           location,
           date.year,
@@ -128,7 +132,13 @@ class ScheduleOccurrenceGenerator {
             scheduledFor.isAfter(upperBound)) {
           continue;
         }
-        occurrences.add(_occurrence(schedule, scheduledFor, time));
+        final actualTime = MedicationTime(
+          hour: scheduledFor.hour,
+          minute: scheduledFor.minute,
+          second: scheduledFor.second,
+        );
+        final occurrence = _occurrence(schedule, scheduledFor, actualTime);
+        if (seenIds.add(occurrence.id)) occurrences.add(occurrence);
       }
     }
     occurrences.sort((a, b) => a.scheduledFor.compareTo(b.scheduledFor));
@@ -143,7 +153,8 @@ class ScheduleOccurrenceGenerator {
     required tz.Location location,
     required Duration interval,
   }) {
-    final anchorTime = MedicationTime.fromLocalTime(schedule.times.first);
+    final anchorTime = MedicationTime.tryFromLocalTime(schedule.times.first);
+    if (anchorTime == null) return const [];
     var candidate = tz.TZDateTime(
       location,
       localStart.year,
@@ -214,22 +225,30 @@ class ScheduleOccurrenceGenerator {
     required String localDate,
     required String localTime,
   }) {
-    final safeScheduleId = scheduleId.replaceAll(
-      RegExp(r'[^A-Za-z0-9_-]'),
-      '_',
-    );
+    final safeScheduleId = Uri.encodeComponent(scheduleId);
     return '${safeScheduleId}_${localDate}_'
         '${MedicationTime.fromLocalTime(localTime).localTime.replaceAll(':', '')}';
   }
 
-  static tz.Location _locationFor(String timezone) {
+  static DateTime? parseLocalDate(String value) {
+    if (!RegExp(r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$').hasMatch(value)) return null;
+    final parts = value.split('-').map(int.parse).toList();
+    final date = DateTime.utc(parts[0], parts[1], parts[2]);
+    return date.year == parts[0] &&
+            date.month == parts[1] &&
+            date.day == parts[2]
+        ? date
+        : null;
+  }
+
+  static tz.Location? _locationFor(String timezone) {
     tz_data.initializeTimeZones();
     final normalized = timezone.trim();
-    if (normalized.isEmpty) return tz.local;
+    if (normalized.isEmpty) return null;
     try {
       return tz.getLocation(normalized);
     } catch (_) {
-      return tz.local;
+      return null;
     }
   }
 }
