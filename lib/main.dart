@@ -1762,10 +1762,12 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
           MaterialPageRoute<void>(
             builder: (context) => WeeklyReportScreen(
               weekEnding: widget.now,
-              dailyTaken: _reportSeries(store).taken,
-              dailyScheduled: _reportSeries(store).scheduled,
-              timingOffsetsMinutes: _reportSeries(store).offsets,
-              dailySkipped: _reportSeries(store).skipped,
+              dailyTaken: series.taken,
+              dailyScheduled: series.scheduled,
+              timingOffsetsMinutes: series.offsets,
+              dailySkipped: series.skipped,
+              dailyMissed: series.missed,
+              timingSampleOffsetsMinutes: series.timingSamples,
               onSaveReport: store == null
                   ? null
                   : (report) => store.saveReport(report),
@@ -1787,26 +1789,44 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
     }
   }
 
-  ({List<int> taken, List<int> scheduled, List<int> offsets, List<int> skipped})
+  ({
+    List<int> taken,
+    List<int> scheduled,
+    List<int> offsets,
+    List<int> skipped,
+    List<int> missed,
+    List<int> timingSamples,
+  })
   _reportSeries(MediaryDataStore? store) {
-    final ending = DateUtils.dateOnly(widget.now ?? DateTime.now());
+    final now = widget.now ?? DateTime.now();
+    final ending = DateTime.utc(now.year, now.month, now.day);
     final start = ending.subtract(const Duration(days: 6));
     final taken = List<int>.filled(7, 0);
     final scheduled = List<int>.filled(7, 0);
     final offsets = List<int>.filled(7, 0);
     final skipped = List<int>.filled(7, 0);
+    final missed = List<int>.filled(7, 0);
+    final timingSamples = <int>[];
     for (final dose in _visibleDoseLogs(store)) {
-      final date = DateUtils.dateOnly(dose.scheduledFor);
+      final parsed = ScheduleOccurrenceGenerator.parseLocalDate(dose.localDate);
+      if (parsed == null || dose.status == 'cancelled') continue;
+      final date = DateTime.utc(parsed.year, parsed.month, parsed.day);
       final index = date.difference(start).inDays;
-      if (index < 0 || index > 6 || dose.status == 'cancelled') continue;
+      if (index < 0 || index > 6) continue;
       scheduled[index]++;
       if (dose.status == 'skipped') skipped[index]++;
+      final effectiveDue = dose.snoozedUntil ?? dose.scheduledFor;
+      if (dose.status == 'missed' ||
+          ((dose.status == 'due' || dose.status == 'snoozed') &&
+              effectiveDue.isBefore(now))) {
+        missed[index]++;
+      }
       if (dose.status == 'taken') {
         taken[index]++;
         if (dose.takenAt != null) {
-          offsets[index] += dose.takenAt!
-              .difference(dose.scheduledFor)
-              .inMinutes;
+          final offset = dose.takenAt!.difference(dose.scheduledFor).inMinutes;
+          offsets[index] += offset;
+          timingSamples.add(offset);
         }
       }
     }
@@ -1836,7 +1856,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
                 first.scheduledFor.compareTo(second.scheduledFor),
           );
     return [
-      for (final dose in doses.take(12))
+      for (final dose in doses)
         DashboardDoseData(
           id: dose.id,
           medicationId: dose.medicationId,

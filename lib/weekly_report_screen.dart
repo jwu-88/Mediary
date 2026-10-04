@@ -29,17 +29,31 @@ class WeeklyReportScreen extends StatelessWidget {
     List<int> dailyScheduled = const [],
     List<int> timingOffsetsMinutes = const [],
     List<int> dailySkipped = const [],
+    List<int>? dailyMissed,
+    List<int>? timingSampleOffsetsMinutes,
     this.onSaveReport,
   }) : dailyTaken = _normalizeCounts(dailyTaken),
        dailyScheduled = _normalizeCounts(dailyScheduled),
        timingOffsetsMinutes = _normalizeOffsets(timingOffsetsMinutes),
-       dailySkipped = _normalizeCounts(dailySkipped);
+       dailySkipped = _normalizeCounts(dailySkipped),
+       dailyMissed = dailyMissed == null ? null : _normalizeCounts(dailyMissed),
+       timingSampleOffsetsMinutes = List<int>.unmodifiable(
+         timingSampleOffsetsMinutes ?? timingOffsetsMinutes,
+       );
 
   final DateTime? weekEnding;
   final List<int> dailyTaken;
   final List<int> dailyScheduled;
   final List<int> timingOffsetsMinutes;
   final List<int> dailySkipped;
+
+  /// Actual missed counts, excluding pending doses. Legacy callers can omit
+  /// these counts to derive missed doses from scheduled, taken, and skipped.
+  final List<int>? dailyMissed;
+
+  /// One offset for each taken dose with a known timestamp. An explicit empty
+  /// list means timing data is unavailable, including when a chart is padded.
+  final List<int> timingSampleOffsetsMinutes;
   final Future<String> Function(ReportWrite report)? onSaveReport;
 
   static const _dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -76,10 +90,23 @@ class WeeklyReportScreen extends StatelessWidget {
 
   int get _scheduled => dailyScheduled.fold(0, (sum, value) => sum + value);
 
-  int get _skipped => List<int>.generate(
-    7,
-    (index) => math.min(dailySkipped[index], dailyScheduled[index]),
-  ).fold(0, (sum, value) => sum + value);
+  int _takenOnDay(int index) =>
+      math.min(dailyTaken[index], dailyScheduled[index]);
+
+  int _skippedOnDay(int index) =>
+      math.min(dailySkipped[index], dailyScheduled[index] - _takenOnDay(index));
+
+  int _missedOnDay(int index) {
+    final remaining =
+        dailyScheduled[index] - _takenOnDay(index) - _skippedOnDay(index);
+    return math.min(dailyMissed?[index] ?? remaining, remaining);
+  }
+
+  int get _skipped =>
+      List<int>.generate(7, _skippedOnDay).fold(0, (sum, value) => sum + value);
+
+  int get _missed =>
+      List<int>.generate(7, _missedOnDay).fold(0, (sum, value) => sum + value);
 
   int get _adherence {
     if (_scheduled == 0) return 0;
@@ -87,31 +114,43 @@ class WeeklyReportScreen extends StatelessWidget {
   }
 
   int get _averageTiming {
-    if (timingOffsetsMinutes.isEmpty) return 0;
-    final total = timingOffsetsMinutes.fold<int>(
+    if (timingSampleOffsetsMinutes.isEmpty) return 0;
+    final total = timingSampleOffsetsMinutes.fold<int>(
       0,
       (sum, value) => sum + value.abs(),
     );
-    return (total / timingOffsetsMinutes.length).round();
+    return (total / timingSampleOffsetsMinutes.length).round();
   }
 
-  String get _missedDoseDescription {
+  List<String> _labelsFor(DateTime ending, {bool accessible = false}) {
+    final names = accessible ? _accessibleDayLabels : _dayLabels;
+    return List<String>.generate(7, (index) {
+      final date = DateTime(ending.year, ending.month, ending.day - 6 + index);
+      return names[date.weekday - 1];
+    });
+  }
+
+  String _missedDoseDescription(DateTime ending) {
+    final labels = _labelsFor(ending);
     final missedDays = <String>[];
     for (var index = 0; index < dailyScheduled.length; index++) {
-      if (dailyTaken[index] < dailyScheduled[index]) {
-        missedDays.add(_dayLabels[index]);
+      if (_missedOnDay(index) > 0) {
+        missedDays.add(labels[index]);
       }
     }
     if (missedDays.isEmpty) return 'No missed doses';
-    if (missedDays.length == 1) return '1 missed dose on ${missedDays.first}';
-    return '${missedDays.length} missed doses this week';
+    final dosePhrase = '$_missed missed ${_missed == 1 ? 'dose' : 'doses'}';
+    if (missedDays.length == 1) return '$dosePhrase on ${missedDays.first}';
+    return '$dosePhrase this week';
   }
 
-  String get _dailyDoseSemantics {
+  String _dailyDoseSemantics(DateTime ending) {
+    final labels = _labelsFor(ending, accessible: true);
     final dailyDetails = List<String>.generate(7, (index) {
-      final taken = math.min(dailyTaken[index], dailyScheduled[index]);
+      final taken = _takenOnDay(index);
       final scheduled = math.max(0, dailyScheduled[index]);
-      return '${_accessibleDayLabels[index]}: $taken of $scheduled taken';
+      return '${labels[index]}: $taken of $scheduled taken, '
+          '${_skippedOnDay(index)} skipped, ${_missedOnDay(index)} missed';
     });
     return 'Daily dose chart. ${dailyDetails.join('; ')}.';
   }
@@ -135,18 +174,20 @@ class WeeklyReportScreen extends StatelessWidget {
       '${_monthName(date.month)} ${date.day}, ${date.year}';
 
   String _summary(DateTime ending) {
-    final missed = math.max(0, _scheduled - _taken - _skipped);
-    final dosePhrase = missed <= 0
+    final dosePhrase = _missed <= 0
         ? 'No scheduled doses were missed.'
-        : '$missed scheduled ${missed == 1 ? 'dose was' : 'doses were'} missed.';
+        : '$_missed scheduled ${_missed == 1 ? 'dose was' : 'doses were'} missed.';
+    final timingPhrase = timingSampleOffsetsMinutes.isEmpty
+        ? 'No dose timing data is available.'
+        : 'Doses were taken an average of $_averageTiming minutes from their '
+              'scheduled time.';
     return 'For the week ending ${_formatDate(ending)}, '
         '$_taken of $_scheduled scheduled doses were taken '
-        '($_adherence% adherence). $dosePhrase Doses were taken an average '
-        'of $_averageTiming minutes from their scheduled time.';
+        '($_adherence% adherence). $dosePhrase $timingPhrase';
   }
 
   Future<void> _prepareSummary(BuildContext context, DateTime ending) async {
-    final start = ending.subtract(const Duration(days: 6));
+    final start = DateTime(ending.year, ending.month, ending.day - 6);
     await onSaveReport?.call(
       ReportWrite(
         id: '${_dateKey(start)}_${_dateKey(ending)}',
@@ -154,7 +195,7 @@ class WeeklyReportScreen extends StatelessWidget {
         periodEnd: _dateKey(ending),
         doseCount: _scheduled,
         takenCount: _taken,
-        missedCount: math.max(0, _scheduled - _taken),
+        missedCount: _missed,
         skippedCount: _skipped,
         adherencePercent: _adherence.toDouble(),
         sourceVersion: 'v1',
@@ -179,7 +220,11 @@ class WeeklyReportScreen extends StatelessWidget {
     final ending = DateUtils.dateOnly(weekEnding ?? DateTime.now());
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final missed = math.max(0, _scheduled - _taken);
+    final missed = _missed;
+    final dayLabels = _labelsFor(ending);
+    final timingDetail = timingSampleOffsetsMinutes.isEmpty
+        ? 'No Timing Data'
+        : '$_averageTiming Min Average';
     final viewportWidth = MediaQuery.sizeOf(context).width;
     final contentWidth = viewportWidth >= 900
         ? responsiveContentWidth(
@@ -284,12 +329,12 @@ class WeeklyReportScreen extends StatelessWidget {
                 _SectionHeading(
                   key: const Key('weeklyReportDailyDosesHeading'),
                   title: 'Daily Doses',
-                  detail: _missedDoseDescription,
+                  detail: _missedDoseDescription(ending),
                 ),
                 const SizedBox(height: 16),
                 Semantics(
                   key: const Key('dailyDoseChartSemantics'),
-                  label: _dailyDoseSemantics,
+                  label: _dailyDoseSemantics(ending),
                   child: SizedBox(
                     key: const Key('dailyDoseChart'),
                     height: 184,
@@ -297,7 +342,7 @@ class WeeklyReportScreen extends StatelessWidget {
                       painter: _DailyDoseChartPainter(
                         completed: dailyTaken,
                         scheduled: dailyScheduled,
-                        labels: _dayLabels,
+                        labels: dayLabels,
                         barColor: _green,
                         trackColor: colors.outlineVariant.withValues(
                           alpha: 0.3,
@@ -311,19 +356,20 @@ class WeeklyReportScreen extends StatelessWidget {
                 _SectionHeading(
                   key: const Key('weeklyReportDoseTimingHeading'),
                   title: 'Dose Timing',
-                  detail: '$_averageTiming Min Average',
+                  detail: timingDetail,
                 ),
                 const SizedBox(height: 16),
                 Semantics(
-                  label:
-                      'Dose timing chart. Average timing was $_averageTiming minutes from schedule.',
+                  label: timingSampleOffsetsMinutes.isEmpty
+                      ? 'Dose timing chart. No dose timing data is available.'
+                      : 'Dose timing chart. Average timing was $_averageTiming minutes from schedule.',
                   child: SizedBox(
                     key: const Key('doseTimingChart'),
                     height: 168,
                     child: CustomPaint(
                       painter: _TimingChartPainter(
                         offsets: timingOffsetsMinutes,
-                        labels: _dayLabels,
+                        labels: dayLabels,
                         lineColor: colors.primary,
                         gridColor: colors.outlineVariant.withValues(
                           alpha: 0.34,
@@ -356,8 +402,9 @@ class WeeklyReportScreen extends StatelessWidget {
                   icon: CupertinoIcons.clock_fill,
                   iconColor: colors.primary,
                   title: 'Consistent Timing',
-                  detail:
-                      'Doses were within $_averageTiming minutes of schedule on average.',
+                  detail: timingSampleOffsetsMinutes.isEmpty
+                      ? 'No dose timing data is available.'
+                      : 'Doses were within $_averageTiming minutes of schedule on average.',
                 ),
                 const SizedBox(height: 24),
                 _PrepareSummaryButton(
