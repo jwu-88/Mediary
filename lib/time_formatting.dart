@@ -38,6 +38,14 @@ class MedicationTime {
     ).normalized;
   }
 
+  static MedicationTime? tryFromLocalTime(String value) {
+    if (!RegExp(r'^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$')
+        .hasMatch(value)) {
+      return null;
+    }
+    return MedicationTime.fromLocalTime(value);
+  }
+
   MedicationTime get normalized => MedicationTime(
     hour: hour.clamp(0, 23),
     minute: minute.clamp(0, 59),
