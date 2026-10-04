@@ -168,7 +168,29 @@ class DefaultMedicationNotificationService
   Future<String> permissionState() async {
     await initialize();
     if (kIsWeb) return webNotificationPermissionState();
-    return _supportsNativeNotifications ? 'available' : 'unavailable';
+    if (!_supportsNativeNotifications) return 'unavailable';
+    try {
+      final bool? enabled;
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        enabled =
+            (await _plugin
+                    .resolvePlatformSpecificImplementation<
+                      IOSFlutterLocalNotificationsPlugin
+                    >()
+                    ?.checkPermissions())
+                ?.isEnabled;
+      } else {
+        enabled = await _plugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >()
+            ?.areNotificationsEnabled();
+      }
+      if (enabled == null) return 'unavailable';
+      return enabled ? 'granted' : 'denied';
+    } catch (_) {
+      return 'unavailable';
+    }
   }
 
   @override
@@ -338,14 +360,32 @@ class DefaultMedicationNotificationService
       return newlyDue;
     }
 
-    final futureDoses = uniqueActiveDoses
+    if (await permissionState() != 'granted') return newlyDue;
+
+    final allFutureDoses = uniqueActiveDoses
         .where(
           (dose) => (scheduledTimes[dose.id] ?? dose.scheduledFor).isAfter(
             currentTime,
           ),
         )
         .toList(growable: false);
+    allFutureDoses.sort(
+      (first, second) =>
+          scheduledTimes[first.id]!.compareTo(scheduledTimes[second.id]!),
+    );
+    // iOS retains only 64 pending requests. Keep the nearest reminders so a
+    // large regimen cannot replace today's alerts with distant future doses.
+    final futureDoses = defaultTargetPlatform == TargetPlatform.iOS
+        ? allFutureDoses.take(64).toList(growable: false)
+        : allFutureDoses;
     final futureIds = futureDoses.map((dose) => dose.id).toSet();
+    for (final doseId in _scheduledDoseIds.difference(futureIds).toList()) {
+      if (!activeIds.contains(doseId) ||
+          scheduledTimes[doseId]!.isAfter(currentTime)) {
+        await _plugin.cancel(id: notificationIdForDose(doseId));
+      }
+      _scheduledDoseIds.remove(doseId);
+    }
 
     for (final dose in futureDoses) {
       await _schedule(
