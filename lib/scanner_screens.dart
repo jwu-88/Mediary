@@ -470,7 +470,6 @@ class _CaptureSideControl extends StatelessWidget {
     required this.label,
     this.webLabel,
     required this.onPressed,
-    this.isSelected = false,
     this.enabled = true,
   });
 
@@ -478,12 +477,10 @@ class _CaptureSideControl extends StatelessWidget {
   final String label;
   final String? webLabel;
   final VoidCallback onPressed;
-  final bool isSelected;
   final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     final isWide = !AppBreakpoints.isMobile(context);
     final displayLabel = webLabel ?? label;
     return Tooltip(
@@ -491,7 +488,6 @@ class _CaptureSideControl extends StatelessWidget {
       child: Semantics(
         button: true,
         enabled: enabled,
-        selected: isSelected,
         label: label,
         child: ResponsiveCupertinoButton(
           padding: EdgeInsets.all(isWide ? 8 : 6),
@@ -504,12 +500,10 @@ class _CaptureSideControl extends StatelessWidget {
             height: isWide ? 64 : 58,
             padding: EdgeInsets.symmetric(horizontal: isWide ? 18 : 0),
             decoration: BoxDecoration(
-              color: isSelected
-                  ? colors.primary
-                  : Colors.white.withValues(alpha: isWide ? .18 : .16),
+              color: Colors.white.withValues(alpha: isWide ? .18 : .16),
               borderRadius: BorderRadius.circular(isWide ? 18 : 99),
               border: Border.all(
-                color: Colors.white.withValues(alpha: isSelected ? .55 : .28),
+                color: Colors.white.withValues(alpha: .28),
                 width: isWide ? 1 : 1.2,
               ),
             ),
@@ -520,9 +514,7 @@ class _CaptureSideControl extends StatelessWidget {
                 Icon(
                   icon,
                   color: enabled
-                      ? isSelected
-                            ? colors.onPrimary
-                            : Colors.white
+                      ? Colors.white
                       : Colors.white.withValues(alpha: .42),
                   size: isWide ? 23 : 24,
                 ),
@@ -535,9 +527,7 @@ class _CaptureSideControl extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: enabled
-                            ? isSelected
-                                  ? colors.onPrimary
-                                  : Colors.white
+                            ? Colors.white
                             : Colors.white.withValues(alpha: .42),
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
