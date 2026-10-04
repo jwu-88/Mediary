@@ -93,9 +93,12 @@ void main() {
       'Claritin-D\nLoratadine 10 mg\nPseudoephedrine sulfate 240 mg',
       'Claritin\nLoratadine 10 mg\nPseudoephedrine sulfate 240 mg',
     ]) {
-      test('preserves the D formulation in ${text.replaceAll('\n', ' / ')}', () {
-        expect(detectMedicationName(text), 'Claritin-D');
-      });
+      test(
+        'preserves the D formulation in ${text.replaceAll('\n', ' / ')}',
+        () {
+          expect(detectMedicationName(text), 'Claritin-D');
+        },
+      );
     }
 
     test('strongest complete variant wins throughout merged photo OCR', () {
@@ -177,14 +180,26 @@ void main() {
       genericName: 'loratadine / pseudoephedrine sulfate',
     );
 
-    test('plain Claritin rejects D variants even when they are the only hit', () {
-      expect(matchMedicationCatalogRecord('Claritin', [twentyFourHour]), isNull);
-      expect(matchMedicationCatalogRecord('Loratadine', [twelveHour]), isNull);
-      expect(
-        matchMedicationCatalogRecord('Claritin', [twentyFourHour, plain])?.rxcui,
-        'plain',
-      );
-    });
+    test(
+      'plain Claritin rejects D variants even when they are the only hit',
+      () {
+        expect(
+          matchMedicationCatalogRecord('Claritin', [twentyFourHour]),
+          isNull,
+        );
+        expect(
+          matchMedicationCatalogRecord('Loratadine', [twelveHour]),
+          isNull,
+        );
+        expect(
+          matchMedicationCatalogRecord('Claritin', [
+            twentyFourHour,
+            plain,
+          ])?.rxcui,
+          'plain',
+        );
+      },
+    );
 
     test('Claritin-D never falls back to a plain brand or ingredient', () {
       expect(matchMedicationCatalogRecord('Claritin-D', [plain]), isNull);
@@ -193,7 +208,10 @@ void main() {
         isNull,
       );
       expect(
-        matchMedicationCatalogRecord('Claritin-D', [plain, twentyFourHour])?.rxcui,
+        matchMedicationCatalogRecord('Claritin-D', [
+          plain,
+          twentyFourHour,
+        ])?.rxcui,
         '1242391',
       );
     });
@@ -234,7 +252,10 @@ void main() {
             'Pseudoephedrine sulfate 240 MG / Loratadine 10 MG '
             'Extended Release Oral Tablet',
       );
-      expect(matchMedicationCatalogRecord('Claritin-D', [generic])?.rxcui, 'generic');
+      expect(
+        matchMedicationCatalogRecord('Claritin-D', [generic])?.rxcui,
+        'generic',
+      );
       expect(
         matchMedicationCatalogRecord('Loratadine / Pseudoephedrine', [
           generic,
@@ -279,35 +300,40 @@ void main() {
       );
     });
 
-    test('12-hour OCR context does not select the alphabetically first product', () {
-      expect(
-        matchMedicationCatalogRecord(
-          'Claritin-D',
-          [twentyFourHour, twelveHour],
-          extractedText: 'Claritin D 12 hour\nLoratadine 5 mg\nPseudoephedrine 120 mg',
-        )?.rxcui,
-        '1242406',
-      );
-    });
+    test(
+      '12-hour OCR context does not select the alphabetically first product',
+      () {
+        expect(
+          matchMedicationCatalogRecord(
+            'Claritin-D',
+            [twentyFourHour, twelveHour],
+            extractedText:
+                'Claritin D 12 hour\nLoratadine 5 mg\nPseudoephedrine 120 mg',
+          )?.rxcui,
+          '1242406',
+        );
+      },
+    );
 
-    test('readable strengths distinguish variants when hours are unreadable', () {
-      expect(
-        matchMedicationCatalogRecord(
-          'Loratadine / Pseudoephedrine',
-          [twentyFourHour, twelveHour],
-          extractedText: 'Loratadine 5 mg\nPseudoephedrine sulfate 120 mg',
-        )?.rxcui,
-        '1242406',
-      );
-      expect(
-        matchMedicationCatalogRecord(
-          'Claritin-D',
-          [twelveHour],
-          extractedText: 'Loratadine 10 mg\nPseudoephedrine sulfate 240 mg',
-        ),
-        isNull,
-      );
-    });
+    test(
+      'readable strengths distinguish variants when hours are unreadable',
+      () {
+        expect(
+          matchMedicationCatalogRecord(
+            'Loratadine / Pseudoephedrine',
+            [twentyFourHour, twelveHour],
+            extractedText: 'Loratadine 5 mg\nPseudoephedrine sulfate 120 mg',
+          )?.rxcui,
+          '1242406',
+        );
+        expect(
+          matchMedicationCatalogRecord('Claritin-D', [
+            twelveHour,
+          ], extractedText: 'Loratadine 10 mg\nPseudoephedrine sulfate 240 mg'),
+          isNull,
+        );
+      },
+    );
 
     test('explicit duration rejects an incompatible lone D product', () {
       expect(
@@ -315,11 +341,9 @@ void main() {
         isNull,
       );
       expect(
-        matchMedicationCatalogRecord(
-          'Claritin-D',
-          [twentyFourHour],
-          extractedText: '12-hour Claritin-D',
-        ),
+        matchMedicationCatalogRecord('Claritin-D', [
+          twentyFourHour,
+        ], extractedText: '12-hour Claritin-D'),
         isNull,
       );
     });
@@ -330,11 +354,9 @@ void main() {
         '1242406',
       );
       expect(
-        matchMedicationCatalogRecord(
-          'Claritin-D',
-          [twelveHour],
-          extractedText: 'Claritin-D\nAllergy + Congestion',
-        )?.rxcui,
+        matchMedicationCatalogRecord('Claritin-D', [
+          twelveHour,
+        ], extractedText: 'Claritin-D\nAllergy + Congestion')?.rxcui,
         '1242406',
       );
     });
@@ -342,7 +364,8 @@ void main() {
 
   group('OCR name confidence', () {
     const channel = MethodChannel('com.mediary/medication_ocr');
-    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     var text = '';
 
     setUp(() {
@@ -371,32 +394,44 @@ void main() {
       expect(result.hasError, isFalse);
     });
 
-    test('fuzzy names have lower confidence than literal known brands', () async {
-      final exact = await scan('Claritin-D');
-      final fuzzy = await scan('laritin-D');
-      expect(fuzzy.detectedMedicationName, 'Claritin-D');
-      expect(fuzzy.confidence, lessThan(exact.confidence));
-      expect(fuzzy.confidence, lessThan(.9));
-    });
+    test(
+      'fuzzy names have lower confidence than literal known brands',
+      () async {
+        final exact = await scan('Claritin-D');
+        final fuzzy = await scan('laritin-D');
+        expect(fuzzy.detectedMedicationName, 'Claritin-D');
+        expect(fuzzy.confidence, lessThan(exact.confidence));
+        expect(fuzzy.confidence, lessThan(.9));
+      },
+    );
 
-    test('literal unknown text remains low confidence for catalog verification', () async {
-      final result = await scan('Qzxv label');
-      expect(result.detectedMedicationName, 'Qzxv label');
-      expect(result.confidence, lessThan(.5));
-      expect(matchMedicationCatalogRecord(result.detectedMedicationName, const [
-        MedicationCatalogRecord(rxcui: 'plain', name: 'Claritin'),
-      ]), isNull);
-    });
+    test(
+      'literal unknown text remains low confidence for catalog verification',
+      () async {
+        final result = await scan('Qzxv label');
+        expect(result.detectedMedicationName, 'Qzxv label');
+        expect(result.confidence, lessThan(.5));
+        expect(
+          matchMedicationCatalogRecord(result.detectedMedicationName, const [
+            MedicationCatalogRecord(rxcui: 'plain', name: 'Claritin'),
+          ]),
+          isNull,
+        );
+      },
+    );
 
-    test('incomplete suffix and empty OCR retain uncertain or error results', () async {
-      final ambiguous = await scan('laritin-p');
-      expect(ambiguous.detectedMedicationName, isEmpty);
-      expect(ambiguous.confidence, .25);
-      final empty = await scan('');
-      expect(empty.detectedMedicationName, isEmpty);
-      expect(empty.confidence, 0);
-      expect(empty.hasError, isTrue);
-    });
+    test(
+      'incomplete suffix and empty OCR retain uncertain or error results',
+      () async {
+        final ambiguous = await scan('laritin-p');
+        expect(ambiguous.detectedMedicationName, isEmpty);
+        expect(ambiguous.confidence, .25);
+        final empty = await scan('');
+        expect(empty.detectedMedicationName, isEmpty);
+        expect(empty.confidence, 0);
+        expect(empty.hasError, isTrue);
+      },
+    );
   });
 
   test('does not invent a medication name from instruction text', () {

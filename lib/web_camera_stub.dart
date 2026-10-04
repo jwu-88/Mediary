@@ -1,8 +1,13 @@
+import 'dart:typed_data';
+
 import 'package:flutter/widgets.dart';
 
 /// Requests camera access on platforms where the browser camera API is not
 /// available. Native permission handling remains owned by permission_handler.
 Future<bool> requestWebCameraAccess() async => false;
+
+/// Browser frames are unavailable on native platforms.
+Future<Uint8List?> captureWebCameraFrame() async => null;
 
 /// Releases any browser camera stream. This is a no-op on native platforms.
 void stopWebCamera() {}

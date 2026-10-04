@@ -20,19 +20,22 @@ class MedicationScanRequest {
     required this.imageUrl,
     this.imageBytes,
     this.fileName = '',
+    this.isSampleRequest = false,
   });
 
   const MedicationScanRequest.sample()
     : source = MedicationScanSource.samplePhoto,
       imageUrl = sampleImageUrl,
       imageBytes = null,
-      fileName = '';
+      fileName = '',
+      isSampleRequest = true;
 
   const MedicationScanRequest.fromImage({
     required this.imageBytes,
     required this.fileName,
   }) : source = MedicationScanSource.samplePhoto,
-       imageUrl = '';
+       imageUrl = '',
+       isSampleRequest = false;
 
   static const sampleImageUrl =
       'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=900&q=90';
@@ -41,6 +44,7 @@ class MedicationScanRequest {
   final String imageUrl;
   final Uint8List? imageBytes;
   final String fileName;
+  final bool isSampleRequest;
 }
 
 class MedicationScanResult {
@@ -166,23 +170,25 @@ String _normalizeCatalogMedicationName(String value) =>
       (match) => 'claritin d${match[1] == null ? '' : ' ${match[1]}'}',
     );
 
-bool _hasClaritinD(String name) =>
-    RegExp(r'\bclaritin d\b').hasMatch(name);
+bool _hasClaritinD(String name) => RegExp(r'\bclaritin d\b').hasMatch(name);
 
 int? _labelDuration(String text) {
   final normalized = _normalizeCatalogMedicationName(text);
-  final durations = RegExp(
-    r'\b(12|24)\s*(?:hour|hours|hr|hrs)\b|\bclaritin d (12|24)\b',
-  ).allMatches(normalized).map((match) => int.parse(match[1] ?? match[2]!)).toSet();
+  final durations =
+      RegExp(r'\b(12|24)\s*(?:hour|hours|hr|hrs)\b|\bclaritin d (12|24)\b')
+          .allMatches(normalized)
+          .map((match) => int.parse(match[1] ?? match[2]!))
+          .toSet();
   return durations.length == 1 ? durations.single : null;
 }
 
-Set<String> _labelStrengths(String text) => RegExp(
-  r'\b(\d+(?:\.\d+)?)\s*(mg|mcg|g)\b',
-  caseSensitive: false,
-).allMatches(text).map((match) {
-  return '${double.parse(match[1]!)} ${match[2]!.toLowerCase()}';
-}).toSet();
+Set<String> _labelStrengths(String text) =>
+    RegExp(
+      r'\b(\d+(?:\.\d+)?)\s*(mg|mcg|g)\b',
+      caseSensitive: false,
+    ).allMatches(text).map((match) {
+      return '${double.parse(match[1]!)} ${match[2]!.toLowerCase()}';
+    }).toSet();
 
 const _genericMedicationAliases = <String, String>{
   'acetaminophen': 'Acetaminophen',
@@ -247,6 +253,22 @@ Future<MedicationPickedImage?> pickMedicationPhoto() async {
   );
 }
 
+/// Opens the native camera and returns the photo the person confirms.
+/// Cancelling the camera returns null and does not start a medication scan.
+Future<MedicationPickedImage?> captureMedicationPhoto({
+  ImagePicker? picker,
+}) async {
+  final file = await (picker ?? ImagePicker()).pickImage(
+    source: ImageSource.camera,
+    requestFullMetadata: false,
+  );
+  if (file == null) return null;
+  return MedicationPickedImage(
+    bytes: await file.readAsBytes(),
+    fileName: file.name,
+  );
+}
+
 /// Reads a PNG/JPEG image from the system clipboard when the platform exposes
 /// image clipboard data. Text-only clipboard contents return null.
 Future<MedicationPickedImage?> pasteMedicationPhoto() async {
@@ -269,8 +291,20 @@ class MedicationOcrDetector implements MedicationScanDetector {
 
   @override
   Future<MedicationScanResult> detect(MedicationScanRequest request) async {
-    if (request.imageBytes == null || request.imageBytes!.isEmpty) {
+    if (request.isSampleRequest) {
       return const SampleMedicationScanDetector().detect(request);
+    }
+    if (request.imageBytes == null || request.imageBytes!.isEmpty) {
+      return MedicationScanResult(
+        imageUrl: request.imageUrl,
+        imageBytes: request.imageBytes,
+        extractedText: '',
+        detectedMedicationName: '',
+        confidence: 0,
+        errorMessage:
+            'The image did not contain any photo data. Try again or search '
+            'for the medication manually.',
+      );
     }
 
     // These are the exact OTC label fixtures supplied for the MVP. Keeping
@@ -365,7 +399,9 @@ MedicationScanResult? _knownMedicationSampleResult(
 String? detectMedicationName(String extractedText) =>
     _detectMedicationName(extractedText).name;
 
-({String? name, double confidence}) _detectMedicationName(String extractedText) {
+({String? name, double confidence}) _detectMedicationName(
+  String extractedText,
+) {
   // Preserve OCR evidence, but do not identify a product from a medication
   // mentioned only in directions, warnings, or an inactive ingredient list.
   final productText = _productLabelText(extractedText);
@@ -378,6 +414,7 @@ String? detectMedicationName(String extractedText) =>
   void remember(Map<String, double> matches, String name, double confidence) {
     if (confidence > (matches[name] ?? 0)) matches[name] = confidence;
   }
+
   for (var index = 0; index < tokens.length; index++) {
     // Check the whole brand including its suffix before fuzzy matching the
     // shorter base name. OCR often separates D or attaches the hour number.
@@ -477,14 +514,15 @@ double? _medicationAliasAt(List<String> tokens, int index, String alias) {
   return null;
 }
 
-bool _hasUnresolvedClaritinSuffix(String text) => RegExp(
-  r'\b([a-z0-9]+)[ \t]*[-‐‑‒–—−][ \t]*([a-z0-9]\b|$)',
-  caseSensitive: false,
-  multiLine: true,
-).allMatches(text.toLowerCase()).any((match) {
-  return _medicationAliasConfidence(match[1]!, 'claritin') != null &&
-      match[2] != 'd';
-});
+bool _hasUnresolvedClaritinSuffix(String text) =>
+    RegExp(
+      r'\b([a-z0-9]+)[ \t]*[-‐‑‒–—−][ \t]*([a-z0-9]\b|$)',
+      caseSensitive: false,
+      multiLine: true,
+    ).allMatches(text.toLowerCase()).any((match) {
+      return _medicationAliasConfidence(match[1]!, 'claritin') != null &&
+          match[2] != 'd';
+    });
 
 double? _medicationAliasConfidence(String token, String alias) {
   if (token == alias) return .94;
@@ -510,9 +548,8 @@ bool _looksLikeNonProductText(String line) {
         r'^(warnings?\b|do not\b|ask a\b|stop use\b|keep out\b|'
         r'inactive ingredients?\b|compare to\b)',
       ).hasMatch(normalized) ||
-      RegExp(
-        r'\b(contains no|does not contain|without|free of)\b',
-      ).hasMatch(normalized);
+      RegExp(r'\b(contains no|does not contain|without|free of)\b')
+          .hasMatch(normalized);
 }
 
 bool _editDistanceAtMostOne(String first, String second) {

@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:js_interop';
+import 'dart:typed_data';
 import 'dart:ui_web' as ui_web;
 
 import 'package:flutter/material.dart';
 import 'package:web/web.dart' as web;
 
 web.MediaStream? _cameraStream;
+web.HTMLVideoElement? _activeVideo;
 int _viewCounter = 0;
 
 /// Requests the browser camera stream. On macOS this delegates to the
@@ -27,9 +30,36 @@ Future<bool> requestWebCameraAccess() async {
   }
 }
 
+/// Captures the frame currently visible in the active browser preview.
+/// A loading, detached, or stopped preview has no usable image yet.
+Future<Uint8List?> captureWebCameraFrame() async {
+  final video = _activeVideo;
+  if (_cameraStream == null ||
+      video == null ||
+      video.readyState < 2 ||
+      video.videoWidth == 0 ||
+      video.videoHeight == 0) {
+    return null;
+  }
+  try {
+    final canvas = web.HTMLCanvasElement()
+      ..width = video.videoWidth
+      ..height = video.videoHeight;
+    final context = canvas.getContext('2d') as web.CanvasRenderingContext2D;
+    context.drawImage(video, 0, 0);
+    final dataUrl = canvas.toDataURL('image/png');
+    final separator = dataUrl.indexOf(',');
+    if (separator < 0) return null;
+    return base64Decode(dataUrl.substring(separator + 1));
+  } catch (_) {
+    return null;
+  }
+}
+
 void stopWebCamera() {
   final stream = _cameraStream;
   _cameraStream = null;
+  _activeVideo = null;
   stream?.getTracks().toDart.forEach((track) => track.stop());
 }
 
@@ -117,6 +147,7 @@ class _WebCameraPreviewState extends State<WebCameraPreview> {
     final stream = _cameraStream;
     if (video == null || stream == null || !widget.active) return;
     video.srcObject = stream;
+    _activeVideo = video;
     unawaited(video.play().toDart);
   }
 
@@ -125,6 +156,7 @@ class _WebCameraPreviewState extends State<WebCameraPreview> {
     if (video == null) return;
     video.pause();
     video.srcObject = null;
+    if (identical(_activeVideo, video)) _activeVideo = null;
   }
 
   @override

@@ -1209,6 +1209,7 @@ class AuthenticatedHome extends StatefulWidget {
     this.dataStore,
     this.catalogClient,
     this.scanDetector,
+    this.cameraCapture,
     this.notificationService,
     this.now,
     this.cameraPermissionRequester,
@@ -1231,6 +1232,7 @@ class AuthenticatedHome extends StatefulWidget {
   final MediaryDataStore? dataStore;
   final MedicationCatalogClient? catalogClient;
   final MedicationScanDetector? scanDetector;
+  final Future<MedicationScanRequest?> Function()? cameraCapture;
   final MedicationNotificationService? notificationService;
   final DateTime? now;
   final CameraPermissionRequester? cameraPermissionRequester;
@@ -1835,6 +1837,8 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       scheduled: scheduled,
       offsets: offsets,
       skipped: skipped,
+      missed: missed,
+      timingSamples: timingSamples,
     );
   }
 
@@ -2046,7 +2050,40 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
   }
 
   Future<void> _runMedicationScan() async {
-    await _runMedicationScanRequest(const MedicationScanRequest.sample());
+    try {
+      final MedicationScanRequest? request;
+      if (widget.cameraCapture != null) {
+        request = await widget.cameraCapture!();
+      } else if (kIsWeb) {
+        final bytes = await captureWebCameraFrame();
+        request = bytes == null
+            ? null
+            : MedicationScanRequest.fromImage(
+                imageBytes: bytes,
+                fileName: 'camera.png',
+              );
+      } else {
+        final picked = await captureMedicationPhoto();
+        request = picked == null
+            ? null
+            : MedicationScanRequest.fromImage(
+                imageBytes: picked.bytes,
+                fileName: picked.fileName,
+              );
+      }
+      if (!mounted) return;
+      if (request == null) {
+        if (kIsWeb) await _showCameraAlternatives();
+        return;
+      }
+      await _runMedicationScanRequest(request);
+    } catch (_) {
+      if (!mounted) return;
+      await _showScanAccessDialog(
+        title: 'Camera capture unavailable',
+        message: 'Mediary could not capture a photo. Try again or choose a photo instead.',
+      );
+    }
   }
 
   Future<void> _chooseMedicationPhoto() async {
