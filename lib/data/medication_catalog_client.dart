@@ -357,8 +357,19 @@ class RxNormMedicationCatalogClient implements MedicationCatalogClient {
     String sourceVersion,
   ) {
     final drugGroup = data['drugGroup'];
-    final groups = drugGroup is Map ? drugGroup['conceptGroup'] : null;
-    if (groups is! Iterable) return const [];
+    if (drugGroup is! Map) {
+      throw const MedicationCatalogException(
+        'RxNorm returned an unexpected medication search response. Try again.',
+      );
+    }
+    final groups = drugGroup['conceptGroup'];
+    // RxNorm omits conceptGroup when a valid query has no matches.
+    if (groups == null) return const [];
+    if (groups is! Iterable) {
+      throw const MedicationCatalogException(
+        'RxNorm returned an unexpected medication search response. Try again.',
+      );
+    }
 
     final records = <MedicationCatalogRecord>[];
     for (final group in groups) {
@@ -403,8 +414,15 @@ class RxNormMedicationCatalogClient implements MedicationCatalogClient {
     String rxcui,
   ) {
     final properties = data['properties'];
-    final values = properties is Map ? properties : data;
-    final name = values['name']?.toString().trim() ?? 'Medication';
+    if (properties is! Map ||
+        properties['name'] is! String ||
+        (properties['name'] as String).trim().isEmpty) {
+      throw const MedicationCatalogException(
+        'RxNorm returned incomplete medication details. Try again.',
+      );
+    }
+    final values = properties;
+    final name = (values['name'] as String).trim();
     final synonym = values['synonym']?.toString().trim() ?? '';
     return _recordFromName(
       rxcui: rxcui,
