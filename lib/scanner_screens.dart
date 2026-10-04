@@ -118,7 +118,6 @@ class MedicationScannerScreen extends StatefulWidget {
 
 class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
   bool _isAnalyzing = false;
-  bool _barcodeMode = false;
 
   Future<void> _capture() async {
     if (_isAnalyzing) return;
@@ -134,10 +133,7 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
 
   Future<void> _choosePhoto() async {
     if (_isAnalyzing) return;
-    setState(() {
-      _barcodeMode = false;
-      _isAnalyzing = true;
-    });
+    setState(() => _isAnalyzing = true);
     if (!mounted) return;
     try {
       // Keep the file chooser in the original pointer-activation turn. Web
@@ -146,11 +142,6 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
     } finally {
       if (mounted) setState(() => _isAnalyzing = false);
     }
-  }
-
-  void _toggleBarcodeMode() {
-    if (_isAnalyzing) return;
-    setState(() => _barcodeMode = !_barcodeMode);
   }
 
   @override
@@ -232,11 +223,9 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
                               right: 0,
                               bottom: 22,
                               child: _ScannerControlBar(
-                                barcodeMode: _barcodeMode,
                                 isAnalyzing: _isAnalyzing,
                                 onCapture: _capture,
                                 onChoosePhoto: _choosePhoto,
-                                onToggleBarcode: _toggleBarcodeMode,
                               ),
                             ),
                           ],
@@ -275,7 +264,7 @@ class _PermissionView extends StatelessWidget {
     final (title, message, icon) = switch (accessState) {
       ScannerAccessState.notRequested => (
         'Camera Access Required',
-        'Allow camera access to scan medication labels and barcodes.',
+        'Allow camera access to photograph medication labels.',
         CupertinoIcons.camera,
       ),
       ScannerAccessState.requesting => (
@@ -567,18 +556,14 @@ class _CaptureSideControl extends StatelessWidget {
 
 class _ScannerControlBar extends StatelessWidget {
   const _ScannerControlBar({
-    required this.barcodeMode,
     required this.isAnalyzing,
     required this.onCapture,
     required this.onChoosePhoto,
-    required this.onToggleBarcode,
   });
 
-  final bool barcodeMode;
   final bool isAnalyzing;
   final VoidCallback onCapture;
   final VoidCallback onChoosePhoto;
-  final VoidCallback onToggleBarcode;
 
   @override
   Widget build(BuildContext context) {
@@ -598,17 +583,7 @@ class _ScannerControlBar extends StatelessWidget {
         SizedBox(width: isWide ? 16 : 10),
         _ScannerCaptureButton(isAnalyzing: isAnalyzing, onPressed: onCapture),
         SizedBox(width: isWide ? 16 : 10),
-        Expanded(
-          child: _CaptureSideControl(
-            key: const Key('scannerBarcodeButton'),
-            icon: CupertinoIcons.barcode_viewfinder,
-            label: barcodeMode ? 'Scan a medication label' : 'Scan a barcode',
-            webLabel: barcodeMode ? 'Scan Label' : 'Scan Barcode',
-            isSelected: barcodeMode,
-            onPressed: onToggleBarcode,
-            enabled: !isAnalyzing,
-          ),
-        ),
+        const Spacer(),
       ],
     );
 
@@ -636,16 +611,20 @@ class _ScannerCaptureButton extends StatelessWidget {
     final isWide = !AppBreakpoints.isMobile(context);
     final diameter = isWide ? 76.0 : 78.0;
     return Tooltip(
-      message: isAnalyzing ? 'Analyzing medication' : 'Capture medication',
+      message: isAnalyzing
+          ? 'Analyzing medication'
+          : 'Capture medication label',
       child: Semantics(
         button: true,
         enabled: !isAnalyzing,
-        label: isAnalyzing ? 'Analyzing medication' : 'Capture medication',
+        label: isAnalyzing
+            ? 'Analyzing medication'
+            : 'Capture medication label',
         child: AppPressable(
           key: const Key('captureMedicationButton'),
           onPressed: isAnalyzing ? null : onPressed,
           busy: isAnalyzing,
-          semanticLabel: 'Capture medication',
+          semanticLabel: 'Capture medication label',
           borderRadius: BorderRadius.circular(99),
           hoverScale: 1.04,
           pressedScale: .92,
