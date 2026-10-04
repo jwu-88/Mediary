@@ -610,7 +610,14 @@ class MediaryRepository {
     final through = current.add(lookahead);
     final generator = const ScheduleOccurrenceGenerator();
     final occurrencesBySchedule = <String, List<ScheduleOccurrence>>{};
-    final operations = <void Function(WriteBatch)>[];
+    final writes =
+        <
+          ({
+            DocumentReference<Map<String, dynamic>> ref,
+            Map<String, dynamic> data,
+            bool create,
+          })
+        >[];
     final existingByKey = <String, DoseLogRecord>{};
 
     String key(String scheduleId, String localDate, String localTime) =>
@@ -637,8 +644,10 @@ class MediaryRepository {
             )];
         if (existingDose == null) {
           final ref = _doseLogs.doc(occurrence.id);
-          operations.add(
-            (batch) => batch.set(ref, {
+          writes.add((
+            ref: ref,
+            create: true,
+            data: {
               'medicationId': occurrence.medicationId,
               'scheduleId': occurrence.scheduleId,
               'scheduledFor': Timestamp.fromDate(occurrence.scheduledFor),
@@ -648,8 +657,8 @@ class MediaryRepository {
               'notes': '',
               'createdAt': FieldValue.serverTimestamp(),
               'updatedAt': FieldValue.serverTimestamp(),
-            }, SetOptions(merge: true)),
-          );
+            },
+          ));
         } else if (_canReconcile(existingDose) &&
             existingDose.scheduledFor.millisecondsSinceEpoch !=
                 occurrence.scheduledFor.millisecondsSinceEpoch) {
@@ -657,12 +666,14 @@ class MediaryRepository {
           // stayed the same. Keep the user's dose record but repair its
           // instant so notification scheduling follows the updated schedule.
           final ref = _doseLogs.doc(existingDose.id);
-          operations.add(
-            (batch) => batch.update(ref, {
+          writes.add((
+            ref: ref,
+            create: false,
+            data: {
               'scheduledFor': Timestamp.fromDate(occurrence.scheduledFor),
               'updatedAt': FieldValue.serverTimestamp(),
-            }),
-          );
+            },
+          ));
         }
       }
     }
@@ -686,17 +697,43 @@ class MediaryRepository {
       final doseKey = key(dose.scheduleId, dose.localDate, dose.localTime);
       if (!generatedKeys.contains(doseKey)) {
         final ref = _doseLogs.doc(dose.id);
-        operations.add(
-          (batch) => batch.update(ref, {
+        writes.add((
+          ref: ref,
+          create: false,
+          data: {
             'status': 'cancelled',
             'snoozedUntil': FieldValue.delete(),
             'updatedAt': FieldValue.serverTimestamp(),
-          }),
-        );
+          },
+        ));
       }
     }
 
-    await _commitOperations(operations);
+    // A listener snapshot can be stale relative to another device. Read every
+    // target in the transaction before writing so generated doses cannot reset
+    // a user action that reached the server while this snapshot was loading.
+    for (var offset = 0; offset < writes.length; offset += 200) {
+      final group = writes.sublist(
+        offset,
+        (offset + 200).clamp(0, writes.length),
+      );
+      await firestore.runTransaction<void>((transaction) async {
+        final snapshots = <DocumentSnapshot<Map<String, dynamic>>>[];
+        for (final write in group) {
+          snapshots.add(await transaction.get(write.ref));
+        }
+        for (var index = 0; index < group.length; index++) {
+          final write = group[index];
+          final snapshot = snapshots[index];
+          if (write.create) {
+            if (!snapshot.exists) transaction.set(write.ref, write.data);
+          } else if (snapshot.exists &&
+              ['due', 'snoozed'].contains(snapshot.data()?['status'])) {
+            transaction.update(write.ref, write.data);
+          }
+        }
+      });
+    }
     return occurrencesBySchedule.values.fold<int>(
       0,
       (total, items) => total + items.length,
@@ -889,11 +926,13 @@ class MediaryRepository {
         schedule.times.any((time) => !_isValidLocalTime(time))) {
       throw ArgumentError.value(schedule.times, 'times');
     }
-    if (DateTime.tryParse(schedule.startDate) == null) {
+    if (ScheduleOccurrenceGenerator.parseLocalDate(schedule.startDate) ==
+        null) {
       throw ArgumentError.value(schedule.startDate, 'startDate');
     }
     if (schedule.endDate != null &&
-        (DateTime.tryParse(schedule.endDate!) == null ||
+        (ScheduleOccurrenceGenerator.parseLocalDate(schedule.endDate!) ==
+                null ||
             DateTime.parse(schedule.endDate!)
                 .isBefore(DateTime.parse(schedule.startDate)))) {
       throw ArgumentError.value(schedule.endDate, 'endDate');
@@ -908,7 +947,8 @@ class MediaryRepository {
     if (dose.medicationId.trim().isEmpty || dose.scheduleId.trim().isEmpty) {
       throw ArgumentError('Dose references must not be empty.');
     }
-    if (dose.localDate.trim().isEmpty || !_isValidLocalTime(dose.localTime)) {
+    if (ScheduleOccurrenceGenerator.parseLocalDate(dose.localDate) == null ||
+        !_isValidLocalTime(dose.localTime)) {
       throw ArgumentError('Dose local date/time is invalid.');
     }
     const statuses = {

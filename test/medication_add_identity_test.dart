@@ -23,6 +23,19 @@ class _Firestore extends Fake implements FirebaseFirestore {
       _Collection(this, path);
   @override
   WriteBatch batch() => _Batch(this);
+  @override
+  Future<T> runTransaction<T>(
+    TransactionHandler<T> handler, {
+    Duration timeout = const Duration(seconds: 30),
+    int maxAttempts = 5,
+  }) async {
+    final transaction = _Transaction(this);
+    final result = await handler(transaction);
+    for (final operation in transaction.operations) {
+      operation();
+    }
+    return result;
+  }
 }
 
 // Firestore seals interfaces for production; these test-only fakes exercise
@@ -143,6 +156,34 @@ class _Batch extends Fake implements WriteBatch {
   }
 }
 
+class _Transaction extends Fake implements Transaction {
+  _Transaction(this.store);
+  final _Firestore store;
+  final operations = <void Function()>[];
+  @override
+  Future<DocumentSnapshot<T>> get<T extends Object?>(
+    DocumentReference<T> ref,
+  ) async =>
+      _Snapshot(_Document(store, ref.path), store.documents[ref.path])
+          as DocumentSnapshot<T>;
+  @override
+  Transaction set<T>(DocumentReference<T> ref, T data, [SetOptions? options]) {
+    operations.add(
+      () => store.documents[ref.path] = {
+        ...?store.documents[ref.path],
+        ...(data as Map<String, dynamic>),
+      },
+    );
+    return this;
+  }
+
+  @override
+  Transaction update(
+    DocumentReference<Object?> ref,
+    Map<Object, Object?> data,
+  ) => set(ref, Map<String, dynamic>.from(data));
+}
+
 DoseLogRecord _dose(
   String id, {
   String status = 'due',
@@ -183,6 +224,27 @@ void main() {
   );
 
   for (final generatorFirst in [false, true]) {
+    test('stale generation preserves a dose taken on another device', () async {
+      final database = _Firestore();
+      database.documents['users/test-user/doseLogs/$id'] = {
+        'status': 'taken',
+        'takenAt': DateTime.utc(2026, 10, 5, 9),
+      };
+      await MediaryRepository(
+        firestore: database,
+        auth: _Auth(),
+      ).ensureUpcomingDoses(
+        schedules: [schedule],
+        existing: [],
+        now: DateTime.utc(2026, 10, 5, 8),
+        lookahead: const Duration(days: 1),
+      );
+      expect(
+        database.documents['users/test-user/doseLogs/$id']!['status'],
+        'taken',
+      );
+    });
+
     test(
       'add and stale generator write one dose when generatorFirst=$generatorFirst',
       () async {
