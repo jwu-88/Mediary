@@ -5,6 +5,77 @@ import 'package:mediary/medication_scan.dart';
 import 'package:mediary/scanner_screens.dart';
 
 void main() {
+  for (final size in const [Size(320, 640), Size(430, 932), Size(568, 320)]) {
+    for (final state in [
+      ScannerAccessState.denied,
+      ScannerAccessState.permanentlyDenied,
+      ScannerAccessState.error,
+    ]) {
+      testWidgets(
+        'camera recovery stays reachable at $size with 3x text and $state',
+        (tester) async {
+          tester.view.physicalSize = size;
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          var requests = 0;
+          var alternatives = 0;
+          var settings = 0;
+          await tester.pumpWidget(
+            MaterialApp(
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: const TextScaler.linear(3)),
+                child: child!,
+              ),
+              home: MedicationScannerScreen(
+                accessState: state,
+                onCapture: () async {},
+                bottomNavigationInset: 120,
+                onRequestAccess: () async {
+                  requests++;
+                },
+                onUseOtherScanOptions: () async {
+                  alternatives++;
+                },
+                onOpenSettings: () async {
+                  settings++;
+                  return true;
+                },
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          final alternate = find.byKey(const Key('cameraNoAccessButton'));
+          await tester.ensureVisible(alternate);
+          await tester.pumpAndSettle();
+          expect(alternate.hitTestable(), findsOneWidget);
+          await tester.tap(alternate);
+          await tester.pumpAndSettle();
+          expect(alternatives, 1);
+          final primary = find.byKey(
+            Key(
+              state == ScannerAccessState.permanentlyDenied
+                  ? 'openCameraSettingsButton'
+                  : 'requestCameraButton',
+            ),
+          );
+          await tester.ensureVisible(primary);
+          await tester.pumpAndSettle();
+          expect(primary.hitTestable(), findsOneWidget);
+          await tester.tap(primary);
+          await tester.pumpAndSettle();
+          expect(
+            state == ScannerAccessState.permanentlyDenied ? settings : requests,
+            1,
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   testWidgets('scanner uses a black camera and platform controls', (
     tester,
   ) async {

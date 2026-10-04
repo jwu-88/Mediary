@@ -59,16 +59,26 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('11 Selected'), findsOneWidget);
+      await tester.ensureVisible(
+        find.byKey(const Key('clearMedicationSelectionButton')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('clearMedicationSelectionButton')).hitTestable(),
+        findsOneWidget,
+      );
       await tester.tap(find.byKey(const Key('clearMedicationSelectionButton')));
       await tester.pumpAndSettle();
       expect(find.text('Select Items'), findsOneWidget);
       await tester.scrollUntilVisible(
         find.byKey(const Key('medicationOption_desktop-audit-11')),
         200,
-        scrollable: find.descendant(
-          of: find.byKey(const Key('medicationOptionsList')),
-          matching: find.byType(Scrollable),
-        ),
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('medicationOptionsList')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
       );
       await tester.pumpAndSettle();
       await tester.ensureVisible(
@@ -85,7 +95,7 @@ void main() {
         find.byKey(const Key('medicationOption_desktop-audit-11')),
       );
       await tester.pumpAndSettle();
-      expect(find.text('1 Selected'), findsOneWidget);
+      expect(find.text('Add Selected (1)'), findsOneWidget);
       expect(
         find.byKey(const Key('addSelectedMedicationsButton')).hitTestable(),
         findsOneWidget,

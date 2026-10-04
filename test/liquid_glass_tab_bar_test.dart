@@ -7,6 +7,53 @@ import 'package:mediary/app_theme.dart';
 import 'package:mediary/liquid_glass_tab_bar.dart';
 
 void main() {
+  for (final size in const [Size(320, 640), Size(430, 932), Size(568, 320)]) {
+    for (final scale in [3.0, 4.0]) {
+      testWidgets(
+        'navigation remains accessible at $size with ${scale}x text',
+        (tester) async {
+          tester.view.physicalSize = size;
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final semantics = tester.ensureSemantics();
+          var destination = -1;
+          await tester.pumpWidget(
+            MaterialApp(
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!,
+              ),
+              home: Scaffold(
+                bottomNavigationBar: LiquidGlassTabBar(
+                  currentIndex: 0,
+                  onTap: (index) => destination = index,
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          for (final label in [
+            'Dashboard',
+            'Calendar',
+            'Scan',
+            'Library',
+            'Settings',
+          ]) {
+            expect(find.bySemanticsLabel(label), findsOneWidget);
+          }
+          await tester.tap(find.bySemanticsLabel('Settings'));
+          await tester.pumpAndSettle();
+          expect(destination, 4);
+          expect(tester.takeException(), isNull);
+          semantics.dispose();
+        },
+      );
+    }
+  }
+
   testWidgets('light navigation uses a solid bordered glass surface', (
     tester,
   ) async {
@@ -29,7 +76,12 @@ void main() {
     expect(border.top.color.a, greaterThan(.75));
     // Only the selected lens may blur; the base surface must stay solid so a
     // black scanner canvas cannot bleed through as a pixel/grid texture.
-    expect(find.byType(BackdropFilter), findsOneWidget);
+    expect(
+      find.byType(BackdropFilter),
+      kIsWeb || defaultTargetPlatform == TargetPlatform.iOS
+          ? findsNothing
+          : findsOneWidget,
+    );
   });
 
   testWidgets('selected lens is a translucent accent gradient', (tester) async {
@@ -145,8 +197,12 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
 
     expect(selectedIndex, 1);
-    expect(haptics, hasLength(1));
-    expect(haptics.single.arguments, 'HapticFeedbackType.selectionClick');
+    if (kIsWeb) {
+      expect(haptics, isEmpty);
+    } else {
+      expect(haptics, hasLength(1));
+      expect(haptics.single.arguments, 'HapticFeedbackType.selectionClick');
+    }
   });
 }
 

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/add_medication_screen.dart';
 
@@ -34,9 +33,12 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
   }
 
-  for (final size in const [Size(320, 640), Size(568, 320), Size(1440, 900)]) {
+  for (final (size, scale) in [
+    for (final size in const [Size(320, 640), Size(568, 320), Size(1440, 900)])
+      for (final scale in [2.0, 3.0]) (size, scale),
+  ]) {
     testWidgets(
-      'picker keeps search focused with keyboard and large text at $size',
+      'picker keeps search focused with keyboard and ${scale}x text at $size',
       (tester) async {
         tester.view.physicalSize = size;
         tester.view.devicePixelRatio = 1;
@@ -51,7 +53,7 @@ void main() {
                 update = setState;
                 return MediaQuery(
                   data: MediaQuery.of(context).copyWith(
-                    textScaler: const TextScaler.linear(2),
+                    textScaler: TextScaler.linear(scale),
                     viewInsets: EdgeInsets.only(bottom: keyboardHeight),
                   ),
                   child: const AddMedicationScreen(
@@ -67,15 +69,7 @@ void main() {
         await tester.enterText(search, 'ibuprofen');
         update(() => keyboardHeight = size.height > 600 ? 300 : 100);
         await tester.pumpAndSettle();
-        final layout = tester.renderObject<RenderFlex>(
-          find.descendant(
-            of: find.byKey(const Key('addMedicationScrollView')),
-            matching: find.byType(Column),
-          ).first,
-        );
-        for (var child = layout.firstChild; child != null; child = layout.childAfter(child)) {
-          debugPrint('picker child: ${child.size}');
-        }
+        expect(tester.takeException(), isNull);
         expect(
           tester
               .widget<EditableText>(find.byType(EditableText))
@@ -85,15 +79,43 @@ void main() {
         );
         await tester.ensureVisible(search);
         await tester.pumpAndSettle();
-        expect(search.hitTestable(), findsOneWidget);
+        expect(
+          search.hitTestable(),
+          findsOneWidget,
+          reason:
+              'search=${tester.getRect(search)}, action=${tester.getRect(find.byKey(const Key('addSelectedMedicationsButton')))}',
+        );
         await tester.enterText(search, 'no matching medicine');
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.text('No Medications Found'),
+          160,
+          scrollable: find
+              .descendant(
+                of: find.byKey(const Key('addMedicationScrollView')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
         await tester.pumpAndSettle();
         expect(find.text('No Medications Found'), findsOneWidget);
         update(() => keyboardHeight = 0);
         await tester.pumpAndSettle();
         await tester.ensureVisible(find.text('Clear Search'));
         await tester.pumpAndSettle();
+        expect(find.text('Clear Search').hitTestable(), findsOneWidget);
         await tester.tap(find.text('Clear Search'));
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          search,
+          -160,
+          scrollable: find
+              .descendant(
+                of: find.byKey(const Key('addMedicationScrollView')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
         await tester.pumpAndSettle();
         expect(tester.widget<TextField>(search).controller!.text, isEmpty);
         expect(tester.takeException(), isNull);
