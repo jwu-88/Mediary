@@ -5,6 +5,45 @@ import 'package:mediary/medication_scan.dart';
 import 'package:mediary/scanner_screens.dart';
 
 void main() {
+  for (final size in const [Size(320, 640), Size(1440, 900)]) {
+    testWidgets('scanner offers label photography and gallery at $size', (
+      tester,
+    ) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      var photos = 0;
+      var captures = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MedicationScannerScreen(
+            accessState: ScannerAccessState.granted,
+            onRequestAccess: () async {},
+            onCapture: () async {
+              captures++;
+            },
+            onChoosePhoto: () async {
+              photos++;
+            },
+            bottomNavigationInset: 0,
+          ),
+        ),
+      );
+      expect(find.byKey(const Key('scannerBarcodeButton')), findsNothing);
+      expect(find.text('Scan Barcode'), findsNothing);
+      expect(find.byTooltip('Capture medication label'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('captureMedicationButton')));
+      await tester.pumpAndSettle();
+      expect(captures, 1);
+      await tester.tap(find.byKey(const Key('openScannerPhotosButton')));
+      await tester.pumpAndSettle();
+      expect(photos, 1);
+      expect(captures, 1);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final size in const [Size(320, 640), Size(430, 932), Size(568, 320)]) {
     for (final state in [
       ScannerAccessState.denied,
@@ -114,7 +153,6 @@ void main() {
     expect(find.text('Analyzing'), findsNothing);
     if (tester.view.physicalSize.width >= 600) {
       expect(find.text('Choose Photo'), findsOneWidget);
-      expect(find.text('Scan Barcode'), findsOneWidget);
     } else {
       expect(find.text('Choose Photo'), findsNothing);
       expect(find.text('Scan Barcode'), findsNothing);
@@ -133,10 +171,8 @@ void main() {
     expect(cameraPanel.center.dx, closeTo(201, 1));
     expect(cameraPanel.bottom, lessThanOrEqualTo(874));
 
-    await tester.tap(find.byKey(const Key('scannerBarcodeButton')));
-    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byKey(const Key('scannerBarcodeButton')), findsNothing);
     expect(find.text('Scan Barcode'), findsNothing);
-    expect(find.text('Center the barcode'), findsNothing);
 
     await tester.tap(find.byKey(const Key('openScannerPhotosButton')));
     await tester.pump(const Duration(milliseconds: 600));
