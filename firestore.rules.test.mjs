@@ -26,7 +26,8 @@ function validUser() {
   return {
     email: 'owner@example.com',
     displayName: 'Owner',
-    bloodType: 'O+',
+    bloodType: '',
+    photoUrl: '',
     allergies: ['Penicillin'],
     careTeam: 'City Health',
     createdAt: timestamp,
@@ -116,6 +117,18 @@ describe('Firestore security rules', () => {
       setDoc(doc(owner, 'users/owner/medications/medication-1'), validMedication()),
     );
     await assertSucceeds(getDoc(doc(owner, 'users/owner')));
+  });
+
+  it('rejects impossible dates, malformed times and unknown timezones', async () => {
+    const owner = testEnvironment.authenticatedContext('owner').firestore();
+    for (const invalid of [
+      {times: [null, 123, '99:99']}, {times: ['24:00']},
+      {startDate: '2026-02-30'}, {endDate: '1900-01-01'},
+      {timezone: 'Moon/Base'}, {doseAmount: Infinity},
+    ]) {
+      await assertFails(setDoc(doc(owner, 'users/owner/schedules/invalid'), {...validSchedule(), ...invalid}));
+    }
+    await assertSucceeds(setDoc(doc(owner, 'users/owner/schedules/leap'), {...validSchedule(), startDate: '2028-02-29', endDate: '2028-03-01'}));
   });
 
   it('rejects another user from reading or writing the owner data', async () => {

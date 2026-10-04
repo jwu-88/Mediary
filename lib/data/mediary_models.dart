@@ -96,7 +96,7 @@ class UserProfileRecord {
       uid: snapshot.id,
       email: _string(data['email']),
       displayName: _string(data['displayName']),
-      bloodType: _string(data['bloodType'], 'O+'),
+      bloodType: _string(data['bloodType']),
       allergies: _strings(data['allergies']),
       careTeam: _string(data['careTeam']),
       timezone: _string(data['timezone'], 'UTC'),

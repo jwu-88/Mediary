@@ -82,7 +82,17 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   static const _red = Color(0xFFC9342C);
-  static const _bloodTypes = ['A+', 'A−', 'B+', 'B−', 'O+', 'O−', 'AB+', 'AB−'];
+  static const _bloodTypes = [
+    '',
+    'A+',
+    'A−',
+    'B+',
+    'B−',
+    'O+',
+    'O−',
+    'AB+',
+    'AB−',
+  ];
 
   late final TextEditingController _nameController;
   late final TextEditingController _emailController;
@@ -98,7 +108,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late List<String> _savedAllergies;
   late String _savedCareTeam;
 
-  String _draftBloodType = 'O+';
+  String _draftBloodType = '';
   List<String> _draftAllergies = [];
   String? _draftPhotoUrl;
   bool _isEditing = false;
@@ -145,7 +155,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         : displayName;
     _savedEmail = widget.email;
     _savedPhotoUrl = widget.photoUrl;
-    _savedBloodType = widget.initialBloodType ?? 'O+';
+    final bloodType = (widget.initialBloodType ?? '').replaceAll('-', '−');
+    _savedBloodType = _bloodTypes.contains(bloodType) ? bloodType : '';
     _savedAllergies = [...(widget.initialAllergies ?? const [])];
     _savedCareTeam = widget.initialCareTeam ?? '';
     _draftPhotoUrl = _savedPhotoUrl;
@@ -888,7 +899,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               .map(
                                 (type) => DropdownMenuItem(
                                   value: type,
-                                  child: Text(type),
+                                  child: Text(
+                                    type.isEmpty ? 'Not provided' : type,
+                                  ),
                                 ),
                               )
                               .toList(),
@@ -900,7 +913,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       )
                     : Text(
-                        _savedBloodType,
+                        _savedBloodType.isEmpty
+                            ? 'Not provided'
+                            : _savedBloodType,
                         key: const Key('bloodTypeValue'),
                         style: TextStyle(
                           color: _ink,

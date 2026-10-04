@@ -37,7 +37,7 @@ void main() {
     expect(nameLeft - avatarRect.right, inInclusiveRange(8, 16));
 
     expect(find.text('Health Details'), findsOneWidget);
-    expect(find.text('O+'), findsOneWidget);
+    expect(find.text('Not provided'), findsOneWidget);
     expect(find.text('None recorded'), findsOneWidget);
     expect(find.text('0 active'), findsOneWidget);
     expect(find.text('Care Team'), findsOneWidget);
