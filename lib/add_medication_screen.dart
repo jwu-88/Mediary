@@ -185,9 +185,10 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
 
   void _toggleMedication(MedicationOption medication) {
     setState(() {
-      if (!_selectedIds.add(medication.id)) {
+      if (_selectedIds.remove(medication.id)) {
         _selectedMedications.remove(medication.id);
       } else {
+        _selectedIds.add(medication.id);
         _selectedMedications[medication.id] = medication;
       }
     });
@@ -243,121 +244,127 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
         child: Center(
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: contentWidth),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  child: LiquidGlassSearchField(
-                    controller: _searchController,
-                    textFieldKey: const Key('medicationSearchField'),
-                    onChanged: _onSearchChanged,
-                    hintText: 'Search Medications',
+            child: LayoutBuilder(
+              builder: (context, constraints) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                    child: LiquidGlassSearchField(
+                      controller: _searchController,
+                      textFieldKey: const Key('medicationSearchField'),
+                      onChanged: _onSearchChanged,
+                      hintText: 'Search Medications',
+                    ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Medication',
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Medication',
+                            style: TextStyle(
+                              color: colors.onSurfaceVariant,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          selectionCount == 0
+                              ? 'Select Items'
+                              : '$selectionCount Selected',
+                          key: const Key('selectionCount'),
                           style: TextStyle(
-                            color: colors.onSurfaceVariant,
+                            color: selectionCount == 0
+                                ? colors.onSurfaceVariant
+                                : colors.primary,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                      ),
-                      Text(
-                        selectionCount == 0
-                            ? 'Select Items'
-                            : '$selectionCount Selected',
-                        key: const Key('selectionCount'),
-                        style: TextStyle(
-                          color: selectionCount == 0
-                              ? colors.onSurfaceVariant
-                              : colors.primary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (selectionCount > 0)
-                  _SelectedMedicationSummary(
-                    medications: [
-                      for (final id in _selectedIds)
-                        if (_selectedMedications[id] != null)
-                          _selectedMedications[id]!,
-                    ],
-                    onRemove: (medication) => _toggleMedication(medication),
-                    onClear: () => setState(() {
-                      _selectedIds.clear();
-                      _selectedMedications.clear();
-                    }),
-                  )
-                else
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                    child: Text(
-                      _usesLiveCatalog
-                          ? 'Search at least 2 characters, then tap a result to select it.'
-                          : 'Tap a medication to select it. You can choose more than one.',
-                      style: TextStyle(
-                        color: colors.onSurfaceVariant,
-                        fontSize: 12,
-                      ),
+                      ],
                     ),
                   ),
-                Expanded(
-                  child: _isSearching
-                      ? const Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              CircularProgressIndicator(),
-                              SizedBox(height: 12),
-                              Text('Searching the live medication catalog…'),
-                            ],
-                          ),
-                        )
-                      : _searchError != null
-                      ? _CatalogError(message: _searchError!)
-                      : medications.isEmpty
-                      ? _EmptyMedicationSearch(
-                          onClear: () {
-                            _searchController.clear();
-                            _onSearchChanged('');
-                          },
-                          prompt:
-                              _usesLiveCatalog &&
-                              _searchController.text.trim().isEmpty,
-                        )
-                      : ListView.separated(
-                          key: const Key('medicationOptionsList'),
-                          padding: const EdgeInsets.only(bottom: 84),
-                          keyboardDismissBehavior:
-                              ScrollViewKeyboardDismissBehavior.onDrag,
-                          itemCount: medications.length,
-                          separatorBuilder: (_, _) => Divider(
-                            height: 1,
-                            indent: 96,
-                            endIndent: 16,
-                            color: colors.outlineVariant.withValues(alpha: .7),
-                          ),
-                          itemBuilder: (context, index) {
-                            final medication = medications[index];
-                            return _MedicationOptionRow(
-                              medication: medication,
-                              selected: _selectedIds.contains(medication.id),
-                              onPressed: () => _toggleMedication(medication),
-                            );
-                          },
+                  if (selectionCount > 0)
+                    _SelectedMedicationSummary(
+                      // Keep catalog results available as selections grow.
+                      maxHeight: constraints.maxHeight * .4,
+                      medications: [
+                        for (final id in _selectedIds)
+                          if (_selectedMedications[id] != null)
+                            _selectedMedications[id]!,
+                      ],
+                      onRemove: (medication) => _toggleMedication(medication),
+                      onClear: () => setState(() {
+                        _selectedIds.clear();
+                        _selectedMedications.clear();
+                      }),
+                    )
+                  else
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                      child: Text(
+                        _usesLiveCatalog
+                            ? 'Search at least 2 characters, then tap a result to select it.'
+                            : 'Tap a medication to select it. You can choose more than one.',
+                        style: TextStyle(
+                          color: colors.onSurfaceVariant,
+                          fontSize: 12,
                         ),
-                ),
-              ],
+                      ),
+                    ),
+                  Expanded(
+                    child: _isSearching
+                        ? const Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                CircularProgressIndicator(),
+                                SizedBox(height: 12),
+                                Text('Searching the live medication catalog…'),
+                              ],
+                            ),
+                          )
+                        : _searchError != null
+                        ? _CatalogError(message: _searchError!)
+                        : medications.isEmpty
+                        ? _EmptyMedicationSearch(
+                            onClear: () {
+                              _searchController.clear();
+                              _onSearchChanged('');
+                            },
+                            prompt:
+                                _usesLiveCatalog &&
+                                _searchController.text.trim().isEmpty,
+                          )
+                        : ListView.separated(
+                            key: const Key('medicationOptionsList'),
+                            padding: const EdgeInsets.only(bottom: 84),
+                            keyboardDismissBehavior:
+                                ScrollViewKeyboardDismissBehavior.onDrag,
+                            itemCount: medications.length,
+                            separatorBuilder: (_, _) => Divider(
+                              height: 1,
+                              indent: 96,
+                              endIndent: 16,
+                              color: colors.outlineVariant.withValues(
+                                alpha: .7,
+                              ),
+                            ),
+                            itemBuilder: (context, index) {
+                              final medication = medications[index];
+                              return _MedicationOptionRow(
+                                medication: medication,
+                                selected: _selectedIds.contains(medication.id),
+                                onPressed: () => _toggleMedication(medication),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -472,11 +479,13 @@ class _LiquidGlassAddButton extends StatelessWidget {
 
 class _SelectedMedicationSummary extends StatelessWidget {
   const _SelectedMedicationSummary({
+    required this.maxHeight,
     required this.medications,
     required this.onRemove,
     required this.onClear,
   });
 
+  final double maxHeight;
   final List<MedicationOption> medications;
   final ValueChanged<MedicationOption> onRemove;
   final VoidCallback onClear;
@@ -486,65 +495,76 @@ class _SelectedMedicationSummary extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: colors.primaryContainer.withValues(alpha: .42),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: colors.primary.withValues(alpha: .22)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Selected Medications: ${medications.length}',
-                      style: TextStyle(
-                        color: colors.onPrimaryContainer,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: colors.primaryContainer.withValues(alpha: .42),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: colors.primary.withValues(alpha: .22)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Selected Medications: ${medications.length}',
+                        style: TextStyle(
+                          color: colors.onPrimaryContainer,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
+                    ),
+                    FilledButton.tonal(
+                      key: const Key('clearMedicationSelectionButton'),
+                      onPressed: onClear,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(44, 32),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      child: const Text('Clear'),
+                    ),
+                  ],
+                ),
+                Flexible(
+                  child: SingleChildScrollView(
+                    key: const Key('selectedMedicationSummaryScrollView'),
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final medication in medications)
+                          InputChip(
+                            key: Key('selectedMedicationChip_${medication.id}'),
+                            avatar: MedicationArtwork(
+                              key: Key(
+                                'selectedMedicationArtwork_${medication.id}',
+                              ),
+                              seed: medication.id,
+                              label: titleCaseDisplay(medication.name),
+                              size: 24,
+                            ),
+                            label: Text(
+                              titleCaseDisplay(medication.name),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            onDeleted: () => onRemove(medication),
+                            deleteIcon: const Icon(Icons.close, size: 15),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                      ],
                     ),
                   ),
-                  FilledButton.tonal(
-                    key: const Key('clearMedicationSelectionButton'),
-                    onPressed: onClear,
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size(44, 32),
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                    ),
-                    child: const Text('Clear'),
-                  ),
-                ],
-              ),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final medication in medications)
-                    InputChip(
-                      key: Key('selectedMedicationChip_${medication.id}'),
-                      avatar: MedicationArtwork(
-                        key: Key('selectedMedicationArtwork_${medication.id}'),
-                        seed: medication.id,
-                        label: titleCaseDisplay(medication.name),
-                        size: 24,
-                      ),
-                      label: Text(
-                        titleCaseDisplay(medication.name),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      onDeleted: () => onRemove(medication),
-                      deleteIcon: const Icon(Icons.close, size: 15),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -591,8 +611,8 @@ class _MedicationOptionRow extends StatelessWidget {
               ),
             ),
           ),
-          child: SizedBox(
-            height: 92,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 92),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: Row(
@@ -606,6 +626,7 @@ class _MedicationOptionRow extends StatelessWidget {
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -679,45 +700,49 @@ class _EmptyMedicationSearch extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              CupertinoIcons.search,
-              color: colors.onSurfaceVariant,
-              size: 28,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              prompt ? 'Search the medication catalog' : 'No Medications Found',
-              style: TextStyle(
-                color: colors.onSurface,
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                CupertinoIcons.search,
+                color: colors.onSurfaceVariant,
+                size: 28,
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              prompt
-                  ? 'Search by medication name, strength, or form.'
-                  : 'Try a different name or strength.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14),
-            ),
-            if (!prompt) ...[
-              const SizedBox(height: 8),
-              FilledButton.tonal(
-                onPressed: onClear,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(0, 36),
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
+              const SizedBox(height: 12),
+              Text(
+                prompt
+                    ? 'Search the medication catalog'
+                    : 'No Medications Found',
+                style: TextStyle(
+                  color: colors.onSurface,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
                 ),
-                child: const Text('Clear Search'),
               ),
+              const SizedBox(height: 6),
+              Text(
+                prompt
+                    ? 'Search by medication name, strength, or form.'
+                    : 'Try a different name or strength.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14),
+              ),
+              if (!prompt) ...[
+                const SizedBox(height: 8),
+                FilledButton.tonal(
+                  onPressed: onClear,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 36),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                  ),
+                  child: const Text('Clear Search'),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -734,36 +759,38 @@ class _CatalogError extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final rateLimited = message.toLowerCase().contains('rate');
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              rateLimited
-                  ? CupertinoIcons.timer
-                  : CupertinoIcons.wifi_exclamationmark,
-              color: colors.error,
-              size: 28,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              rateLimited ? 'Catalog limit reached' : 'Catalog unavailable',
-              style: TextStyle(
-                color: colors.onSurface,
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                rateLimited
+                    ? CupertinoIcons.timer
+                    : CupertinoIcons.wifi_exclamationmark,
+                color: colors.error,
+                size: 28,
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              rateLimited
-                  ? 'Please wait a moment and try again.'
-                  : 'Check your connection and try again.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14),
-            ),
-          ],
+              const SizedBox(height: 12),
+              Text(
+                rateLimited ? 'Catalog limit reached' : 'Catalog unavailable',
+                style: TextStyle(
+                  color: colors.onSurface,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                rateLimited
+                    ? 'Please wait a moment and try again.'
+                    : 'Check your connection and try again.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -214,7 +214,7 @@ void main() {
     expect(find.text('Remove From Today'), findsNothing);
   });
 
-  testWidgets('dashboard delete control removes the medication regimen', (
+  testWidgets('dashboard delete control preserves other regimen entries', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -223,6 +223,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     String? removedMedicationId;
+    String? removedDoseId;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -250,6 +251,10 @@ void main() {
             onRemoveMedication: (medicationId) async {
               removedMedicationId = medicationId;
             },
+            onDoseStatusChanged: (id, status, {snoozedUntil}) async {
+              removedDoseId = id;
+              expect(status, 'cancelled');
+            },
           ),
         ),
       ),
@@ -275,7 +280,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(removedMedicationId, 'medication-1');
-    expect(find.text('Ibuprofen'), findsNothing);
+    expect(removedMedicationId, isNull);
+    expect(removedDoseId, 'delete-medication-morning');
+    expect(find.text('Ibuprofen'), findsOneWidget);
+    expect(
+      find.byKey(const Key('dashboardDeleteDose_delete-medication-evening')),
+      findsOneWidget,
+    );
   });
 }

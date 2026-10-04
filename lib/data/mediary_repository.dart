@@ -4,6 +4,7 @@ import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
 import 'mediary_models.dart';
+import 'dose_occurrence_identity.dart';
 import 'schedule_occurrence_generator.dart';
 import '../time_formatting.dart';
 
@@ -298,7 +299,7 @@ class MediaryRepository {
 
   Stream<List<DoseLogRecord>> watchDoseLogs() => _doseLogs.snapshots().map(
     (snapshot) =>
-        snapshot.docs.map(DoseLogRecord.fromSnapshot).toList(growable: false),
+        uniqueDoseOccurrences(snapshot.docs.map(DoseLogRecord.fromSnapshot)),
   );
 
   Stream<List<SavedMedicationRecord>> watchSavedMedications() =>
@@ -390,7 +391,7 @@ class MediaryRepository {
   /// medication cannot affect another medication in the same account. The
   /// operation is committed in bounded batches so users with many schedules or
   /// dose logs are handled without exceeding Firestore's batch limit.
-  Future<void> removeMedication(String medicationId) async {
+  Future<List<String>> removeMedication(String medicationId) async {
     if (medicationId.trim().isEmpty) {
       throw ArgumentError.value(
         medicationId,
@@ -404,9 +405,26 @@ class MediaryRepository {
     final schedules = await _schedules
         .where('medicationId', isEqualTo: medicationId)
         .get();
+    final scheduleIds = schedules.docs.map((schedule) => schedule.id).toSet();
+    final doseReferences = <String, DocumentReference<Map<String, dynamic>>>{};
     final doses = await _doseLogs
         .where('medicationId', isEqualTo: medicationId)
         .get();
+    for (final dose in doses.docs) {
+      doseReferences[dose.id] = dose.reference;
+    }
+    // Older dose records may only point to their schedule. Include them so
+    // removing a medication cannot leave a reminder orphaned by legacy data.
+    final allScheduleIds = scheduleIds.toList(growable: false);
+    for (var offset = 0; offset < allScheduleIds.length; offset += 30) {
+      final scheduleIdBatch = allScheduleIds.skip(offset).take(30).toList();
+      final scheduleDoses = await _doseLogs
+          .where('scheduleId', whereIn: scheduleIdBatch)
+          .get();
+      for (final dose in scheduleDoses.docs) {
+        doseReferences[dose.id] = dose.reference;
+      }
+    }
 
     final operations = <void Function(WriteBatch)>[];
     if (medicationSnapshot.exists) {
@@ -415,11 +433,12 @@ class MediaryRepository {
     for (final schedule in schedules.docs) {
       operations.add((batch) => batch.delete(schedule.reference));
     }
-    for (final dose in doses.docs) {
-      operations.add((batch) => batch.delete(dose.reference));
+    for (final doseReference in doseReferences.values) {
+      operations.add((batch) => batch.delete(doseReference));
     }
 
     await _commitOperations(operations);
+    return doseReferences.keys.toList(growable: false);
   }
 
   /// Annotates legacy private medication documents with live catalog aliases.
@@ -536,7 +555,38 @@ class MediaryRepository {
           : Timestamp.fromDate(snoozedUntil),
     };
     try {
-      await _doseLogs.doc(doseId).update(data);
+      final reference = _doseLogs.doc(doseId);
+      final snapshot = await reference.get();
+      if (!snapshot.exists) return;
+      final dose = snapshot.data()!;
+      final references = <String, DocumentReference<Map<String, dynamic>>>{
+        doseId: reference,
+      };
+      final scheduleId = dose['scheduleId'];
+      if (scheduleId is String && scheduleId.isNotEmpty) {
+        final candidates = await _doseLogs
+            .where('scheduleId', isEqualTo: scheduleId)
+            .get();
+        final localTime = MedicationTime.fromLocalTime(
+          dose['localTime'] as String? ?? '',
+        ).localTime;
+        for (final candidate in candidates.docs) {
+          final other = candidate.data();
+          if (other['medicationId'] == dose['medicationId'] &&
+              other['localDate'] == dose['localDate'] &&
+              MedicationTime.fromLocalTime(other['localTime'] as String? ?? '')
+                      .localTime ==
+                  localTime) {
+            references[candidate.id] = candidate.reference;
+          }
+        }
+      }
+      // Update every legacy copy of this exact occurrence, not other times or
+      // dates. A stale duplicate must not undo Taken, Snooze, Delete, or Undo.
+      await _commitOperations([
+        for (final reference in references.values)
+          (batch) => batch.update(reference, data),
+      ]);
     } on FirebaseException catch (error) {
       // A stale dashboard can outlive a dose that was removed on another
       // device. Treat that idempotent case as success so the UI can reconcile
@@ -564,7 +614,7 @@ class MediaryRepository {
     final existingByKey = <String, DoseLogRecord>{};
 
     String key(String scheduleId, String localDate, String localTime) =>
-        '$scheduleId|$localDate|$localTime';
+        '$scheduleId|$localDate|${MedicationTime.fromLocalTime(localTime).localTime}';
 
     for (final dose in existing) {
       existingByKey[key(dose.scheduleId, dose.localDate, dose.localTime)] =
@@ -774,9 +824,15 @@ class MediaryRepository {
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
     if (dose != null) {
-      final doseRef = dose.id == null
-          ? _doseLogs.doc()
-          : _doseLogs.doc(dose.id);
+      // The initial add and background generator must target the same record,
+      // even if independent Firestore listeners arrive out of order.
+      final doseRef = _doseLogs.doc(
+        ScheduleOccurrenceGenerator.deterministicOccurrenceId(
+          scheduleRef.id,
+          localDate: dose.localDate,
+          localTime: dose.localTime,
+        ),
+      );
       batch.set(doseRef, {
         'medicationId': medicationRef.id,
         'scheduleId': scheduleRef.id,

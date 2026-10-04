@@ -17,8 +17,10 @@ import 'calendar_screen.dart';
 import 'dashboard_screen.dart';
 import 'data/mediary_data_store.dart';
 import 'data/mediary_models.dart';
+import 'data/dose_occurrence_identity.dart';
 import 'data/mediary_repository.dart';
 import 'data/medication_catalog_client.dart';
+import 'data/schedule_occurrence_generator.dart';
 import 'firebase_options.dart';
 import 'in_app_page.dart';
 import 'library_screens.dart';
@@ -1243,7 +1245,8 @@ class AuthenticatedHome extends StatefulWidget {
 
 enum _ScanAlternative { choosePhoto, pasteImage }
 
-class _AuthenticatedHomeState extends State<AuthenticatedHome> {
+class _AuthenticatedHomeState extends State<AuthenticatedHome>
+    with WidgetsBindingObserver {
   late final MedicationCatalogClient _catalogClient =
       widget.catalogClient ?? RxNormMedicationCatalogClient();
   late final MedicationScanDetector _scanDetector =
@@ -1258,18 +1261,21 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   String? _scanRecordId;
   DateTime? _calendarFocusDate;
   final List<CalendarDoseData> _pendingCalendarDoses = [];
+  final Map<String, String> _pendingCalendarDoseMedicationIds = {};
   final Set<String> _cancelledDoseIds = <String>{};
-  final Set<String> _pendingScheduleKeys = <String>{};
+  final Map<String, String> _pendingScheduleKeys = <String, String>{};
   CameraAccessState _cameraAccess = CameraAccessState.notRequested;
   String? _appliedPreferenceSignature;
   Timer? _notificationTimer;
   bool _notificationSyncInFlight = false;
+  bool _notificationSyncRequested = false;
   final List<_MedicationToast> _webMedicationToasts = <_MedicationToast>[];
   final Map<String, Timer> _webMedicationToastTimers = <String, Timer>{};
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     widget.dataStore?.addListener(_onStoreChanged);
     if (widget.dataStore != null) {
       _startNotificationMonitoring();
@@ -1292,6 +1298,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.dataStore?.removeListener(_onStoreChanged);
     _notificationTimer?.cancel();
     for (final timer in _webMedicationToastTimers.values) {
@@ -1316,6 +1323,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     unawaited(() async {
       try {
         await _notificationService.initialize();
+        await _notificationService.clearDeliveredNotifications();
         if (!kIsWeb) await _notificationService.requestPermission();
         await _syncMedicationNotifications();
       } catch (error) {
@@ -1328,14 +1336,15 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
 
   Future<void> _syncMedicationNotifications() async {
     final store = widget.dataStore;
+    if (_notificationSyncInFlight) {
+      _notificationSyncRequested = true;
+      return;
+    }
     // Wait for the complete authenticated snapshot before deciding which
     // native reminders should remain. The store starts empty while Firestore
     // listeners hydrate; syncing that transient state can consume the
     // notification service's initial-sync protection.
-    if (store == null ||
-        !store.hasInitialData ||
-        _notificationSyncInFlight ||
-        !mounted) {
+    if (store == null || !store.hasInitialData || !mounted) {
       return;
     }
     _notificationSyncInFlight = true;
@@ -1351,17 +1360,27 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
         for (final medication in store.medications)
           medication.id: medication.name,
       };
+      final activeMedicationIds = {
+        for (final medication in store.medications)
+          if (medication.active) medication.id,
+      };
       final scheduleTimezones = <String, String>{
         for (final schedule in store.schedules) schedule.id: schedule.timezone,
       };
-      final automaticScheduleIds = {
+      final automaticScheduleOwners = {
         for (final schedule in store.schedules)
-          if (schedule.frequency != 'asNeeded') schedule.id,
+          if (schedule.active &&
+              activeMedicationIds.contains(schedule.medicationId) &&
+              schedule.frequency != 'asNeeded')
+            schedule.id: schedule.medicationId,
       };
       final due = await _notificationService.syncDueDoses(
         doses: [
-          for (final dose in store.doseLogs)
-            if (automaticScheduleIds.contains(dose.scheduleId)) dose,
+          for (final dose in uniqueDoseOccurrences(store.doseLogs))
+            if (activeMedicationIds.contains(dose.medicationId) &&
+                automaticScheduleOwners[dose.scheduleId] == dose.medicationId &&
+                !_cancelledDoseIds.contains(dose.id))
+              dose,
         ],
         medicationNames: names,
         scheduleTimezones: scheduleTimezones,
@@ -1378,7 +1397,29 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       }
     } finally {
       _notificationSyncInFlight = false;
+      if (_notificationSyncRequested && mounted) {
+        _notificationSyncRequested = false;
+        unawaited(_syncMedicationNotifications());
+      }
     }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    for (final timer in _webMedicationToastTimers.values) {
+      timer.cancel();
+    }
+    _webMedicationToastTimers.clear();
+    if (mounted) setState(_webMedicationToasts.clear);
+    unawaited(() async {
+      try {
+        await _notificationService.clearDeliveredNotifications();
+        await _syncMedicationNotifications();
+      } catch (error) {
+        if (kDebugMode) debugPrint('Reminder cleanup failed: $error');
+      }
+    }());
   }
 
   Future<void> _sendTestMedicationNotification() async {
@@ -1421,9 +1462,76 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   }
 
   void _onStoreChanged() {
+    final store = widget.dataStore;
+    if (store != null) {
+      final activeMedicationIds = {
+        for (final medication in store.medications)
+          if (medication.active) medication.id,
+      };
+      _pendingScheduleKeys.removeWhere(
+        (_, medicationId) => !activeMedicationIds.contains(medicationId),
+      );
+      final persistedOccurrenceIds = {
+        for (final dose in store.doseLogs)
+          ScheduleOccurrenceGenerator.deterministicOccurrenceId(
+            dose.scheduleId,
+            localDate: dose.localDate,
+            localTime: dose.localTime,
+          ),
+      };
+      final stalePendingDoseIds = _pendingCalendarDoseMedicationIds.entries
+          .where(
+            (entry) =>
+                !activeMedicationIds.contains(entry.value) ||
+                persistedOccurrenceIds.contains(entry.key),
+          )
+          .map((entry) => entry.key)
+          .toSet();
+      if (stalePendingDoseIds.isNotEmpty) {
+        _pendingCalendarDoses.removeWhere(
+          (dose) => stalePendingDoseIds.contains(dose.id),
+        );
+        _pendingCalendarDoseMedicationIds.removeWhere(
+          (doseId, _) => stalePendingDoseIds.contains(doseId),
+        );
+      }
+      if (_webMedicationToasts.isNotEmpty) {
+        final activeScheduleIds = {
+          for (final schedule in store.schedules)
+            if (schedule.active &&
+                schedule.frequency != 'asNeeded' &&
+                activeMedicationIds.contains(schedule.medicationId))
+              schedule.id,
+        };
+        final activeDoseIds = {
+          for (final dose in store.doseLogs)
+            if (activeMedicationIds.contains(dose.medicationId) &&
+                activeScheduleIds.contains(dose.scheduleId) &&
+                dose.status == 'due')
+              dose.id,
+        };
+        final staleToastKeys = _webMedicationToasts
+            .where(
+              (toast) => !activeDoseIds.contains(toast.notification.doseId),
+            )
+            .map((toast) => toast.key)
+            .toSet();
+        if (staleToastKeys.isNotEmpty) {
+          _webMedicationToasts.removeWhere(
+            (toast) => staleToastKeys.contains(toast.key),
+          );
+          for (final key in staleToastKeys) {
+            _webMedicationToastTimers.remove(key)?.cancel();
+          }
+        }
+      }
+    }
     unawaited(_syncMedicationNotifications());
     final preferences = widget.dataStore?.profile?.preferences;
-    if (preferences == null) return;
+    if (preferences == null) {
+      if (mounted) setState(() {});
+      return;
+    }
     final signature = [
       preferences.theme,
       preferences.accentColor,
@@ -1459,7 +1567,8 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     if (store == null) return;
 
     final cancelling = status == 'cancelled';
-    if ((cancelling || status == 'due') && mounted) {
+    final wasCancelled = _cancelledDoseIds.contains(doseId);
+    if (mounted) {
       setState(() {
         if (cancelling) {
           _cancelledDoseIds.add(doseId);
@@ -1485,11 +1594,40 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
         }
       }
     } catch (error) {
-      if (cancelling && mounted) {
-        setState(() => _cancelledDoseIds.remove(doseId));
+      if (mounted) {
+        setState(() {
+          if (wasCancelled) {
+            _cancelledDoseIds.add(doseId);
+          } else {
+            _cancelledDoseIds.remove(doseId);
+          }
+        });
       }
       rethrow;
     }
+  }
+
+  Future<void> _removeMedicationAndClearReminders(String medicationId) async {
+    final store = widget.dataStore;
+    if (store == null) return;
+    final relatedIds = await store.removeMedicationAndGetRelatedIds(
+      medicationId,
+    );
+    _pendingCalendarDoses.removeWhere((dose) => relatedIds.contains(dose.id));
+    _pendingCalendarDoseMedicationIds.removeWhere(
+      (doseId, _) => relatedIds.contains(doseId),
+    );
+    _pendingScheduleKeys.removeWhere((_, id) => id == medicationId);
+    for (final id in relatedIds) {
+      try {
+        await _notificationService.cancelDose(id);
+      } catch (error) {
+        if (kDebugMode) {
+          debugPrint('Deleted medication reminder cancellation failed: $error');
+        }
+      }
+    }
+    if (mounted) setState(() {});
   }
 
   bool get _usesSidebarNavigation => widget.useSidebarNavigation ?? kIsWeb;
@@ -1615,7 +1753,9 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       weeklyScheduled: series.scheduled.reduce((a, b) => a + b),
       onOpenCalendar: () => _selectDestination(1),
       onDoseStatusChanged: store == null ? null : _updateDoseStatus,
-      onRemoveMedication: store?.removeMedication,
+      onRemoveMedication: store == null
+          ? null
+          : _removeMedicationAndClearReminders,
       onViewReport: () {
         Navigator.of(context).push(
           MaterialPageRoute<void>(
@@ -1654,7 +1794,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     final scheduled = List<int>.filled(7, 0);
     final offsets = List<int>.filled(7, 0);
     final skipped = List<int>.filled(7, 0);
-    for (final dose in store?.doseLogs ?? const <DoseLogRecord>[]) {
+    for (final dose in _visibleDoseLogs(store)) {
       final date = DateUtils.dateOnly(dose.scheduledFor);
       final index = date.difference(start).inDays;
       if (index < 0 || index > 6 || dose.status == 'cancelled') continue;
@@ -1684,7 +1824,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       for (final medication in store.medications) medication.id: medication,
     };
     final doses =
-        store.doseLogs
+        _visibleDoseLogs(store)
             .where(
               (dose) =>
                   dose.status != 'cancelled' && dose.localDate == todayKey,
@@ -1711,6 +1851,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
               ].join(' · '),
           ].join(' · '),
           status: dose.status,
+          snoozedUntil: dose.snoozedUntil,
         ),
     ];
   }
@@ -1748,51 +1889,56 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (accountContext) => ProfileScreen(
-          email: widget.dataStore?.profile?.email ?? widget.email,
-          displayName:
-              widget.dataStore?.profile?.displayName ?? widget.displayName,
-          photoUrl: widget.dataStore?.profile?.photoUrl ?? widget.photoUrl,
-          initialBloodType: widget.dataStore?.profile?.bloodType,
-          initialAllergies: widget.dataStore?.profile?.allergies,
-          initialCareTeam: widget.dataStore?.profile?.careTeam,
-          activeMedicationCount:
-              widget.dataStore?.medications
-                  .where((medication) => medication.active)
-                  .length ??
-              0,
-          activeMedicationNames:
-              widget.dataStore?.medications
-                  .where((medication) => medication.active)
-                  .map((medication) => medication.name)
-                  .toList(growable: false) ??
-              const [],
-          activeMedications:
-              widget.dataStore?.medications
-                  .where((medication) => medication.active)
-                  .toList(growable: false) ??
-              const [],
-          onRemoveMedication: widget.dataStore?.removeMedication,
-          pageTitle: 'Account',
-          onBack: () => Navigator.of(accountContext).maybePop(),
-          onOpenLibrary: () {
-            Navigator.of(accountContext).pop();
-            if (mounted) setState(() => _selectedIndex = 3);
-          },
-          onSignOut: widget.onSignOut,
-          onSave: widget.dataStore == null
-              ? null
-              : (draft) => widget.dataStore!.saveProfile(
-                  ProfileWrite(
-                    displayName: draft.name,
-                    email: draft.email,
-                    bloodType: draft.bloodType,
-                    allergies: draft.allergies,
-                    careTeam: draft.careTeam,
-                    photoUrl: draft.photoUrl,
+        builder: (accountContext) => ListenableBuilder(
+          listenable: widget.dataStore ?? const AlwaysStoppedAnimation(0),
+          builder: (context, child) => ProfileScreen(
+            email: widget.dataStore?.profile?.email ?? widget.email,
+            displayName:
+                widget.dataStore?.profile?.displayName ?? widget.displayName,
+            photoUrl: widget.dataStore?.profile?.photoUrl ?? widget.photoUrl,
+            initialBloodType: widget.dataStore?.profile?.bloodType,
+            initialAllergies: widget.dataStore?.profile?.allergies,
+            initialCareTeam: widget.dataStore?.profile?.careTeam,
+            activeMedicationCount:
+                widget.dataStore?.medications
+                    .where((medication) => medication.active)
+                    .length ??
+                0,
+            activeMedicationNames:
+                widget.dataStore?.medications
+                    .where((medication) => medication.active)
+                    .map((medication) => medication.name)
+                    .toList(growable: false) ??
+                const [],
+            activeMedications:
+                widget.dataStore?.medications
+                    .where((medication) => medication.active)
+                    .toList(growable: false) ??
+                const [],
+            onRemoveMedication: widget.dataStore == null
+                ? null
+                : _removeMedicationAndClearReminders,
+            pageTitle: 'Account',
+            onBack: () => Navigator.of(accountContext).maybePop(),
+            onOpenLibrary: () {
+              Navigator.of(accountContext).pop();
+              if (mounted) setState(() => _selectedIndex = 3);
+            },
+            onSignOut: widget.onSignOut,
+            onSave: widget.dataStore == null
+                ? null
+                : (draft) => widget.dataStore!.saveProfile(
+                    ProfileWrite(
+                      displayName: draft.name,
+                      email: draft.email,
+                      bloodType: draft.bloodType,
+                      allergies: draft.allergies,
+                      careTeam: draft.careTeam,
+                      photoUrl: draft.photoUrl,
+                    ),
                   ),
-                ),
-          bottomPadding: 32,
+            bottomPadding: 32,
+          ),
         ),
       ),
     );
@@ -2051,6 +2197,11 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       doseAmount: doseAmount,
     );
     final endDate = _scanEndDate(schedule.startDate, schedule.duration);
+    final doseId = ScheduleOccurrenceGenerator.deterministicOccurrenceId(
+      scheduleId,
+      localDate: localDate,
+      localTime: localTime,
+    );
     final scheduledFor = medicationScheduledDate(
       schedule.startDate,
       schedule.time,
@@ -2105,7 +2256,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       dose: frequency == 'asNeeded'
           ? null
           : DoseWrite(
-              id: scheduleId,
+              id: doseId,
               medicationId: medicationId,
               scheduleId: scheduleId,
               scheduledFor: scheduledFor,
@@ -2119,7 +2270,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     }
 
     final calendarDose = CalendarDoseData(
-      id: scheduleId,
+      id: doseId,
       localDate: localDate,
       name: existingMedication?.name ?? catalog.name,
       details: [
@@ -2131,18 +2282,18 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     );
     if (mounted && frequency != 'asNeeded') {
       setState(() {
-        _cancelledDoseIds.remove(scheduleId);
+        _cancelledDoseIds.remove(doseId);
         _calendarFocusDate = schedule.startDate;
-        _pendingCalendarDoses.removeWhere((dose) => dose.id == scheduleId);
+        _pendingCalendarDoses.removeWhere((dose) => dose.id == doseId);
         _pendingCalendarDoses.add(calendarDose);
-        _pendingScheduleKeys.add(
-          _scanScheduleKey(
-            catalogId: catalog.rxcui,
-            doseAmount: doseAmount,
-            doseUnit: doseUnit,
-            localTime: localTime,
-          ),
-        );
+        _pendingCalendarDoseMedicationIds[doseId] = medicationId;
+        _pendingScheduleKeys[_scanScheduleKey(
+              catalogId: catalog.rxcui,
+              doseAmount: doseAmount,
+              doseUnit: doseUnit,
+              localTime: localTime,
+            )] =
+            medicationId;
       });
     }
     return true;
@@ -2189,7 +2340,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       doseUnit: doseUnit,
       localTime: localTime,
     );
-    if (_pendingScheduleKeys.contains(key)) return true;
+    if (_pendingScheduleKeys.containsKey(key)) return true;
 
     final medicationIds = <String>{
       medicationId,
@@ -2299,12 +2450,13 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
                 return const <CalendarDoseData>[];
               }
               final time = scheduleDraft.time;
+              final selectedDate = scheduleDraft.date;
               final scheduledFor = medicationScheduledDate(
-                date,
+                selectedDate,
                 time,
                 scheduleDraft.timezone,
               );
-              final localDate = _dateKey(date);
+              final localDate = _dateKey(selectedDate);
               final localTime = time.localTime;
               final addedDoses = <CalendarDoseData>[];
               for (final medication in selections) {
@@ -2337,6 +2489,12 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
                   frequency: scheduleDraft.frequency,
                   doseAmount: scheduleDraft.doseAmount,
                 );
+                final doseId =
+                    ScheduleOccurrenceGenerator.deterministicOccurrenceId(
+                      scheduleId,
+                      localDate: localDate,
+                      localTime: localTime,
+                    );
                 await store.commitScheduleAndDose(
                   medication: MedicationWrite(
                     id: medicationId,
@@ -2373,7 +2531,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
                   dose: scheduleDraft.frequency == 'asNeeded'
                       ? null
                       : DoseWrite(
-                          id: scheduleId,
+                          id: doseId,
                           medicationId: medicationId,
                           scheduleId: scheduleId,
                           scheduledFor: scheduledFor,
@@ -2381,19 +2539,18 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
                           localTime: localTime,
                         ),
                 );
-                _cancelledDoseIds.remove(scheduleId);
-                _pendingScheduleKeys.add(
-                  _scanScheduleKey(
-                    catalogId: catalog.rxcui,
-                    doseAmount: scheduleDraft.doseAmount,
-                    doseUnit: doseUnit,
-                    localTime: localTime,
-                  ),
-                );
+                _cancelledDoseIds.remove(doseId);
+                _pendingScheduleKeys[_scanScheduleKey(
+                      catalogId: catalog.rxcui,
+                      doseAmount: scheduleDraft.doseAmount,
+                      doseUnit: doseUnit,
+                      localTime: localTime,
+                    )] =
+                    medicationId;
                 if (scheduleDraft.frequency != 'asNeeded') {
                   addedDoses.add(
                     CalendarDoseData(
-                      id: scheduleId,
+                      id: doseId,
                       localDate: localDate,
                       name: catalog.name,
                       details: [
@@ -2418,12 +2575,17 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
     required String initialTimezone,
     required DateTime scheduleDate,
   }) {
+    final current = widget.now ?? DateTime.now();
+    final target = nextMedicationScheduleTime(now: current);
+    final selectedDate = DateUtils.isSameDay(scheduleDate, current)
+        ? DateUtils.dateOnly(target)
+        : scheduleDate;
     return pushInAppPage<_ScheduleDraft>(
       context,
       builder: (context) => _ScheduleDetailsPage(
         initialTimezone: initialTimezone,
-        scheduleDate: scheduleDate,
-        initialTime: defaultMedicationTime(),
+        scheduleDate: selectedDate,
+        initialTime: defaultMedicationTime(now: current),
         timeDisplayFormat: widget.timeDisplayFormat,
       ),
     );
@@ -2459,12 +2621,10 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
   List<CalendarDoseData> _calendarDoses(MediaryDataStore? store) {
     final medications = {
       for (final medication in store?.medications ?? const <MedicationRecord>[])
-        medication.id: medication,
+        if (medication.active) medication.id: medication,
     };
     final persisted = [
-      for (final dose in (store?.doseLogs ?? const <DoseLogRecord>[]).where(
-        (dose) => dose.status != 'cancelled',
-      ))
+      for (final dose in _visibleDoseLogs(store))
         CalendarDoseData(
           id: dose.id,
           localDate: dose.localDate,
@@ -2479,11 +2639,41 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
         ),
     ];
     final persistedIds = {for (final dose in persisted) dose.id};
+    final persistedOccurrenceIds = {
+      for (final dose in store?.doseLogs ?? const <DoseLogRecord>[])
+        ScheduleOccurrenceGenerator.deterministicOccurrenceId(
+          dose.scheduleId,
+          localDate: dose.localDate,
+          localTime: dose.localTime,
+        ),
+    };
     return [
       ...persisted,
       for (final dose in _pendingCalendarDoses)
         if (!persistedIds.contains(dose.id) &&
+            !persistedOccurrenceIds.contains(dose.id) &&
             !_cancelledDoseIds.contains(dose.id))
+          dose,
+    ];
+  }
+
+  List<DoseLogRecord> _visibleDoseLogs(MediaryDataStore? store) {
+    if (store == null) return const [];
+    final medications = {
+      for (final medication in store.medications)
+        if (medication.active) medication.id,
+    };
+    final scheduleOwners = {
+      for (final schedule in store.schedules)
+        if (schedule.active) schedule.id: schedule.medicationId,
+    };
+    return [
+      for (final dose in uniqueDoseOccurrences(store.doseLogs))
+        if (dose.status != 'cancelled' &&
+            !_cancelledDoseIds.contains(dose.id) &&
+            medications.contains(dose.medicationId) &&
+            ((dose.status != 'due' && dose.status != 'snoozed') ||
+                scheduleOwners[dose.scheduleId] == dose.medicationId))
           dose,
     ];
   }
@@ -2701,6 +2891,7 @@ class _ScheduleDraft {
     required this.daysOfWeek,
     required this.timezone,
     required this.time,
+    required this.date,
   });
 
   final double doseAmount;
@@ -2708,6 +2899,7 @@ class _ScheduleDraft {
   final List<int> daysOfWeek;
   final String timezone;
   final MedicationTime time;
+  final DateTime date;
 }
 
 class _ScheduleDetailsPage extends StatefulWidget {
@@ -2888,6 +3080,7 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
         daysOfWeek: _daysOfWeek.toList()..sort(),
         timezone: _timezone,
         time: _time,
+        date: widget.scheduleDate,
       ),
     );
   }

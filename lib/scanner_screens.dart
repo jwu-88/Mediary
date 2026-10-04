@@ -694,8 +694,8 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
   @override
   void initState() {
     super.initState();
-    _startDate = DateUtils.dateOnly(_now);
-    final target = _now.add(const Duration(minutes: 2));
+    final target = nextMedicationScheduleTime(now: _now);
+    _startDate = DateUtils.dateOnly(target);
     _time = MedicationTime(hour: target.hour, minute: target.minute);
     unawaited(_saveScanResult());
   }

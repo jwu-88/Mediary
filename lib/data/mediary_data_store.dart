@@ -32,6 +32,8 @@ class MediaryDataStore extends ChangeNotifier {
   var _receivedReports = false;
   var _receivedScans = false;
   bool _doseWindowSyncInFlight = false;
+  Future<void>? _doseWindowSync;
+  final Set<String> _removingMedicationIds = {};
   String? _lastDoseWindowSignature;
 
   bool get hasInitialData =>
@@ -64,6 +66,7 @@ class MediaryDataStore extends ChangeNotifier {
           medications = value;
           _receivedMedications = true;
           _finishInitialLoad();
+          _maybeEnsureDoseWindow();
         }, onError: _handleError),
       );
       _subscriptions.add(
@@ -146,6 +149,8 @@ class MediaryDataStore extends ChangeNotifier {
     _receivedScans = false;
     _doseWindowSyncInFlight = false;
     _lastDoseWindowSignature = null;
+    _doseWindowSync = null;
+    _removingMedicationIds.clear();
     isLoading = true;
     error = null;
   }
@@ -197,20 +202,74 @@ class MediaryDataStore extends ChangeNotifier {
     snoozedUntil: snoozedUntil,
   );
 
-  Future<void> archiveMedication(String id) => repository.archiveMedication(id);
+  Future<void> archiveMedication(String id) async {
+    await removeMedication(id);
+  }
 
-  Future<void> removeMedication(String id) => repository.removeMedication(id);
+  Future<void> removeMedication(String id) async {
+    await removeMedicationAndGetRelatedIds(id);
+  }
+
+  Future<Set<String>> removeMedicationAndGetRelatedIds(String id) async {
+    _removingMedicationIds.add(id);
+    try {
+      // Let an already-running generator finish before querying deletions so
+      // it cannot recreate occurrences after their medication was removed.
+      await _doseWindowSync;
+      return await _removeMedicationAndGetRelatedIds(id);
+    } finally {
+      _removingMedicationIds.remove(id);
+    }
+  }
+
+  Future<Set<String>> _removeMedicationAndGetRelatedIds(String id) async {
+    final scheduleIds = schedules
+        .where((schedule) => schedule.medicationId == id)
+        .map((schedule) => schedule.id)
+        .toSet();
+    final deletedDoseIds = await repository.removeMedication(id);
+    final relatedIds = {...scheduleIds, ...deletedDoseIds};
+    medications = medications
+        .where((medication) => medication.id != id)
+        .toList(growable: false);
+    schedules = schedules
+        .where((schedule) => !scheduleIds.contains(schedule.id))
+        .toList(growable: false);
+    doseLogs = doseLogs
+        .where(
+          (dose) => dose.medicationId != id && !relatedIds.contains(dose.id),
+        )
+        .toList(growable: false);
+    notifyListeners();
+    return relatedIds;
+  }
 
   Future<void> deactivateSchedule(String id) =>
       repository.deactivateSchedule(id);
 
   void _maybeEnsureDoseWindow() {
-    if (_user == null || !_receivedSchedules || !_receivedDoseLogs) return;
+    if (_user == null ||
+        !_receivedMedications ||
+        !_receivedSchedules ||
+        !_receivedDoseLogs) {
+      return;
+    }
+    final activeMedicationIds = {
+      for (final medication in medications)
+        if (medication.active &&
+            !_removingMedicationIds.contains(medication.id))
+          medication.id,
+    };
+    final validSchedules = schedules
+        .where(
+          (schedule) => activeMedicationIds.contains(schedule.medicationId),
+        )
+        .toList(growable: false);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day).toIso8601String();
     final signature = [
       today,
-      for (final schedule in schedules)
+      for (final schedule in validSchedules)
         '${schedule.id}:${schedule.frequency}:${schedule.startDate}:'
             '${schedule.endDate}:${schedule.timezone}:${schedule.times.join(',')}:'
             '${schedule.daysOfWeek.join(',')}:${schedule.active}:'
@@ -221,12 +280,14 @@ class MediaryDataStore extends ChangeNotifier {
     }
     _lastDoseWindowSignature = signature;
     _doseWindowSyncInFlight = true;
-    unawaited(() async {
+    _doseWindowSync = () async {
+      var completed = false;
       try {
         await repository.ensureUpcomingDoses(
-          schedules: schedules,
+          schedules: validSchedules,
           existing: doseLogs,
         );
+        completed = true;
       } catch (exception, stackTrace) {
         // Keep the active UI available when a background reconciliation is
         // temporarily offline. The next schedule/profile snapshot retries.
@@ -234,8 +295,10 @@ class MediaryDataStore extends ChangeNotifier {
         _handleError(exception, stackTrace);
       } finally {
         _doseWindowSyncInFlight = false;
+        if (completed) _maybeEnsureDoseWindow();
       }
-    }());
+    }();
+    unawaited(_doseWindowSync);
   }
 
   Future<void> saveLibraryMedication({
