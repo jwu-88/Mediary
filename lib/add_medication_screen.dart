@@ -252,146 +252,176 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
             constraints: BoxConstraints(maxWidth: contentWidth),
             child: LayoutBuilder(
               builder: (context, constraints) {
-                // Keep the field and results reachable when the keyboard or
-                // enlarged text leaves too little room for the fixed header.
-                final bodyHeight = math.max(
-                  constraints.maxHeight,
-                  320 * MediaQuery.textScalerOf(context).scale(1),
-                );
-                return SingleChildScrollView(
-                  key: const Key('addMedicationScrollView'),
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  child: SizedBox(
-                    height: bodyHeight,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                          child: LiquidGlassSearchField(
-                            controller: _searchController,
-                            textFieldKey: const Key('medicationSearchField'),
-                            onChanged: _onSearchChanged,
-                            hintText: 'Search Medications',
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                          child: Row(
-                            children: [
-                              Expanded(
+                final textScale = MediaQuery.textScalerOf(context).scale(1);
+                return KeyedSubtree(
+                  key: const Key('medicationOptionsList'),
+                  child: CustomScrollView(
+                    key: const Key('addMedicationScrollView'),
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                              child: LiquidGlassSearchField(
+                                controller: _searchController,
+                                textFieldKey: const Key(
+                                  'medicationSearchField',
+                                ),
+                                onChanged: _onSearchChanged,
+                                hintText: 'Search Medications',
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'Medication',
+                                      style: TextStyle(
+                                        color: colors.onSurfaceVariant,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  Flexible(
+                                    child: Text(
+                                      selectionCount == 0
+                                          ? 'Select Items'
+                                          : '$selectionCount Selected',
+                                      key: const Key('selectionCount'),
+                                      textAlign: TextAlign.end,
+                                      style: TextStyle(
+                                        color: selectionCount == 0
+                                            ? colors.onSurfaceVariant
+                                            : colors.primary,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (selectionCount > 0)
+                              _SelectedMedicationSummary(
+                                // Keep catalog results available as selections grow.
+                                maxHeight: math.max(
+                                  constraints.maxHeight * .4,
+                                  160 * textScale,
+                                ),
+                                medications: [
+                                  for (final id in _selectedIds)
+                                    if (_selectedMedications[id] != null)
+                                      _selectedMedications[id]!,
+                                ],
+                                onRemove: (medication) =>
+                                    _toggleMedication(medication),
+                                onClear: () => setState(() {
+                                  _selectedIds.clear();
+                                  _selectedMedications.clear();
+                                }),
+                              )
+                            else
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  20,
+                                  0,
+                                  20,
+                                  12,
+                                ),
                                 child: Text(
-                                  'Medication',
+                                  _usesLiveCatalog
+                                      ? 'Search at least 2 characters, then tap a result to select it.'
+                                      : 'Tap a medication to select it. You can choose more than one.',
                                   style: TextStyle(
                                     color: colors.onSurfaceVariant,
                                     fontSize: 12,
-                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ),
-                              Text(
-                                selectionCount == 0
-                                    ? 'Select Items'
-                                    : '$selectionCount Selected',
-                                key: const Key('selectionCount'),
-                                style: TextStyle(
-                                  color: selectionCount == 0
-                                      ? colors.onSurfaceVariant
-                                      : colors.primary,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
+                          ],
                         ),
-                        if (selectionCount > 0)
-                          _SelectedMedicationSummary(
-                            // Keep catalog results available as selections grow.
-                            maxHeight: bodyHeight * .4,
-                            medications: [
-                              for (final id in _selectedIds)
-                                if (_selectedMedications[id] != null)
-                                  _selectedMedications[id]!,
-                            ],
-                            onRemove: (medication) =>
-                                _toggleMedication(medication),
-                            onClear: () => setState(() {
-                              _selectedIds.clear();
-                              _selectedMedications.clear();
-                            }),
-                          )
-                        else
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                            child: Text(
-                              _usesLiveCatalog
-                                  ? 'Search at least 2 characters, then tap a result to select it.'
-                                  : 'Tap a medication to select it. You can choose more than one.',
-                              style: TextStyle(
-                                color: colors.onSurfaceVariant,
-                                fontSize: 12,
+                      ),
+                      if (!_isSearching &&
+                          _searchError == null &&
+                          medications.isNotEmpty)
+                        SliverPadding(
+                          padding: const EdgeInsets.only(bottom: 84),
+                          sliver: SliverList.separated(
+                            itemCount: medications.length,
+                            separatorBuilder: (_, _) => Divider(
+                              height: 1,
+                              indent: 96,
+                              endIndent: 16,
+                              color: colors.outlineVariant.withValues(
+                                alpha: .7,
                               ),
                             ),
+                            itemBuilder: (context, index) {
+                              final medication = medications[index];
+                              return _MedicationOptionRow(
+                                medication: medication,
+                                selected: _selectedIds.contains(medication.id),
+                                onPressed: () => _toggleMedication(medication),
+                              );
+                            },
                           ),
-                        Expanded(
-                          child: _isSearching
-                              ? const Center(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      CircularProgressIndicator(),
-                                      SizedBox(height: 12),
-                                      Text(
-                                        'Searching the live medication catalog…',
-                                      ),
-                                    ],
-                                  ),
-                                )
-                              : _searchError != null
-                              ? _CatalogError(
-                                  message: _searchError!,
-                                  onRetry: () =>
-                                      _onSearchChanged(_searchController.text),
-                                  onClear: _clearSearch,
-                                )
-                              : medications.isEmpty
-                              ? _EmptyMedicationSearch(
-                                  onClear: _clearSearch,
-                                  prompt:
-                                      _usesLiveCatalog &&
-                                      _searchController.text.trim().isEmpty,
-                                )
-                              : ListView.separated(
-                                  key: const Key('medicationOptionsList'),
-                                  padding: const EdgeInsets.only(bottom: 84),
-                                  keyboardDismissBehavior:
-                                      ScrollViewKeyboardDismissBehavior.onDrag,
-                                  itemCount: medications.length,
-                                  separatorBuilder: (_, _) => Divider(
-                                    height: 1,
-                                    indent: 96,
-                                    endIndent: 16,
-                                    color: colors.outlineVariant.withValues(
-                                      alpha: .7,
-                                    ),
-                                  ),
-                                  itemBuilder: (context, index) {
-                                    final medication = medications[index];
-                                    return _MedicationOptionRow(
-                                      medication: medication,
-                                      selected: _selectedIds.contains(
-                                        medication.id,
-                                      ),
-                                      onPressed: () =>
-                                          _toggleMedication(medication),
-                                    );
-                                  },
+                        )
+                      else
+                        SliverLayoutBuilder(
+                          builder: (context, sliverConstraints) {
+                            // Recovery content grows with the text size and
+                            // remains in the same scroll view as the header.
+                            final minimumHeight = math.max(
+                              180 * textScale,
+                              sliverConstraints.viewportMainAxisExtent -
+                                  sliverConstraints.precedingScrollExtent,
+                            );
+                            return SliverToBoxAdapter(
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  minHeight: minimumHeight,
                                 ),
+                                child: _isSearching
+                                    ? const Center(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            CircularProgressIndicator(),
+                                            SizedBox(height: 12),
+                                            Text(
+                                              'Searching the live medication catalog…',
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                    : _searchError != null
+                                    ? _CatalogError(
+                                        message: _searchError!,
+                                        onRetry: () => _onSearchChanged(
+                                          _searchController.text,
+                                        ),
+                                        onClear: _clearSearch,
+                                      )
+                                    : _EmptyMedicationSearch(
+                                        onClear: _clearSearch,
+                                        prompt:
+                                            _usesLiveCatalog &&
+                                            _searchController.text
+                                                .trim()
+                                                .isEmpty,
+                                      ),
+                              ),
+                            );
+                          },
                         ),
-                      ],
-                    ),
+                    ],
                   ),
                 );
               },
@@ -456,9 +486,11 @@ class _LiquidGlassAddButton extends StatelessWidget {
       hoverOffset: const Offset(0, -1),
       pressedScale: .975,
       disabledOpacity: 1,
-      child: SizedBox(
-        width: double.infinity,
-        height: 50,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          minWidth: double.infinity,
+          minHeight: 50,
+        ),
         child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(25),
@@ -487,14 +519,24 @@ class _LiquidGlassAddButton extends StatelessWidget {
                   color: buttonColor,
                 ),
                 child: Center(
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      color: enabled
-                          ? colors.onPrimary
-                          : colors.onSurfaceVariant.withValues(alpha: .68),
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                  heightFactor: 1,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    child: Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: enabled
+                            ? colors.onPrimary
+                            : colors.onSurfaceVariant.withValues(alpha: .68),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
@@ -539,16 +581,18 @@ class _SelectedMedicationSummary extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
-                    Expanded(
-                      child: Text(
-                        'Selected Medications: ${medications.length}',
-                        style: TextStyle(
-                          color: colors.onPrimaryContainer,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
+                    Text(
+                      'Selected Medications: ${medications.length}',
+                      style: TextStyle(
+                        color: colors.onPrimaryContainer,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     FilledButton.tonal(
@@ -731,6 +775,8 @@ class _EmptyMedicationSearch extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return Center(
       child: SingleChildScrollView(
+        primary: false,
+        physics: const NeverScrollableScrollPhysics(),
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(
@@ -796,6 +842,8 @@ class _CatalogError extends StatelessWidget {
     final rateLimited = message.toLowerCase().contains('rate');
     return Center(
       child: SingleChildScrollView(
+        primary: false,
+        physics: const NeverScrollableScrollPhysics(),
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -34,6 +36,11 @@ class LiquidGlassTabBar extends StatelessWidget {
     final mediaQuery = MediaQuery.maybeOf(context);
     final highContrast = mediaQuery?.highContrast ?? false;
     final reduceMotion = mediaQuery?.disableAnimations ?? false;
+    final labelHeight = MediaQuery.textScalerOf(context).scale(9.5);
+    final navigationHeight = math.max(
+      AppButtonMetrics.navigationHeight,
+      labelHeight + 40,
+    );
     final active = highContrast
         ? Color.lerp(primary, dark ? Colors.white : Colors.black, .22)!
         : primary;
@@ -82,7 +89,7 @@ class LiquidGlassTabBar extends StatelessWidget {
           // The selected destination still uses its own glass lens below.
           child: Container(
             key: const Key('liquidGlassTabBar'),
-            height: AppButtonMetrics.navigationHeight,
+            height: navigationHeight,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(
                 AppButtonMetrics.navigationRadius,
@@ -115,7 +122,7 @@ class LiquidGlassTabBar extends StatelessWidget {
                           left: indicatorLeft,
                           top: 8,
                           width: indicatorWidth,
-                          height: 48,
+                          height: navigationHeight - 16,
                           duration: motionDuration,
                           curve: Curves.easeOutQuart,
                           child: IgnorePointer(
@@ -336,7 +343,10 @@ class _GlassTabItem extends StatelessWidget {
                 ),
                 child: SizedBox(
                   width: 58,
-                  height: 48,
+                  height: math.max(
+                    48,
+                    MediaQuery.textScalerOf(context).scale(9.5) + 24,
+                  ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -378,7 +388,12 @@ class _GlassTabItem extends StatelessWidget {
                               : FontWeight.w600,
                           letterSpacing: -.1,
                         ),
-                        child: Text(label, key: ValueKey(label), maxLines: 1),
+                        child: Text(
+                          label,
+                          key: ValueKey(label),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),

@@ -311,132 +311,162 @@ class _PermissionView extends StatelessWidget {
         bottom: false,
         child: Padding(
           padding: EdgeInsets.only(bottom: bottomNavigationInset),
-          child: Stack(
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 360),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 28),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (isRequesting)
-                          SizedBox.square(
-                            dimension: 50,
-                            child: CupertinoActivityIndicator(
-                              radius: 18,
-                              color: palette.primary,
-                            ),
-                          )
-                        else
-                          Container(
-                            width: 74,
-                            height: 74,
-                            decoration: BoxDecoration(
-                              color: palette.primary.withValues(
-                                alpha: palette.isDark ? .20 : .10,
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              key: const Key('cameraPermissionScrollView'),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 360),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 28,
+                        vertical: 24,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isRequesting)
+                            SizedBox.square(
+                              dimension: 50,
+                              child: CupertinoActivityIndicator(
+                                radius: 18,
+                                color: palette.primary,
                               ),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(icon, size: 32, color: palette.primary),
-                          ),
-                        const SizedBox(height: 24),
-                        Text(
-                          title,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: palette.primaryText,
-                            fontSize: 24,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: -.5,
-                          ),
-                        ),
-                        const SizedBox(height: 9),
-                        Text(
-                          message,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: palette.secondaryText,
-                            fontSize: 15,
-                            height: 1.4,
-                          ),
-                        ),
-                        const SizedBox(height: 28),
-                        if (!isRequesting)
-                          SizedBox(
-                            width: double.infinity,
-                            height: 48,
-                            child: FilledButton.icon(
-                              key: Key(
-                                needsSettings
-                                    ? 'openCameraSettingsButton'
-                                    : 'requestCameraButton',
-                              ),
-                              onPressed: needsSettings
-                                  ? () async => onOpenSettings!.call()
-                                  : onRequestAccess,
-                              icon: Icon(
-                                needsSettings
-                                    ? CupertinoIcons.settings
-                                    : CupertinoIcons.camera,
-                                size: 18,
-                              ),
-                              label: Text(
-                                needsSettings
-                                    ? 'Open Settings'
-                                    : 'Allow Camera Access',
-                              ),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: palette.primary,
-                                foregroundColor: Theme.of(context)
-                                    .colorScheme
-                                    .onPrimary,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(11),
+                            )
+                          else
+                            Container(
+                              width: 74,
+                              height: 74,
+                              decoration: BoxDecoration(
+                                color: palette.primary.withValues(
+                                  alpha: palette.isDark ? .20 : .10,
                                 ),
-                                textStyle: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                icon,
+                                size: 32,
+                                color: palette.primary,
                               ),
                             ),
+                          const SizedBox(height: 24),
+                          Text(
+                            title,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: palette.primaryText,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: -.5,
+                            ),
                           ),
-                        if (!isRequesting && onUseOtherScanOptions != null) ...[
-                          const SizedBox(height: 10),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 44,
-                            child: OutlinedButton.icon(
-                              key: const Key('cameraNoAccessButton'),
-                              onPressed: onUseOtherScanOptions,
-                              icon: const Icon(
-                                CupertinoIcons.photo_on_rectangle,
-                                size: 18,
+                          const SizedBox(height: 9),
+                          Text(
+                            message,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: palette.secondaryText,
+                              fontSize: 15,
+                              height: 1.4,
+                            ),
+                          ),
+                          const SizedBox(height: 28),
+                          if (!isRequesting)
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                minWidth: double.infinity,
+                                minHeight: 48,
                               ),
-                              label: const Text("I don't have camera access"),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: palette.primary,
-                                side: BorderSide(
-                                  color: palette.primary.withValues(alpha: .65),
+                              child: FilledButton.icon(
+                                key: Key(
+                                  needsSettings
+                                      ? 'openCameraSettingsButton'
+                                      : 'requestCameraButton',
                                 ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(11),
+                                onPressed: needsSettings
+                                    ? () async => onOpenSettings!.call()
+                                    : onRequestAccess,
+                                icon: Icon(
+                                  needsSettings
+                                      ? CupertinoIcons.settings
+                                      : CupertinoIcons.camera,
+                                  size: 18,
                                 ),
-                                textStyle: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
+                                label: Text(
+                                  needsSettings
+                                      ? 'Open Settings'
+                                      : 'Allow Camera Access',
+                                  textAlign: TextAlign.center,
+                                ),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: palette.primary,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 14,
+                                  ),
+                                  foregroundColor: Theme.of(context)
+                                      .colorScheme
+                                      .onPrimary,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(11),
+                                  ),
+                                  textStyle: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
+                          if (!isRequesting &&
+                              onUseOtherScanOptions != null) ...[
+                            const SizedBox(height: 10),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                minWidth: double.infinity,
+                                minHeight: 44,
+                              ),
+                              child: OutlinedButton.icon(
+                                key: const Key('cameraNoAccessButton'),
+                                onPressed: onUseOtherScanOptions,
+                                icon: const Icon(
+                                  CupertinoIcons.photo_on_rectangle,
+                                  size: 18,
+                                ),
+                                label: const Text(
+                                  "I don't have camera access",
+                                  textAlign: TextAlign.center,
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                  foregroundColor: palette.primary,
+                                  side: BorderSide(
+                                    color: palette.primary.withValues(
+                                      alpha: .65,
+                                    ),
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(11),
+                                  ),
+                                  textStyle: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),
