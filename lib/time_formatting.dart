@@ -153,8 +153,29 @@ bool isMedicationTimeInPast(
   return !scheduled.isAfter(current);
 }
 
-MedicationTime defaultMedicationTime() {
-  final target = DateTime.now().add(const Duration(minutes: 2));
+/// The next strictly future ten-minute boundary, including date rollover.
+DateTime nextMedicationScheduleTime({DateTime? now}) {
+  final current = now ?? DateTime.now();
+  final minute = (current.minute ~/ 10 + 1) * 10;
+  return current.isUtc
+      ? DateTime.utc(
+          current.year,
+          current.month,
+          current.day,
+          current.hour,
+          minute,
+        )
+      : DateTime(
+          current.year,
+          current.month,
+          current.day,
+          current.hour,
+          minute,
+        );
+}
+
+MedicationTime defaultMedicationTime({DateTime? now}) {
+  final target = nextMedicationScheduleTime(now: now);
   return MedicationTime(hour: target.hour, minute: target.minute);
 }
 

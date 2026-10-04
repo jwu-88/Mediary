@@ -141,7 +141,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _syncInitialDoses() {
     _doses = [
       for (final dose in widget.initialDoses)
-        if (!_removedDoseIds.contains(dose.id))
+        if (dose.status != 'cancelled' && !_removedDoseIds.contains(dose.id))
           _DashboardDose(
             id: dose.id,
             medicationId: dose.medicationId,
@@ -149,6 +149,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             details: dose.details,
             status: dose.displayStatus,
             firestoreStatus: dose.status,
+            snoozedUntil: dose.snoozedUntil,
             tone: dose.status == 'taken' ? _DoseTone.taken : _DoseTone.primary,
           ),
     ];
@@ -249,11 +250,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _showConfirmation(doseActionErrorMessage(error, action: 'update'));
         }
       case _DoseAction.snooze:
+        final snoozedUntil = DateTime.now().add(const Duration(minutes: 15));
         try {
           await widget.onDoseStatusChanged?.call(
             dose.id,
             'snoozed',
-            snoozedUntil: DateTime.now().add(const Duration(minutes: 15)),
+            snoozedUntil: snoozedUntil,
           );
           if (!mounted) return;
           final currentIndex = _doses.indexWhere((item) => item.id == dose.id);
@@ -262,6 +264,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _doses[currentIndex] = dose.copyWith(
               status: 'Later',
               firestoreStatus: 'snoozed',
+              snoozedUntil: snoozedUntil,
               tone: _DoseTone.warning,
             );
           });
@@ -278,62 +281,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _removeDose(_DashboardDose dose) async {
     final index = _doses.indexWhere((item) => item.id == dose.id);
     if (index < 0) return;
+    final removed = _RemovedDashboardDose(dose: dose, index: index);
     setState(() {
       _removedDoseIds.add(dose.id);
       _doses.removeAt(index);
     });
-    _setUndoDose(_RemovedDashboardDose(dose: dose, index: index));
     try {
       await widget.onDoseStatusChanged?.call(dose.id, 'cancelled');
       if (!mounted) return;
+      _setUndoDose(removed);
       _showConfirmation('${titleCaseDisplay(dose.name)} Removed');
     } catch (error) {
       if (kDebugMode) debugPrint('Dose removal failed: $error');
-      _restoreRemovedDose(dose.id);
+      _restoreRemovedDose(removed);
       _showConfirmation(doseActionErrorMessage(error, action: 'remove'));
     }
   }
 
   Future<void> _removeDoseAt(int index) async {
     if (index < 0 || index >= _doses.length) return;
-    final dose = _doses[index];
-    final medicationId = dose.medicationId;
-    final removeMedication = widget.onRemoveMedication;
-    if (medicationId == null || removeMedication == null) {
-      await _removeDose(dose);
-      return;
-    }
-
-    final removed = <({int index, _DashboardDose dose})>[];
-    for (var doseIndex = 0; doseIndex < _doses.length; doseIndex++) {
-      final candidate = _doses[doseIndex];
-      if (candidate.medicationId == medicationId) {
-        removed.add((index: doseIndex, dose: candidate));
-      }
-    }
-    setState(() {
-      _removedDoseIds.addAll(removed.map((item) => item.dose.id));
-      _doses.removeWhere((item) => item.medicationId == medicationId);
-    });
-
-    try {
-      await removeMedication(medicationId);
-      if (mounted) {
-        _showConfirmation('${titleCaseDisplay(dose.name)} Removed');
-      }
-    } catch (error) {
-      if (kDebugMode) debugPrint('Medication removal failed: $error');
-      if (mounted) {
-        setState(() {
-          for (final item in removed.reversed) {
-            final restoreIndex = item.index.clamp(0, _doses.length);
-            _doses.insert(restoreIndex, item.dose);
-            _removedDoseIds.remove(item.dose.id);
-          }
-        });
-        _showConfirmation(doseActionErrorMessage(error, action: 'remove'));
-      }
-    }
+    // A schedule row represents one occurrence. Regimen deletion is managed
+    // explicitly in Profile, even when this dose has a medication ID.
+    await _removeDose(_doses[index]);
   }
 
   void _showConfirmation(String message) {
@@ -349,20 +318,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  void _restoreRemovedDose(String doseId) {
-    final removed = _undoDose;
-    _undoTimer?.cancel();
+  void _restoreRemovedDose(_RemovedDashboardDose removed) {
     if (!mounted) return;
-    if (removed?.dose.id == doseId) {
-      setState(() {
-        _removedDoseIds.remove(doseId);
-        final index = removed!.index.clamp(0, _doses.length);
+    // Rollback belongs to the failed operation, independent of the Undo slot.
+    setState(() {
+      _removedDoseIds.remove(removed.dose.id);
+      if (!_doses.any((dose) => dose.id == removed.dose.id)) {
+        final index = removed.index.clamp(0, _doses.length);
         _doses.insert(index, removed.dose);
+      }
+      if (_undoDose?.dose.id == removed.dose.id) {
+        _undoTimer?.cancel();
         _undoDose = null;
-      });
-    } else {
-      _removedDoseIds.remove(doseId);
-    }
+      }
+    });
   }
 
   Future<void> _undoRemovedDose() async {
@@ -376,7 +345,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _doses.insert(index, removed.dose);
     });
     try {
-      await widget.onDoseStatusChanged?.call(removed.dose.id, 'due');
+      await widget.onDoseStatusChanged?.call(
+        removed.dose.id,
+        removed.dose.firestoreStatus,
+        snoozedUntil: removed.dose.snoozedUntil,
+      );
       if (mounted) {
         _showConfirmation('${titleCaseDisplay(removed.dose.name)} Restored');
       }
@@ -1436,9 +1409,8 @@ class _ScheduleTable extends StatelessWidget {
               statusColor: doses[index].tone == _DoseTone.taken ? taken : null,
               onTap: () => onTapDose(index),
               onRemove: () => onRemoveDose(index),
-              removeTooltip: doses[index].medicationId == null
-                  ? 'Remove ${titleCaseDisplay(doses[index].name)} from today'
-                  : 'Delete ${titleCaseDisplay(doses[index].name)}',
+              removeTooltip:
+                  'Remove ${titleCaseDisplay(doses[index].name)} from today',
             ),
             if (index < doses.length - 1)
               Divider(
@@ -1888,6 +1860,7 @@ class _DashboardDose {
     required this.details,
     required this.status,
     this.firestoreStatus = 'due',
+    this.snoozedUntil,
     required this.tone,
   });
 
@@ -1897,11 +1870,13 @@ class _DashboardDose {
   final String details;
   final String status;
   final String firestoreStatus;
+  final DateTime? snoozedUntil;
   final _DoseTone tone;
 
   _DashboardDose copyWith({
     String? status,
     String? firestoreStatus,
+    DateTime? snoozedUntil,
     _DoseTone? tone,
   }) {
     return _DashboardDose(
@@ -1911,6 +1886,7 @@ class _DashboardDose {
       details: details,
       status: status ?? this.status,
       firestoreStatus: firestoreStatus ?? this.firestoreStatus,
+      snoozedUntil: snoozedUntil ?? this.snoozedUntil,
       tone: tone ?? this.tone,
     );
   }
@@ -1930,6 +1906,7 @@ class DashboardDoseData {
     required this.name,
     required this.details,
     required this.status,
+    this.snoozedUntil,
   });
 
   final String id;
@@ -1937,6 +1914,7 @@ class DashboardDoseData {
   final String name;
   final String details;
   final String status;
+  final DateTime? snoozedUntil;
 
   String get displayStatus => switch (status) {
     'taken' => 'Taken',

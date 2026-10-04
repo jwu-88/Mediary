@@ -22,7 +22,10 @@ void main() {
       for (final size in [
         const Size(360, 740),
         const Size(768, 600),
+        const Size(900, 600),
+        const Size(1024, 768),
         const Size(1440, 900),
+        const Size(1920, 1080),
         const Size(2560, 1440),
       ]) {
         tester.view.physicalSize = size;
@@ -63,8 +66,11 @@ void main() {
           await tester.pumpWidget(
             MaterialApp(
               builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(context)
-                    .copyWith(textScaler: const TextScaler.linear(1.3)),
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.linear(
+                    size == const Size(900, 600) ? 2 : 1.3,
+                  ),
+                ),
                 child: child!,
               ),
               home: Scaffold(body: page),

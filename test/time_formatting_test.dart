@@ -2,6 +2,30 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/time_formatting.dart';
 
 void main() {
+  test(
+    'default medication time rounds strictly forward to ten-minute boundaries',
+    () {
+      for (final entry in [
+        (DateTime(2026, 10, 4, 10, 19), '10:20:00'),
+        (DateTime(2026, 10, 4, 1, 21), '01:30:00'),
+        (DateTime(2026, 10, 4, 10, 21), '10:30:00'),
+        (DateTime(2026, 10, 4, 10, 20), '10:30:00'),
+        (DateTime(2026, 10, 4, 10, 29, 59, 999), '10:30:00'),
+        (DateTime(2026, 10, 4, 10, 59), '11:00:00'),
+        (DateTime(2026, 10, 4, 23, 59), '00:00:00'),
+      ]) {
+        expect(defaultMedicationTime(now: entry.$1).localTime, entry.$2);
+      }
+      expect(
+        nextMedicationScheduleTime(now: DateTime(2026, 10, 4, 23, 59)),
+        DateTime(2026, 10, 5),
+      );
+      expect(
+        nextMedicationScheduleTime(now: DateTime.utc(2026, 12, 31, 23, 59)),
+        DateTime.utc(2027, 1, 1),
+      );
+    },
+  );
   test('formats medication times without seconds', () {
     const time = MedicationTime(hour: 20, minute: 8, second: 42);
 

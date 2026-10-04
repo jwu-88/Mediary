@@ -219,7 +219,7 @@ class ScheduleOccurrenceGenerator {
       '_',
     );
     return '${safeScheduleId}_${localDate}_'
-        '${localTime.replaceAll(':', '')}';
+        '${MedicationTime.fromLocalTime(localTime).localTime.replaceAll(':', '')}';
   }
 
   static tz.Location _locationFor(String timezone) {

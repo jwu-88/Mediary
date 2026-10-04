@@ -176,6 +176,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
       final addedDoses = await widget.onAddDose!(_selectedDate);
       if (!mounted || addedDoses == null || addedDoses.isEmpty) return;
       setState(() {
+        // Rounding a late-night default can move the occurrence to tomorrow.
+        // Keep the newly scheduled entry visible on its actual date.
+        final addedDate = DateTime.tryParse(addedDoses.first.localDate);
+        if (addedDate != null &&
+            !DateUtils.isSameDay(addedDate, _selectedDate)) {
+          _selectedDate = DateUtils.dateOnly(addedDate);
+          _visibleMonth = DateTime(addedDate.year, addedDate.month);
+        }
         for (final dose in addedDoses) {
           _removedDoseIds.remove(dose.id);
           final doses = _dosesByDate.putIfAbsent(
@@ -402,103 +410,115 @@ class _CalendarScreenState extends State<CalendarScreen> {
         child: Center(
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: contentWidth),
-            child: ListView(
-              key: const Key('calendarScrollView'),
-              padding: EdgeInsets.fromLTRB(
-                _calendarHorizontalInset,
-                12,
-                _calendarHorizontalInset,
-                widget.bottomPadding,
-              ),
-              children: [
-                _CalendarHeader(onOptions: _showOptions),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 180),
-                  child: _announcement == null
-                      ? const SizedBox.shrink()
-                      : Padding(
-                          key: ValueKey(_announcement),
-                          padding: const EdgeInsets.only(top: 12),
-                          child: _CalendarInlineStatus(
-                            message: _announcement!,
-                            onDismiss: () =>
-                                setState(() => _announcement = null),
-                            onUndo: _undoDose == null ? null : _undoRemovedDose,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final textScale =
+                    MediaQuery.textScalerOf(context).scale(11) / 11;
+                // The desktop shell reserves sidebar space. Use the actual
+                // page width and allow larger text to retain readable columns.
+                final landscapeLayout =
+                    constraints.maxWidth >= 1000 * math.max(1, textScale);
+                return ListView(
+                  key: const Key('calendarScrollView'),
+                  padding: EdgeInsets.fromLTRB(
+                    _calendarHorizontalInset,
+                    12,
+                    _calendarHorizontalInset,
+                    widget.bottomPadding,
+                  ),
+                  children: [
+                    _CalendarHeader(onOptions: _showOptions),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      child: _announcement == null
+                          ? const SizedBox.shrink()
+                          : Padding(
+                              key: ValueKey(_announcement),
+                              padding: const EdgeInsets.only(top: 12),
+                              child: _CalendarInlineStatus(
+                                message: _announcement!,
+                                onDismiss: () =>
+                                    setState(() => _announcement = null),
+                                onUndo: _undoDose == null
+                                    ? null
+                                    : _undoRemovedDose,
+                              ),
+                            ),
+                    ),
+                    const SizedBox(height: 16),
+                    _AdherenceSummary(
+                      month: _months[_visibleMonth.month - 1],
+                      taken: _monthTaken,
+                      scheduled: _monthScheduled,
+                    ),
+                    const SizedBox(height: 24),
+                    if (landscapeLayout)
+                      Row(
+                        key: const Key('calendarLandscapeContent'),
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 6,
+                            child: _CalendarCard(
+                              visibleMonth: _visibleMonth,
+                              selectedDate: _selectedDate,
+                              referenceDate: _referenceDate,
+                              monthLabel: _monthYear(_visibleMonth),
+                              onPreviousMonth: () => _moveMonth(-1),
+                              onNextMonth: () => _moveMonth(1),
+                              onSelectDate: _selectDate,
+                              statusFor: _statusFor,
+                            ),
                           ),
-                        ),
-                ),
-                const SizedBox(height: 16),
-                _AdherenceSummary(
-                  month: _months[_visibleMonth.month - 1],
-                  taken: _monthTaken,
-                  scheduled: _monthScheduled,
-                ),
-                const SizedBox(height: 24),
-                if (viewportWidth >= 1000)
-                  Row(
-                    key: const Key('calendarLandscapeContent'),
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        flex: 6,
-                        child: _CalendarCard(
-                          visibleMonth: _visibleMonth,
-                          selectedDate: _selectedDate,
-                          referenceDate: _referenceDate,
-                          monthLabel: _monthYear(_visibleMonth),
-                          onPreviousMonth: () => _moveMonth(-1),
-                          onNextMonth: () => _moveMonth(1),
-                          onSelectDate: _selectDate,
-                          statusFor: _statusFor,
-                        ),
+                          const SizedBox(width: 20),
+                          Expanded(
+                            flex: 5,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _SectionHeader(
+                                  key: const Key('calendarSelectedDateHeader'),
+                                  title: _longDate(_selectedDate),
+                                  onAdd: _addDose,
+                                ),
+                                const SizedBox(height: 12),
+                                _DoseList(
+                                  doses: _dosesFor(_selectedDate),
+                                  onTapDose: _showDoseActions,
+                                  onRemoveDose: _removeDoseAt,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      )
+                    else ...[
+                      _CalendarCard(
+                        visibleMonth: _visibleMonth,
+                        selectedDate: _selectedDate,
+                        referenceDate: _referenceDate,
+                        monthLabel: _monthYear(_visibleMonth),
+                        onPreviousMonth: () => _moveMonth(-1),
+                        onNextMonth: () => _moveMonth(1),
+                        onSelectDate: _selectDate,
+                        statusFor: _statusFor,
                       ),
-                      const SizedBox(width: 20),
-                      Expanded(
-                        flex: 5,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _SectionHeader(
-                              key: const Key('calendarSelectedDateHeader'),
-                              title: _longDate(_selectedDate),
-                              onAdd: _addDose,
-                            ),
-                            const SizedBox(height: 12),
-                            _DoseList(
-                              doses: _dosesFor(_selectedDate),
-                              onTapDose: _showDoseActions,
-                              onRemoveDose: _removeDoseAt,
-                            ),
-                          ],
-                        ),
+                      const SizedBox(height: 24),
+                      _SectionHeader(
+                        key: const Key('calendarSelectedDateHeader'),
+                        title: _longDate(_selectedDate),
+                        onAdd: _addDose,
+                      ),
+                      const SizedBox(height: 12),
+                      _DoseList(
+                        doses: _dosesFor(_selectedDate),
+                        onTapDose: _showDoseActions,
+                        onRemoveDose: _removeDoseAt,
                       ),
                     ],
-                  )
-                else ...[
-                  _CalendarCard(
-                    visibleMonth: _visibleMonth,
-                    selectedDate: _selectedDate,
-                    referenceDate: _referenceDate,
-                    monthLabel: _monthYear(_visibleMonth),
-                    onPreviousMonth: () => _moveMonth(-1),
-                    onNextMonth: () => _moveMonth(1),
-                    onSelectDate: _selectDate,
-                    statusFor: _statusFor,
-                  ),
-                  const SizedBox(height: 24),
-                  _SectionHeader(
-                    key: const Key('calendarSelectedDateHeader'),
-                    title: _longDate(_selectedDate),
-                    onAdd: _addDose,
-                  ),
-                  const SizedBox(height: 12),
-                  _DoseList(
-                    doses: _dosesFor(_selectedDate),
-                    onTapDose: _showDoseActions,
-                    onRemoveDose: _removeDoseAt,
-                  ),
-                ],
-              ],
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -1150,10 +1170,14 @@ class _DoseTableHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final artworkColumnWidth = compact ? 40.0 : 48.0;
-    final statusColumnWidth = compact ? 58.0 : 68.0;
+    final textScale = MediaQuery.textScalerOf(context).scale(11) / 11;
+    final statusColumnWidth = (compact ? 58.0 : 68.0) * math.max(1, textScale);
     const actionColumnWidth = 44.0;
     return SizedBox(
-      height: compact ? 34 : 38,
+      height: math.max(
+        compact ? 34 : 38,
+        16 + 11 * textScale * 1.3 * (textScale > 1.3 ? 2 : 1),
+      ),
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 12),
         child: Row(
@@ -1206,7 +1230,7 @@ class _DoseTableHeaderText extends StatelessWidget {
     final palette = _CalendarPalette.of(context);
     return Text(
       label,
-      maxLines: 1,
+      maxLines: MediaQuery.textScalerOf(context).scale(11) > 11 * 1.3 ? 2 : 1,
       overflow: TextOverflow.ellipsis,
       textAlign: textAlign,
       style: TextStyle(
@@ -1261,7 +1285,8 @@ class _DoseRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = _CalendarPalette.of(context);
     final artworkColumnWidth = compact ? 40.0 : 48.0;
-    final statusColumnWidth = compact ? 58.0 : 68.0;
+    final textScale = MediaQuery.textScalerOf(context).scale(11) / 11;
+    final statusColumnWidth = (compact ? 58.0 : 68.0) * math.max(1, textScale);
     const actionColumnWidth = 44.0;
     final row = AppPressable(
       onPressed: onTap,
