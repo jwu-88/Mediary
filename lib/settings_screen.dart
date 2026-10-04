@@ -420,10 +420,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Center(
             child: ConstrainedBox(
               constraints: BoxConstraints(
-                maxWidth: responsiveContentWidth(
-                  context,
-                  nativeMaxWidth: 1120,
-                ),
+                maxWidth: responsiveContentWidth(context, nativeMaxWidth: 1120),
               ),
               child: ListView(
                 key: const PageStorageKey<String>('settingsScrollPosition'),
