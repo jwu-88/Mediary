@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/add_medication_screen.dart';
 
@@ -31,6 +32,73 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+  }
+
+  for (final size in const [Size(320, 640), Size(568, 320), Size(1440, 900)]) {
+    testWidgets(
+      'picker keeps search focused with keyboard and large text at $size',
+      (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        var keyboardHeight = 0.0;
+        late StateSetter update;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: StatefulBuilder(
+              builder: (context, setState) {
+                update = setState;
+                return MediaQuery(
+                  data: MediaQuery.of(context).copyWith(
+                    textScaler: const TextScaler.linear(2),
+                    viewInsets: EdgeInsets.only(bottom: keyboardHeight),
+                  ),
+                  child: const AddMedicationScreen(
+                    medications: fixtureMedications,
+                    initiallySelectedIds: {'amoxicillin-500-capsule'},
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+        final search = find.byKey(const Key('medicationSearchField'));
+        await tester.enterText(search, 'ibuprofen');
+        update(() => keyboardHeight = size.height > 600 ? 300 : 100);
+        await tester.pumpAndSettle();
+        final layout = tester.renderObject<RenderFlex>(
+          find.descendant(
+            of: find.byKey(const Key('addMedicationScrollView')),
+            matching: find.byType(Column),
+          ).first,
+        );
+        for (var child = layout.firstChild; child != null; child = layout.childAfter(child)) {
+          debugPrint('picker child: ${child.size}');
+        }
+        expect(
+          tester
+              .widget<EditableText>(find.byType(EditableText))
+              .focusNode
+              .hasFocus,
+          isTrue,
+        );
+        await tester.ensureVisible(search);
+        await tester.pumpAndSettle();
+        expect(search.hitTestable(), findsOneWidget);
+        await tester.enterText(search, 'no matching medicine');
+        await tester.pumpAndSettle();
+        expect(find.text('No Medications Found'), findsOneWidget);
+        update(() => keyboardHeight = 0);
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Clear Search'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Clear Search'));
+        await tester.pumpAndSettle();
+        expect(tester.widget<TextField>(search).controller!.text, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 
   testWidgets('filters medications by name and generic name', (tester) async {
