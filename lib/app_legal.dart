@@ -26,7 +26,7 @@ class PrivacyPolicyPage extends StatelessWidget {
           ),
           (
             'Your choices',
-            'You can manage camera access in device settings, export the information available to the app, and delete or update profile information from the account screens.',
+            'You can manage camera access in device settings, copy an account summary, update your profile, and remove medication regimens and their records from the app. Account deletion and a full data export are not currently available.',
           ),
           (
             'Important limitation',
