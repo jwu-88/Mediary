@@ -205,7 +205,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   // ThemeData trees on every frame of the theme transition.
   late ThemeData _lightTheme = AppTheme.lightFor(_accentColor);
   late ThemeData _darkTheme = AppTheme.darkFor(_accentColor);
-  bool _cookieBannerVisible = kIsWeb;
 
   void _setAccentColor(AppAccentColor accent) {
     if (accent == _accentColor) return;
@@ -252,18 +251,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           : AppTheme.transitionDuration,
       themeAnimationCurve: AppTheme.transitionCurve,
       builder: (context, child) {
-        final app = AppThemeTransitionSurface(
+        return AppThemeTransitionSurface(
           child: child ?? const SizedBox.shrink(),
-        );
-        if (!_cookieBannerVisible) return app;
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            app,
-            CookieBanner(
-              onDismiss: () => setState(() => _cookieBannerVisible = false),
-            ),
-          ],
         );
       },
       home: AuthGate(
@@ -916,10 +905,12 @@ class _AuthFormState extends State<AuthForm> {
   @override
   Widget build(BuildContext context) {
     final title = _createAccount ? 'Create an Account' : 'Welcome Back';
-    final action = _createAccount ? 'Create account' : 'Sign in';
+    final action = _createAccount ? 'Create Account' : 'Sign In';
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+    final viewport = MediaQuery.sizeOf(context);
+    final compactWeb = kIsWeb && viewport.width >= 900 && viewport.height < 800;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -969,248 +960,224 @@ class _AuthFormState extends State<AuthForm> {
                 padding: const EdgeInsets.all(20),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 440),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: theme.scaffoldBackgroundColor.withValues(
-                        alpha: isDark ? .93 : .95,
-                      ),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: colors.outlineVariant.withValues(alpha: .55),
-                        width: .7,
-                      ),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x38000000),
-                          blurRadius: 28,
-                          offset: Offset(0, 12),
-                        ),
-                      ],
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Theme(
-                        data: theme.copyWith(
-                          inputDecorationTheme: theme.inputDecorationTheme
-                              .copyWith(
-                                filled: true,
-                                fillColor: colors.surface.withValues(
-                                  alpha: isDark ? .48 : .82,
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide(color: colors.outline),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide(color: colors.outline),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide(
-                                    color: colors.primary,
-                                    width: 2,
-                                  ),
-                                ),
-                              ),
-                        ),
-                        child: Form(
-                          key: _formKey,
-                          autovalidateMode: AutovalidateMode.onUserInteraction,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Icon(
-                                Icons.lock_outline_rounded,
-                                color: Theme.of(context).colorScheme.primary,
-                                size: 48,
-                              ),
-                              const SizedBox(height: 24),
-                              Text(
-                                title,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .headlineMedium,
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                _createAccount
-                                    ? 'Create your Mediary account.'
-                                    : 'Sign in to Mediary.',
-                                style: Theme.of(context).textTheme.bodyLarge,
-                              ),
-                              const SizedBox(height: 32),
-                              TextFormField(
-                                key: const Key('emailField'),
-                                controller: _emailController,
-                                enabled: !_isBusy,
-                                autofillHints: const [AutofillHints.email],
-                                keyboardType: TextInputType.emailAddress,
-                                textInputAction: TextInputAction.next,
-                                onChanged: _clearStaleError,
-                                validator: _validateEmail,
-                                decoration: const InputDecoration(
-                                  labelText: 'Email',
-                                  prefixIcon: Icon(Icons.email_outlined),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              TextFormField(
-                                key: const Key('passwordField'),
-                                controller: _passwordController,
-                                enabled: !_isBusy,
-                                autofillHints: _createAccount
-                                    ? const [AutofillHints.newPassword]
-                                    : const [AutofillHints.password],
-                                obscureText: _obscurePassword,
-                                textInputAction: _createAccount
-                                    ? TextInputAction.next
-                                    : TextInputAction.done,
-                                onChanged: _clearStaleError,
-                                onFieldSubmitted: (_) => _createAccount
-                                    ? _confirmPasswordFocus.requestFocus()
-                                    : _submit(),
-                                validator: _validatePassword,
-                                decoration: InputDecoration(
-                                  labelText: 'Password',
-                                  prefixIcon: const Icon(Icons.lock_outline),
-                                  suffixIcon: IconButton(
-                                    tooltip: _obscurePassword
-                                        ? 'Show password'
-                                        : 'Hide password',
-                                    onPressed: _isBusy
-                                        ? null
-                                        : () {
-                                            unawaited(AppHaptics.selection());
-                                            setState(
-                                              () => _obscurePassword =
-                                                  !_obscurePassword,
-                                            );
-                                          },
-                                    icon: Icon(
-                                      _obscurePassword
-                                          ? Icons.visibility_outlined
-                                          : Icons.visibility_off_outlined,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      DecoratedBox(
+                        key: const Key('authCredentialsCard'),
+                        decoration: authPanelDecoration(theme),
+                        child: Padding(
+                          padding: EdgeInsets.all(compactWeb ? 20 : 24),
+                          child: Theme(
+                            data: theme.copyWith(
+                              inputDecorationTheme: theme.inputDecorationTheme
+                                  .copyWith(
+                                    filled: true,
+                                    fillColor: colors.surface.withValues(
+                                      alpha: isDark ? .48 : .82,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                      borderSide: BorderSide(
+                                        color: colors.outline,
+                                      ),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                      borderSide: BorderSide(
+                                        color: colors.outline,
+                                      ),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                      borderSide: BorderSide(
+                                        color: colors.primary,
+                                        width: 2,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ),
-                              if (_createAccount) ...[
-                                const SizedBox(height: 16),
-                                TextFormField(
-                                  key: const Key('confirmPasswordField'),
-                                  controller: _confirmPasswordController,
-                                  focusNode: _confirmPasswordFocus,
-                                  enabled: !_isBusy,
-                                  autofillHints: const [
-                                    AutofillHints.newPassword,
-                                  ],
-                                  obscureText: _obscurePassword,
-                                  textInputAction: TextInputAction.done,
-                                  onChanged: _clearStaleError,
-                                  onFieldSubmitted: (_) => _submit(),
-                                  validator: _validatePasswordConfirmation,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Confirm Password',
-                                    prefixIcon: Icon(Icons.lock_outline),
+                            ),
+                            child: Form(
+                              key: _formKey,
+                              autovalidateMode:
+                                  AutovalidateMode.onUserInteraction,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Icon(
+                                    Icons.lock_outline_rounded,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary,
+                                    size: compactWeb ? 32 : 48,
                                   ),
-                                ),
-                              ],
-                              if (_errorMessage != null) ...[
-                                const SizedBox(height: 16),
-                                Semantics(
-                                  liveRegion: true,
-                                  child: Text(
-                                    _errorMessage!,
-                                    style: TextStyle(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .error,
+                                  SizedBox(height: compactWeb ? 12 : 24),
+                                  Text(
+                                    title,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .headlineMedium,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _createAccount
+                                        ? 'Create your Mediary account.'
+                                        : 'Sign in to Mediary.',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyLarge,
+                                  ),
+                                  SizedBox(height: compactWeb ? 16 : 32),
+                                  TextFormField(
+                                    key: const Key('emailField'),
+                                    controller: _emailController,
+                                    enabled: !_isBusy,
+                                    autofillHints: const [AutofillHints.email],
+                                    keyboardType: TextInputType.emailAddress,
+                                    textInputAction: TextInputAction.next,
+                                    onChanged: _clearStaleError,
+                                    validator: _validateEmail,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Email',
+                                      prefixIcon: Icon(Icons.email_outlined),
                                     ),
                                   ),
-                                ),
-                              ],
-                              const SizedBox(height: 24),
-                              FilledButton(
-                                key: const Key('submitButton'),
-                                onPressed: _isBusy ? null : _submit,
-                                child: _isSubmitting
-                                    ? const SizedBox(
-                                        height: 20,
-                                        width: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : Text(action),
-                              ),
-                              const SizedBox(height: 12),
-                              OutlinedButton.icon(
-                                key: const Key('googleSignInButton'),
-                                onPressed:
-                                    _isBusy || widget.onGoogleSignIn == null
-                                    ? null
-                                    : _signInWithGoogle,
-                                icon: _isGoogleSubmitting
-                                    ? const SizedBox(
-                                        height: 20,
-                                        width: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Text(
-                                        'G',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
+                                  const SizedBox(height: 16),
+                                  TextFormField(
+                                    key: const Key('passwordField'),
+                                    controller: _passwordController,
+                                    enabled: !_isBusy,
+                                    autofillHints: _createAccount
+                                        ? const [AutofillHints.newPassword]
+                                        : const [AutofillHints.password],
+                                    obscureText: _obscurePassword,
+                                    textInputAction: _createAccount
+                                        ? TextInputAction.next
+                                        : TextInputAction.done,
+                                    onChanged: _clearStaleError,
+                                    onFieldSubmitted: (_) => _createAccount
+                                        ? _confirmPasswordFocus.requestFocus()
+                                        : _submit(),
+                                    validator: _validatePassword,
+                                    decoration: InputDecoration(
+                                      labelText: 'Password',
+                                      prefixIcon: const Icon(
+                                        Icons.lock_outline,
+                                      ),
+                                      suffixIcon: IconButton(
+                                        tooltip: _obscurePassword
+                                            ? 'Show password'
+                                            : 'Hide password',
+                                        onPressed: _isBusy
+                                            ? null
+                                            : () {
+                                                unawaited(
+                                                  AppHaptics.selection(),
+                                                );
+                                                setState(
+                                                  () => _obscurePassword =
+                                                      !_obscurePassword,
+                                                );
+                                              },
+                                        icon: Icon(
+                                          _obscurePassword
+                                              ? Icons.visibility_outlined
+                                              : Icons.visibility_off_outlined,
                                         ),
                                       ),
-                                label: const Text('Sign in with Google'),
-                              ),
-                              const SizedBox(height: 12),
-                              TextButton(
-                                onPressed: _isBusy ? null : _changeMode,
-                                child: Text(
-                                  _createAccount
-                                      ? 'Already have an account? Sign in'
-                                      : 'Need an account? Create one',
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Wrap(
-                                alignment: WrapAlignment.center,
-                                spacing: 4,
-                                children: [
-                                  TextButton(
-                                    key: const Key('authPrivacyPolicyLink'),
-                                    onPressed: _isBusy
-                                        ? null
-                                        : () => Navigator.of(context).push(
-                                            MaterialPageRoute<void>(
-                                              builder: (_) =>
-                                                  const PrivacyPolicyPage(),
-                                            ),
-                                          ),
-                                    child: const Text('Privacy'),
+                                    ),
                                   ),
-                                  TextButton(
-                                    key: const Key('authTermsLink'),
-                                    onPressed: _isBusy
+                                  if (_createAccount) ...[
+                                    const SizedBox(height: 16),
+                                    TextFormField(
+                                      key: const Key('confirmPasswordField'),
+                                      controller: _confirmPasswordController,
+                                      focusNode: _confirmPasswordFocus,
+                                      enabled: !_isBusy,
+                                      autofillHints: const [
+                                        AutofillHints.newPassword,
+                                      ],
+                                      obscureText: _obscurePassword,
+                                      textInputAction: TextInputAction.done,
+                                      onChanged: _clearStaleError,
+                                      onFieldSubmitted: (_) => _submit(),
+                                      validator: _validatePasswordConfirmation,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Confirm Password',
+                                        prefixIcon: Icon(Icons.lock_outline),
+                                      ),
+                                    ),
+                                  ],
+                                  if (_errorMessage != null) ...[
+                                    const SizedBox(height: 16),
+                                    Semantics(
+                                      liveRegion: true,
+                                      child: Text(
+                                        _errorMessage!,
+                                        style: TextStyle(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .error,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                  SizedBox(height: compactWeb ? 16 : 24),
+                                  FilledButton(
+                                    key: const Key('submitButton'),
+                                    onPressed: _isBusy ? null : _submit,
+                                    child: _isSubmitting
+                                        ? const SizedBox(
+                                            height: 20,
+                                            width: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : Text(action),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  OutlinedButton.icon(
+                                    key: const Key('googleSignInButton'),
+                                    onPressed:
+                                        _isBusy || widget.onGoogleSignIn == null
                                         ? null
-                                        : () => Navigator.of(context).push(
-                                            MaterialPageRoute<void>(
-                                              builder: (_) => const TermsPage(),
+                                        : _signInWithGoogle,
+                                    icon: _isGoogleSubmitting
+                                        ? const SizedBox(
+                                            height: 20,
+                                            width: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : const Text(
+                                            'G',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
                                             ),
                                           ),
-                                    child: const Text('Terms'),
+                                    label: const Text('Sign In with Google'),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  TextButton(
+                                    onPressed: _isBusy ? null : _changeMode,
+                                    child: Text(
+                                      _createAccount
+                                          ? 'Already have an account? Sign In'
+                                          : 'Need an account? Create One',
+                                    ),
                                   ),
                                 ],
                               ),
-                            ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                      SizedBox(height: compactWeb ? 12 : 20),
+                      const LegalLinksFooter(),
+                    ],
                   ),
                 ),
               ),
@@ -2625,18 +2592,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
                 ],
               ),
       );
-      if (!desktopWeb) {
-        appShell = shell;
-      } else {
-        final mediaQuery = MediaQuery.of(context);
-        final baseTextSize = mediaQuery.textScaler.scale(1);
-        appShell = MediaQuery(
-          data: mediaQuery.copyWith(
-            textScaler: TextScaler.linear(baseTextSize * 1.22),
-          ),
-          child: shell,
-        );
-      }
+      appShell = shell;
     } else {
       appShell = Scaffold(
         extendBody: true,

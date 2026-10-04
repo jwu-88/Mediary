@@ -1131,12 +1131,16 @@ class _DashboardFocusCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Text(
-                    progressLabel,
-                    style: TextStyle(
-                      color: secondary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                  Flexible(
+                    flex: 2,
+                    child: Text(
+                      progressLabel,
+                      textAlign: TextAlign.end,
+                      style: TextStyle(
+                        color: secondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ],

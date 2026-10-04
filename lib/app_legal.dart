@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'app_theme.dart';
 import 'in_app_page.dart';
-import 'web_floating_notice_card.dart';
 
 /// Supply this at build time with `--dart-define=MEDIARY_SUPPORT_EMAIL=...`.
 /// Keeping it configurable avoids publishing an unverified personal address.
@@ -175,54 +173,82 @@ class _LegalContent extends StatelessWidget {
         ],
         Text(
           'Last updated: September 2026',
-          style: text.bodySmall?.copyWith(color: AppColors.lightMutedText),
+          style: text.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
   }
 }
 
-class CookieBanner extends StatelessWidget {
-  const CookieBanner({super.key, required this.onDismiss});
+/// Shared styling for the login form and its separate legal navigation.
+BoxDecoration authPanelDecoration(ThemeData theme) {
+  return BoxDecoration(
+    color: theme.scaffoldBackgroundColor.withValues(
+      alpha: theme.brightness == Brightness.dark ? .93 : .95,
+    ),
+    borderRadius: BorderRadius.circular(24),
+    border: Border.all(
+      color: theme.colorScheme.outlineVariant.withValues(alpha: .55),
+      width: .7,
+    ),
+    boxShadow: const [
+      BoxShadow(
+        color: Color(0x38000000),
+        blurRadius: 28,
+        offset: Offset(0, 12),
+      ),
+    ],
+  );
+}
 
-  final VoidCallback onDismiss;
+/// Legal navigation stays outside the credential form.
+class LegalLinksFooter extends StatelessWidget {
+  const LegalLinksFooter({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.bottomRight,
-      child: SafeArea(
-        minimum: const EdgeInsets.all(webFloatingNoticeInset),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxWidth: webFloatingNoticeMaxWidth,
-          ),
-          child: WebFloatingNoticeCard(
-            key: const Key('cookieBanner'),
-            icon: Icons.privacy_tip_outlined,
-            title: 'Privacy & terms',
-            body: 'Mediary uses essential browser storage. Optional analytics is currently off.',
-            actions: [
-              TextButton(
-                key: const Key('cookiePrivacyButton'),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const PrivacyPolicyPage(),
+    return DecoratedBox(
+      key: const Key('authLegalFooter'),
+      decoration: authPanelDecoration(Theme.of(context)),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(24),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Privacy & Terms',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 12,
+                runSpacing: 4,
+                children: [
+                  TextButton.icon(
+                    key: const Key('authPrivacyPolicyLink'),
+                    icon: const Icon(Icons.privacy_tip_outlined, size: 18),
+                    label: const Text('Privacy Policy'),
+                    onPressed: () => pushInAppPage<void>(
+                      context,
+                      builder: (_) => const PrivacyPolicyPage(),
+                    ),
                   ),
-                ),
-                child: const Text('Privacy'),
-              ),
-              TextButton(
-                key: const Key('cookieTermsButton'),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const TermsPage()),
-                ),
-                child: const Text('Terms'),
-              ),
-              FilledButton(
-                key: const Key('cookieDismissButton'),
-                onPressed: onDismiss,
-                child: const Text('Got it'),
+                  TextButton.icon(
+                    key: const Key('authTermsLink'),
+                    icon: const Icon(Icons.description_outlined, size: 18),
+                    label: const Text('Terms of Use'),
+                    onPressed: () => pushInAppPage<void>(
+                      context,
+                      builder: (_) => const TermsPage(),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

@@ -80,12 +80,12 @@ void main() {
       expect(find.byKey(const Key('confirmPasswordField')), findsOneWidget);
       expect(find.byKey(const Key('authMedicationBackground')), findsOneWidget);
 
-      await tester.ensureVisible(find.text('Already have an account? Sign in'));
-      await tester.tap(find.text('Already have an account? Sign in'));
+      await tester.ensureVisible(find.text('Already have an account? Sign In'));
+      await tester.tap(find.text('Already have an account? Sign In'));
       await tester.pump();
 
       expect(find.text('Welcome Back'), findsOneWidget);
-      expect(find.text('Need an account? Create one'), findsOneWidget);
+      expect(find.text('Need an account? Create One'), findsOneWidget);
       expect(find.byKey(const Key('confirmPasswordField')), findsNothing);
     },
   );

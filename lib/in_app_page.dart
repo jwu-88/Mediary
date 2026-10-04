@@ -62,6 +62,7 @@ class InAppPageScaffold extends StatelessWidget {
     final contentWidth = responsiveContentWidth(
       context,
       nativeMaxWidth: maxContentWidth,
+      webMaxWidth: maxContentWidth,
     );
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -104,7 +105,6 @@ class InAppPageScaffold extends StatelessWidget {
       ),
     );
   }
-
 }
 
 @immutable

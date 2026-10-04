@@ -75,7 +75,7 @@ void main() {
     );
 
     expect(find.text('Create an Account'), findsOneWidget);
-    expect(find.text('Already have an account? Sign in'), findsOneWidget);
+    expect(find.text('Already have an account? Sign In'), findsOneWidget);
     expect(find.byKey(const Key('confirmPasswordField')), findsOneWidget);
 
     await tester.enterText(
@@ -200,7 +200,7 @@ void main() {
     await tester.tap(find.byKey(const Key('googleSignInButton')));
     await tester.pump();
     expect(calls, 1);
-    expect(find.text('Sign in with Google'), findsOneWidget);
+    expect(find.text('Sign In with Google'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('googleSignInButton')));
