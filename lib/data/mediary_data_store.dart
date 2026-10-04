@@ -210,7 +210,8 @@ class MediaryDataStore extends ChangeNotifier {
 
   Future<void> saveProfile(ProfileWrite value) async {
     final user = _user;
-    if (user == null) throw StateError('No signed-in user.');
+    final generation = _generation;
+    if (user == null || _disposed) throw StateError('No signed-in user.');
     if (value.email != (user.email ?? '')) {
       await user.verifyBeforeUpdateEmail(value.email);
       throw StateError(
@@ -219,6 +220,9 @@ class MediaryDataStore extends ChangeNotifier {
     }
     if (value.displayName != (user.displayName ?? '')) {
       await user.updateDisplayName(value.displayName);
+    }
+    if (!_isCurrent(generation)) {
+      throw StateError('Account changed while saving.');
     }
     await repository.updateProfile(value);
   }
@@ -264,23 +268,34 @@ class MediaryDataStore extends ChangeNotifier {
   }
 
   Future<Set<String>> removeMedicationAndGetRelatedIds(String id) async {
+    final generation = _generation;
+    if (_disposed) throw StateError('Account is closed.');
     _removingMedicationIds.add(id);
     try {
       // Let an already-running generator finish before querying deletions so
       // it cannot recreate occurrences after their medication was removed.
       await _doseWindowSync;
-      return await _removeMedicationAndGetRelatedIds(id);
+      if (!_isCurrent(generation)) {
+        throw StateError('Account changed while removing.');
+      }
+      return await _removeMedicationAndGetRelatedIds(id, generation);
     } finally {
-      _removingMedicationIds.remove(id);
+      if (_isCurrent(generation)) _removingMedicationIds.remove(id);
     }
   }
 
-  Future<Set<String>> _removeMedicationAndGetRelatedIds(String id) async {
+  Future<Set<String>> _removeMedicationAndGetRelatedIds(
+    String id,
+    int generation,
+  ) async {
     final scheduleIds = schedules
         .where((schedule) => schedule.medicationId == id)
         .map((schedule) => schedule.id)
         .toSet();
     final deletedDoseIds = await repository.removeMedication(id);
+    if (!_isCurrent(generation)) {
+      throw StateError('Account changed while removing.');
+    }
     final relatedIds = {...scheduleIds, ...deletedDoseIds};
     medications = medications
         .where((medication) => medication.id != id)
