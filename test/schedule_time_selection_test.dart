@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/main.dart';
 
@@ -41,8 +42,18 @@ void main() {
     expect(find.byKey(const Key('selectedScheduleTime')), findsOneWidget);
     expect(find.text('8:00 AM'), findsOneWidget);
 
-    expect(find.byKey(const Key('timeWheel_Hours')), findsOneWidget);
-    expect(find.byKey(const Key('timeWheel_Minutes')), findsOneWidget);
+    expect(
+      find.byKey(const Key('timeWheel_Hours')),
+      kIsWeb ? findsNothing : findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('timeWheel_Minutes')),
+      kIsWeb ? findsNothing : findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('medicationTimeKeyboardInput')),
+      kIsWeb ? findsOneWidget : findsNothing,
+    );
     expect(find.byKey(const Key('timeWheel_Seconds')), findsNothing);
 
     await tester.tap(find.byKey(const Key('confirmScheduleTimeButton')));
@@ -73,25 +84,59 @@ void main() {
     expect(done.onPressed, isNull);
   });
 
-  testWidgets('wide layouts keep the time wheels in a readable panel', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1280, 720);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets(
+    'desktop time entry validates hours and minutes and accepts presets',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 720);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: MedicationTimeSelectionPage(
-          initialTime: TimeOfDay(hour: 11, minute: 38),
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: MedicationTimeSelectionPage(
+            initialTime: TimeOfDay(hour: 11, minute: 38),
+          ),
         ),
-      ),
-    );
+      );
 
-    expect(
-      tester.getSize(find.byKey(const Key('medicationTimePickerWheelGroup'))).width,
-      560,
-    );
-  });
+      expect(
+        find.byKey(const Key('medicationTimeKeyboardInput')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('timeWheel_Hours')), findsNothing);
+      await tester.enterText(find.byKey(const Key('scheduleHourInput')), '9');
+      await tester.enterText(
+        find.byKey(const Key('scheduleMinuteInput')),
+        '75',
+      );
+      await tester.pump();
+      expect(
+        tester
+            .widget<TextButton>(
+              find.byKey(const Key('confirmScheduleTimeButton')),
+            )
+            .onPressed,
+        isNull,
+      );
+      await tester.enterText(
+        find.byKey(const Key('scheduleMinuteInput')),
+        '45',
+      );
+      await tester.pump();
+      expect(find.text('9:45 AM'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextButton>(
+              find.byKey(const Key('confirmScheduleTimeButton')),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      await tester.tap(find.byKey(const Key('scheduleTimePreset_Bedtime')));
+      await tester.pump();
+      expect(find.text('9:00 PM'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

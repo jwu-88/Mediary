@@ -9,8 +9,79 @@ import 'package:mediary/profile_screen.dart';
 import 'package:mediary/scanner_screens.dart';
 import 'package:mediary/settings_screen.dart';
 import 'package:mediary/weekly_report_screen.dart';
+import 'package:mediary/main.dart';
+import 'package:mediary/app_legal.dart';
 
 void main() {
+  testWidgets(
+    'web destinations stay usable across window sizes and enlarged text',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      for (final size in [
+        const Size(360, 740),
+        const Size(768, 600),
+        const Size(1440, 900),
+        const Size(2560, 1440),
+      ]) {
+        tester.view.physicalSize = size;
+        final pages = <Widget>[
+          AuthForm(
+            onSubmit: ({
+              required email,
+              required password,
+              required createAccount,
+            }) async {},
+          ),
+          DashboardScreen(
+            email: 'person@example.com',
+            now: DateTime(2026, 10, 3),
+          ),
+          CalendarScreen(initialDate: DateTime(2026, 10, 3)),
+          const MedicationLibraryScreen(),
+          const ProfileScreen(
+            email: 'person@example.com',
+            displayName: 'Taylor Morgan',
+          ),
+          SettingsScreen(
+            appearanceMode: ThemeMode.system,
+            onAppearanceModeChanged: (_) {},
+            accentColor: AppAccentColor.blue,
+            onAccentColorChanged: (_) {},
+          ),
+          const AddMedicationScreen(),
+          const ScanResultScreen(bottomNavigationInset: 0),
+          WeeklyReportScreen(weekEnding: DateTime(2026, 10, 3)),
+          const PrivacyPolicyPage(),
+          const TermsPage(),
+          const MedicationTimeSelectionPage(
+            initialTime: TimeOfDay(hour: 9, minute: 30),
+          ),
+        ];
+        for (final page in pages) {
+          await tester.pumpWidget(
+            MaterialApp(
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: const TextScaler.linear(1.3)),
+                child: child!,
+              ),
+              home: Scaffold(body: page),
+            ),
+          );
+          await tester.pump();
+          expect(
+            tester.takeException(),
+            isNull,
+            reason: '${page.runtimeType} at $size',
+          );
+          await tester.pumpWidget(const SizedBox.shrink());
+        }
+      }
+    },
+  );
+
   void useSize(WidgetTester tester, Size size) {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'app_interactions.dart';
@@ -785,13 +786,20 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 420),
-            child: CupertinoDatePicker(
-              mode: CupertinoDatePickerMode.date,
-              initialDateTime: _startDate,
-              minimumDate: DateTime(2020),
-              maximumDate: DateTime(2100),
-              onDateTimeChanged: (value) => draft = value,
-            ),
+            child: kIsWeb || AppBreakpoints.isDesktop(context)
+                ? CalendarDatePicker(
+                    initialDate: _startDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2100),
+                    onDateChanged: (value) => draft = value,
+                  )
+                : CupertinoDatePicker(
+                    mode: CupertinoDatePickerMode.date,
+                    initialDateTime: _startDate,
+                    minimumDate: DateTime(2020),
+                    maximumDate: DateTime(2100),
+                    onDateTimeChanged: (value) => draft = value,
+                  ),
           ),
         ),
       ),
@@ -1260,14 +1268,16 @@ class _ResultHero extends StatelessWidget {
                       color: palette.success,
                     ),
                     const SizedBox(width: 5),
-                    Text(
-                      medication == null
-                          ? 'MANUAL REVIEW REQUIRED'
-                          : 'CATALOG MATCH',
-                      style: TextStyle(
-                        color: palette.success,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
+                    Flexible(
+                      child: Text(
+                        medication == null
+                            ? 'MANUAL REVIEW REQUIRED'
+                            : 'CATALOG MATCH',
+                        style: TextStyle(
+                          color: palette.success,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ],
