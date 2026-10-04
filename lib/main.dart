@@ -2668,7 +2668,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
   }
 
   String _formatDoseAmount(double amount) => amount == amount.roundToDouble()
-      ? amount.toInt().toString()
+      ? amount.toStringAsFixed(0)
       : amount.toString();
 
   List<CalendarDoseData> _calendarDoses(MediaryDataStore? store) {
