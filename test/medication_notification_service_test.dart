@@ -208,6 +208,7 @@ void main() {
       late List<MethodCall> calls;
       late List<Map<String, Object>> delivered;
       late List<Map<String, Object>> pending;
+      late bool permissionEnabled;
       late FlutterLocalNotificationsPlatform previousPlatform;
       setUp(() {
         debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
@@ -216,12 +217,18 @@ void main() {
         calls = [];
         delivered = [];
         pending = [];
+        permissionEnabled = true;
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(channel, (call) async {
               calls.add(call);
               switch (call.method) {
                 case 'initialize':
                   return true;
+                case 'checkPermissions':
+                  return {
+                    'isEnabled': permissionEnabled,
+                    'isAlertEnabled': permissionEnabled,
+                  };
                 case 'getActiveNotifications':
                   return delivered.toList();
                 case 'pendingNotificationRequests':
@@ -242,6 +249,61 @@ void main() {
         debugDefaultTargetPlatformOverride = null;
         FlutterLocalNotificationsPlatform.instance = previousPlatform;
       });
+
+      test(
+        'denied iOS permission skips scheduling and reports denial',
+        () async {
+          permissionEnabled = false;
+          final service = DefaultMedicationNotificationService();
+          final now = DateTime(2026, 9, 13, 9);
+          expect(await service.permissionState(), 'denied');
+          await service.syncDueDoses(
+            doses: [
+              dose(
+                id: 'denied-future',
+                scheduledFor: now.add(const Duration(hours: 1)),
+              ),
+            ],
+            medicationNames: const {},
+            now: now,
+          );
+          expect(
+            calls.where((call) => call.method == 'zonedSchedule'),
+            isEmpty,
+          );
+          await service.dispose();
+        },
+      );
+
+      test(
+        'iOS retains the nearest 64 future reminders from an unsorted regimen',
+        () async {
+          final service = DefaultMedicationNotificationService();
+          final now = DateTime.now().add(const Duration(days: 1));
+          await service.syncDueDoses(
+            doses: [
+              for (var i = 100; i >= 1; i--)
+                dose(
+                  id: 'future-$i',
+                  scheduledFor: now.add(Duration(minutes: i)),
+                ),
+            ],
+            medicationNames: const {},
+            now: now,
+          );
+          final scheduled = calls
+              .where((call) => call.method == 'zonedSchedule')
+              .toList();
+          expect(scheduled, hasLength(64));
+          final payloads = scheduled.map(
+            (call) => (call.arguments as Map)['payload'],
+          );
+          expect(payloads, contains('mediary:dose:future-1'));
+          expect(payloads, contains('mediary:dose:future-64'));
+          expect(payloads, isNot(contains('mediary:dose:future-65')));
+          await service.dispose();
+        },
+      );
 
       test(
         'opening clears delivered alerts but keeps future requests',
