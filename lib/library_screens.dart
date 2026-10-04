@@ -252,9 +252,11 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
     final contentWidth = viewportWidth >= 900
         ? responsiveContentWidth(context, nativeMaxWidth: 1120)
         : 520.0;
-    return ColoredBox(
-      color: _background,
-      child: SafeArea(
+    // This screen is also pushed directly from scan review, where the previous
+    // route's Scaffold cannot provide Material ancestry or keyboard resizing.
+    return Scaffold(
+      backgroundColor: _background,
+      body: SafeArea(
         bottom: false,
         child: Center(
           child: ConstrainedBox(
@@ -345,6 +347,7 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
                           onReset: () {
                             _searchController.clear();
                             setState(() => _savedOnly = false);
+                            _onSearchChanged('');
                           },
                         )
                       else
@@ -586,12 +589,7 @@ class _MedicationList extends StatelessWidget {
               for (var index = 0; index < medications.length; index++) ...[
                 rowFor(index),
                 if (index != medications.length - 1)
-                  Divider(
-                    height: 1,
-                    indent: 11,
-                    color: line,
-                    thickness: .7,
-                  ),
+                  Divider(height: 1, indent: 11, color: line, thickness: .7),
               ],
             ],
           );

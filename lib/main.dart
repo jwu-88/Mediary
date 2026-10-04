@@ -2139,14 +2139,9 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
     try {
       final page = await _catalogClient.search(query);
       if (page.items.isEmpty) return null;
-      MedicationCatalogRecord? candidate = matchMedicationCatalogRecord(
-        query,
-        page.items,
-      );
-      // RxNorm often returns a list of strength/form variants. Any result
-      // returned for the scan's generic name is a better review target than
-      // incorrectly reporting that the medication was not found.
-      candidate ??= page.items.length == 1 ? page.items.first : null;
+      final candidate = matchMedicationCatalogRecord(query, page.items);
+      // Approximate catalog results still need a name match. A lone result
+      // can be a different formulation (for example Claritin vs Claritin-D).
       if (candidate == null) return null;
       try {
         return await _catalogClient.getDetails(candidate.rxcui);

@@ -75,14 +75,16 @@
       if (!window.Tesseract) return '';
       try {
         if (!window.MediaryOcr._worker) {
-          // createWorker is asynchronous in Tesseract.js 4. The old
-          // load/loadLanguage/initialize sequence leaves a Promise here and
-          // makes every browser scan fail before recognition starts.
-          window.MediaryOcr._worker = await Tesseract.createWorker('eng', 1, {
+          // This page pins Tesseract.js 4: createWorker accepts options, and
+          // language loading/initialization must finish before recognition.
+          // The version-5 createWorker('eng', ...) signature fails on v4.
+          window.MediaryOcr._worker = await Tesseract.createWorker({
             workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/worker.min.js',
             langPath: 'https://tessdata.projectnaptha.com/4.0.0',
             corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@4.0.4'
           });
+          await window.MediaryOcr._worker.loadLanguage('eng');
+          await window.MediaryOcr._worker.initialize('eng');
         }
 
         // Normalize through a canvas so browsers decode AVIF/HEIC uploads
@@ -101,10 +103,7 @@
               );
               // Upscale small labels, but never enlarge an already large
               // upload beyond the OCR worker's practical input size.
-              var scale = Math.min(
-                2.5,
-                Math.max(1, maxDimension / sourceDimension)
-              );
+              var scale = Math.min(2.5, maxDimension / sourceDimension);
               var canvas = document.createElement('canvas');
               canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
               canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
@@ -246,14 +245,62 @@
           binaryContext.putImageData(binaryPixels, 0, 0);
         }
 
+        // A luminance conversion can erase yellow lettering on blue packages.
+        // The green channel separates those colors while retaining white text;
+        // keep it as an additional pass, never as a replacement for full color.
+        var channelCanvas = document.createElement('canvas');
+        channelCanvas.width = sourceCanvas.width;
+        channelCanvas.height = sourceCanvas.height;
+        var channelContext = channelCanvas.getContext('2d');
+        if (channelContext) {
+          var channelPixels = channelContext.createImageData(sourceCanvas.width, sourceCanvas.height);
+          for (var channelIndex = 0; channelIndex < imageData.data.length; channelIndex += 4) {
+            var channelGray = imageData.data[channelIndex + 1];
+            channelPixels.data[channelIndex] = channelGray;
+            channelPixels.data[channelIndex + 1] = channelGray;
+            channelPixels.data[channelIndex + 2] = channelGray;
+            channelPixels.data[channelIndex + 3] = 255;
+          }
+          channelContext.putImageData(channelPixels, 0, 0);
+        }
+
         var variants = [
           { canvas: enhancedCanvas, pageSegMode: '6' },
           { canvas: enhancedCanvas, pageSegMode: '11' },
           { canvas: binaryCanvas, pageSegMode: '11' },
           { canvas: sourceCanvas, pageSegMode: '11' }
         ];
-        var bestText = '';
-        var bestScore = -1;
+        if (channelContext) variants.push({ canvas: channelCanvas, pageSegMode: '11' });
+        // Packaging in a photo is rarely a perfectly upright document. Keep
+        // full-image passes above, then focus on the central label and retry
+        // modest skew in both directions. This reduces background interference
+        // without making a central crop the only way to recognize a label.
+        for (var angle of [0, -8, 8]) {
+          var focusedCanvas = document.createElement('canvas');
+          focusedCanvas.width = Math.round(sourceCanvas.width * 0.84);
+          focusedCanvas.height = Math.round(sourceCanvas.height * 0.75);
+          var focusedContext = focusedCanvas.getContext('2d');
+          if (!focusedContext) continue;
+          focusedContext.fillStyle = '#ffffff';
+          focusedContext.fillRect(0, 0, focusedCanvas.width, focusedCanvas.height);
+          focusedContext.translate(focusedCanvas.width / 2, focusedCanvas.height / 2);
+          focusedContext.rotate(angle * Math.PI / 180);
+          focusedContext.drawImage(
+            channelContext ? channelCanvas : enhancedCanvas,
+            sourceCanvas.width * 0.08,
+            sourceCanvas.height * 0.15,
+            focusedCanvas.width,
+            focusedCanvas.height,
+            -focusedCanvas.width / 2,
+            -focusedCanvas.height / 2,
+            focusedCanvas.width,
+            focusedCanvas.height
+          );
+          variants.push({ canvas: focusedCanvas, pageSegMode: '11' });
+        }
+        // Preserve useful lines from every pass. Picking only the longest
+        // output can discard the readable brand in favor of background text.
+        var recognizedLines = new Map();
         for (var variant of variants) {
           await window.MediaryOcr._worker.setParameters({
             tessedit_pageseg_mode: variant.pageSegMode,
@@ -263,15 +310,14 @@
             variant.canvas.toDataURL('image/png')
           );
           var text = attempt && attempt.data ? (attempt.data.text || '') : '';
-          var letters = (text.match(/[A-Za-z]/g) || []).length;
-          var digits = (text.match(/[0-9]/g) || []).length;
-          var score = letters * 2 + digits + Math.min(24, text.length) * 0.15;
-          if (score > bestScore) {
-            bestScore = score;
-            bestText = text;
+          for (var line of text.split(/[\r\n]+/)) {
+            var trimmed = line.trim();
+            if (trimmed && !recognizedLines.has(trimmed.toLowerCase())) {
+              recognizedLines.set(trimmed.toLowerCase(), trimmed);
+            }
           }
         }
-        return bestText;
+        return Array.from(recognizedLines.values()).join('\n');
       } catch (error) {
         if (window.MediaryOcr._worker) {
           try { await window.MediaryOcr._worker.terminate(); } catch (_) {}
@@ -280,6 +326,17 @@
         console.warn('Mediary browser OCR failed', error);
         return '';
       }
+    };
+    // A single worker cannot safely process overlapping parameter/recognition
+    // jobs. Queue scans and recover after failures without poisoning retries.
+    window.MediaryOcr._recognizeImage = window.MediaryOcr.recognize;
+    window.MediaryOcr._queue = Promise.resolve();
+    window.MediaryOcr.recognize = function (imageDataUrl) {
+      var scan = window.MediaryOcr._queue.then(function () {
+        return window.MediaryOcr._recognizeImage(imageDataUrl);
+      });
+      window.MediaryOcr._queue = scan.catch(function () {});
+      return scan;
     };
   </script>
   <!--

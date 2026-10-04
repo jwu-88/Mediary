@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/add_medication_screen.dart';
@@ -20,7 +22,107 @@ class _StateCatalogClient implements MedicationCatalogClient {
   }
 }
 
+class _RecoveringCatalogClient implements MedicationCatalogClient {
+  final requests = <String>[];
+  final pending = <String, Completer<CatalogSearchPage>>{};
+  bool fail = true;
+
+  @override
+  Future<CatalogSearchPage> search(String query) async {
+    requests.add(query);
+    if (query == 'pending') {
+      return (pending[query] = Completer<CatalogSearchPage>()).future;
+    }
+    if (fail) throw const MedicationCatalogException('offline');
+    return CatalogSearchPage(
+      sourceVersion: 'test',
+      items: query == 'unknown'
+          ? const []
+          : const [MedicationCatalogRecord(rxcui: '1', name: 'Ibuprofen')],
+    );
+  }
+
+  @override
+  Future<MedicationCatalogRecord> getDetails(String rxcui) async =>
+      MedicationCatalogRecord(rxcui: rxcui, name: 'Ibuprofen');
+}
+
 void main() {
+  testWidgets('retry repeats the failed query and permits selection', (
+    tester,
+  ) async {
+    final client = _RecoveringCatalogClient();
+    await tester.pumpWidget(
+      MaterialApp(home: AddMedicationScreen(catalogClient: client)),
+    );
+    await tester.enterText(
+      find.byKey(const Key('medicationSearchField')),
+      'ibuprofen',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Catalog unavailable'), findsOneWidget);
+    client.fail = false;
+    await tester.tap(find.byKey(const Key('retryMedicationSearchButton')));
+    await tester.pumpAndSettle();
+    expect(client.requests, ['ibuprofen', 'ibuprofen']);
+    await tester.tap(find.byKey(const Key('medicationOption_1')));
+    await tester.pumpAndSettle();
+    expect(find.text('1 Selected'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('clear resets failed and empty searches before searching again', (
+    tester,
+  ) async {
+    final client = _RecoveringCatalogClient();
+    await tester.pumpWidget(
+      MaterialApp(home: AddMedicationScreen(catalogClient: client)),
+    );
+    final search = find.byKey(const Key('medicationSearchField'));
+    await tester.enterText(search, 'ibuprofen');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Clear Search'));
+    await tester.pumpAndSettle();
+    expect(find.text('Catalog unavailable'), findsNothing);
+    expect(find.text('Search the medication catalog'), findsOneWidget);
+    expect(tester.widget<TextField>(search).controller!.text, isEmpty);
+
+    client.fail = false;
+    await tester.enterText(search, 'unknown');
+    await tester.pumpAndSettle();
+    expect(find.text('No Medications Found'), findsOneWidget);
+    await tester.tap(find.text('Clear Search'));
+    await tester.pumpAndSettle();
+    await tester.enterText(search, 'ibuprofen');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('medicationOption_1')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('clearing a pending search ignores its late failure', (
+    tester,
+  ) async {
+    final client = _RecoveringCatalogClient()..fail = false;
+    await tester.pumpWidget(
+      MaterialApp(home: AddMedicationScreen(catalogClient: client)),
+    );
+    final search = find.byKey(const Key('medicationSearchField'));
+    await tester.enterText(search, 'pending');
+    await tester.pump(const Duration(milliseconds: 180));
+    await tester.tap(find.byKey(const Key('liquidGlassSearchClearButton')));
+    await tester.pump();
+    client.pending['pending']!.completeError(
+      const MedicationCatalogException('late failure'),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Catalog unavailable'), findsNothing);
+    expect(find.text('Search the medication catalog'), findsOneWidget);
+    await tester.enterText(search, 'ibuprofen');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('medicationOption_1')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('live picker starts with an explicit search prompt', (
     tester,
   ) async {
