@@ -198,6 +198,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Mediary Health Report'), findsOneWidget);
+    expect(find.textContaining('Blood Type: Not provided'), findsOneWidget);
+    expect(find.textContaining('Allergies: None recorded'), findsOneWidget);
     expect(find.text('Copy'), findsOneWidget);
   });
 

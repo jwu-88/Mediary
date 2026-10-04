@@ -569,8 +569,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final report =
         'Mediary Health Report\n'
         'Name: $_savedName\n'
-        'Blood Type: $_savedBloodType\n'
-        'Allergies: ${_savedAllergies.isEmpty ? 'None' : _savedAllergies.join(', ')}\n'
+        'Blood Type: ${_savedBloodType.isEmpty ? 'Not provided' : _savedBloodType}\n'
+        'Allergies: ${_savedAllergies.isEmpty ? 'None recorded' : _savedAllergies.join(', ')}\n'
         'Active Medications: $_visibleActiveMedicationCount\n'
         'Care Team: $_savedCareTeam';
     return _openInfoPage(
@@ -583,8 +583,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _showEmergencyProfile() {
     final summary =
         '$_savedName\n'
-        'Blood Type: $_savedBloodType\n'
-        'Allergies: ${_savedAllergies.isEmpty ? 'None' : _savedAllergies.join(', ')}\n'
+        'Blood Type: ${_savedBloodType.isEmpty ? 'Not provided' : _savedBloodType}\n'
+        'Allergies: ${_savedAllergies.isEmpty ? 'None recorded' : _savedAllergies.join(', ')}\n'
         'Care Team: $_savedCareTeam';
     return _openInfoPage(
       title: 'Emergency Profile',
@@ -887,6 +887,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ? DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           key: const Key('bloodTypePicker'),
+                          isExpanded: true,
                           value: _draftBloodType,
                           isDense: true,
                           alignment: Alignment.center,
