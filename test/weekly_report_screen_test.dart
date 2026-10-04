@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/app_theme.dart';
+import 'package:mediary/data/mediary_repository.dart';
 import 'package:mediary/weekly_report_screen.dart';
 
 void main() {
@@ -170,5 +171,195 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Open Report'), findsOneWidget);
     expect(find.text('Weekly Report'), findsNothing);
+  });
+
+  testWidgets(
+    'skipped and missed doses agree across chart summary and saved report',
+    (tester) async {
+      ReportWrite? saved;
+      await tester.pumpWidget(
+        buildReport(
+          home: WeeklyReportScreen(
+            weekEnding: DateTime(2026, 10, 4),
+            dailyScheduled: const [5],
+            dailyTaken: const [1],
+            dailySkipped: const [2],
+            onSaveReport: (value) async {
+              saved = value;
+              return 'report';
+            },
+          ),
+        ),
+      );
+      await tester.scrollUntilVisible(
+        find.text('2 missed doses on Mon'),
+        150,
+        scrollable: find.byType(Scrollable),
+      );
+      expect(find.text('2 missed doses on Mon'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('prepareSummaryButton')),
+        300,
+        scrollable: find.byType(Scrollable),
+      );
+      await tester.tap(find.byKey(const Key('prepareSummaryButton')));
+      await tester.pumpAndSettle();
+      expect(saved!.missedCount, 2);
+      expect(saved!.skippedCount, 2);
+      expect(
+        saved!.takenCount + saved!.skippedCount + saved!.missedCount,
+        saved!.doseCount,
+      );
+      expect(
+        find.textContaining('2 scheduled doses were missed'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'explicit missed counts leave future and pending doses unmissed',
+    (tester) async {
+      ReportWrite? saved;
+      await tester.pumpWidget(
+        buildReport(
+          home: WeeklyReportScreen(
+            weekEnding: DateTime(2026, 10, 4),
+            dailyScheduled: const [0, 0, 0, 0, 0, 0, 3],
+            dailyMissed: const [],
+            onSaveReport: (value) async {
+              saved = value;
+              return 'report';
+            },
+          ),
+        ),
+      );
+      await tester.scrollUntilVisible(
+        find.text('No missed doses'),
+        150,
+        scrollable: find.byType(Scrollable),
+      );
+      expect(find.text('No missed doses'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('prepareSummaryButton')),
+        300,
+        scrollable: find.byType(Scrollable),
+      );
+      await tester.tap(find.byKey(const Key('prepareSummaryButton')));
+      await tester.pumpAndSettle();
+      expect(saved!.doseCount, 3);
+      expect(saved!.missedCount, 0);
+      expect(
+        find.textContaining('No scheduled doses were missed'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'timing average uses each dose sample without zero padding or cancellation',
+    (tester) async {
+      await tester.pumpWidget(
+        buildReport(
+          home: WeeklyReportScreen(
+            weekEnding: DateTime(2026, 10, 4),
+            dailyTaken: const [2],
+            dailyScheduled: const [2],
+            timingOffsetsMinutes: const [0],
+            timingSampleOffsetsMinutes: const [-12, 12],
+          ),
+        ),
+      );
+      await tester.scrollUntilVisible(
+        find.text('12 Min Average'),
+        150,
+        scrollable: find.byType(Scrollable),
+      );
+      expect(find.text('12 Min Average'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('prepareSummaryButton')),
+        300,
+        scrollable: find.byType(Scrollable),
+      );
+      await tester.tap(find.byKey(const Key('prepareSummaryButton')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('average of 12 minutes'), findsOneWidget);
+    },
+  );
+
+  testWidgets('explicit empty timing samples show unavailable timing data', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildReport(
+        home: WeeklyReportScreen(
+          weekEnding: DateTime(2026, 10, 4),
+          timingOffsetsMinutes: const [25, 0, 0, 0, 0, 0, 0],
+          timingSampleOffsetsMinutes: const [],
+        ),
+      ),
+    );
+    await tester.scrollUntilVisible(
+      find.text('No Timing Data'),
+      150,
+      scrollable: find.byType(Scrollable),
+    );
+    expect(find.text('No Timing Data'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('prepareSummaryButton')),
+      300,
+      scrollable: find.byType(Scrollable),
+    );
+    await tester.tap(find.byKey(const Key('prepareSummaryButton')));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('No dose timing data is available.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('rolling report labels match a week ending on Wednesday', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      buildReport(
+        home: WeeklyReportScreen(
+          weekEnding: DateTime(2026, 10, 7),
+          dailyTaken: const [1, 0, 0, 0, 0, 0, 2],
+          dailyScheduled: const [1, 0, 0, 0, 0, 0, 2],
+        ),
+      ),
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('dailyDoseChartSemantics')),
+      150,
+      scrollable: find.byType(Scrollable),
+    );
+    final label = tester
+        .getSemantics(find.byKey(const Key('dailyDoseChartSemantics')))
+        .label;
+    expect(label, contains('Thursday: 1 of 1 taken'));
+    expect(label, contains('Wednesday: 2 of 2 taken'));
+    semantics.dispose();
+  });
+
+  testWidgets('legacy timing input averages only supplied observations', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildReport(
+        home: WeeklyReportScreen(
+          weekEnding: DateTime(2026, 10, 4),
+          timingOffsetsMinutes: const [14],
+        ),
+      ),
+    );
+    await tester.scrollUntilVisible(
+      find.text('14 Min Average'),
+      150,
+      scrollable: find.byType(Scrollable),
+    );
+    expect(find.text('14 Min Average'), findsOneWidget);
   });
 }
