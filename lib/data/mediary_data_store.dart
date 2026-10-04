@@ -23,6 +23,9 @@ class MediaryDataStore extends ChangeNotifier {
   bool isLoading = true;
   Object? error;
   User? _user;
+  bool _disposed = false;
+  int _generation = 0;
+  bool _isCurrent(int generation) => !_disposed && generation == _generation;
   String? get userId => _user?.uid;
   var _receivedProfile = false;
   var _receivedMedications = false;
@@ -47,7 +50,11 @@ class MediaryDataStore extends ChangeNotifier {
 
   Future<void> start(User user) async {
     if (_user?.uid == user.uid && _subscriptions.isNotEmpty) return;
-    await stop();
+    if (_disposed) return;
+    final stopping = stop();
+    final generation = _generation;
+    await stopping;
+    if (!_isCurrent(generation)) return;
     _user = user;
     isLoading = true;
     error = null;
@@ -55,56 +62,98 @@ class MediaryDataStore extends ChangeNotifier {
 
     try {
       _subscriptions.add(
-        repository.watchProfile().listen((value) {
-          profile = value;
-          _receivedProfile = true;
-          _finishInitialLoad();
-        }, onError: _handleError),
+        repository.watchProfile().listen(
+          (value) {
+            if (!_isCurrent(generation)) return;
+            profile = value;
+            _receivedProfile = true;
+            _finishInitialLoad();
+          },
+          onError: (Object exception, StackTrace stackTrace) {
+            if (_isCurrent(generation)) _handleError(exception, stackTrace);
+          },
+        ),
       );
       _subscriptions.add(
-        repository.watchMedications().listen((value) {
-          medications = value;
-          _receivedMedications = true;
-          _finishInitialLoad();
-          _maybeEnsureDoseWindow();
-        }, onError: _handleError),
+        repository.watchMedications().listen(
+          (value) {
+            if (!_isCurrent(generation)) return;
+            medications = value;
+            _receivedMedications = true;
+            _finishInitialLoad();
+            _maybeEnsureDoseWindow();
+          },
+          onError: (Object exception, StackTrace stackTrace) {
+            if (_isCurrent(generation)) _handleError(exception, stackTrace);
+          },
+        ),
       );
       _subscriptions.add(
-        repository.watchSchedules().listen((value) {
-          schedules = value;
-          _receivedSchedules = true;
-          _finishInitialLoad();
-          _maybeEnsureDoseWindow();
-        }, onError: _handleError),
+        repository.watchSchedules().listen(
+          (value) {
+            if (!_isCurrent(generation)) return;
+            schedules = value;
+            _receivedSchedules = true;
+            _finishInitialLoad();
+            _maybeEnsureDoseWindow();
+          },
+          onError: (Object exception, StackTrace stackTrace) {
+            if (_isCurrent(generation)) _handleError(exception, stackTrace);
+          },
+        ),
       );
       _subscriptions.add(
-        repository.watchDoseLogs().listen((value) {
-          doseLogs = value;
-          _receivedDoseLogs = true;
-          _finishInitialLoad();
-          _maybeEnsureDoseWindow();
-        }, onError: _handleError),
+        repository.watchDoseLogs().listen(
+          (value) {
+            if (!_isCurrent(generation)) return;
+            doseLogs = value;
+            _receivedDoseLogs = true;
+            _finishInitialLoad();
+            _maybeEnsureDoseWindow();
+          },
+          onError: (Object exception, StackTrace stackTrace) {
+            if (_isCurrent(generation)) _handleError(exception, stackTrace);
+          },
+        ),
       );
       _subscriptions.add(
-        repository.watchSavedMedications().listen((value) {
-          savedMedications = value;
-          _receivedSavedMedications = true;
-          _finishInitialLoad();
-        }, onError: _handleError),
+        repository.watchSavedMedications().listen(
+          (value) {
+            if (!_isCurrent(generation)) return;
+            savedMedications = value;
+            _receivedSavedMedications = true;
+            _finishInitialLoad();
+          },
+          onError: (Object exception, StackTrace stackTrace) {
+            if (_isCurrent(generation)) _handleError(exception, stackTrace);
+          },
+        ),
       );
       _subscriptions.add(
-        repository.watchReports().listen((value) {
-          reports = value;
-          _receivedReports = true;
-          _finishInitialLoad();
-        }, onError: _handleError),
+        repository.watchReports().listen(
+          (value) {
+            if (!_isCurrent(generation)) return;
+            reports = value;
+            _receivedReports = true;
+            _finishInitialLoad();
+          },
+          onError: (Object exception, StackTrace stackTrace) {
+            if (_isCurrent(generation)) _handleError(exception, stackTrace);
+          },
+        ),
       );
       _subscriptions.add(
-        repository.watchScans().listen((value) {
-          scans = value;
-          _receivedScans = true;
-          _finishInitialLoad();
-        }, onError: _handleError),
+        repository.watchScans().listen(
+          (value) {
+            if (!_isCurrent(generation)) return;
+            scans = value;
+            _receivedScans = true;
+            _finishInitialLoad();
+          },
+          onError: (Object exception, StackTrace stackTrace) {
+            if (_isCurrent(generation)) _handleError(exception, stackTrace);
+          },
+        ),
       );
       // Hydrate the user's medication data independently of profile setup.
       // Profile normalization is a write and can fail or be delayed on a
@@ -112,25 +161,26 @@ class MediaryDataStore extends ChangeNotifier {
       // reaching the UI.
       await repository.ensureProfile(user);
     } catch (exception) {
-      _handleError(exception);
+      if (_isCurrent(generation)) _handleError(exception);
     }
   }
 
   void _finishInitialLoad() {
+    if (_disposed) return;
     isLoading = !hasInitialData;
     notifyListeners();
   }
 
   void _handleError(Object exception, [StackTrace? stackTrace]) {
+    if (_disposed) return;
     error = exception;
     isLoading = false;
     notifyListeners();
   }
 
   Future<void> stop() async {
-    for (final subscription in _subscriptions) {
-      await subscription.cancel();
-    }
+    _generation++;
+    final subscriptions = List.of(_subscriptions);
     _subscriptions.clear();
     _user = null;
     profile = null;
@@ -153,6 +203,9 @@ class MediaryDataStore extends ChangeNotifier {
     _removingMedicationIds.clear();
     isLoading = true;
     error = null;
+    await Future.wait(
+      subscriptions.map((subscription) => subscription.cancel()),
+    );
   }
 
   Future<void> saveProfile(ProfileWrite value) async {
@@ -280,6 +333,7 @@ class MediaryDataStore extends ChangeNotifier {
     }
     _lastDoseWindowSignature = signature;
     _doseWindowSyncInFlight = true;
+    final generation = _generation;
     _doseWindowSync = () async {
       var completed = false;
       try {
@@ -291,11 +345,15 @@ class MediaryDataStore extends ChangeNotifier {
       } catch (exception, stackTrace) {
         // Keep the active UI available when a background reconciliation is
         // temporarily offline. The next schedule/profile snapshot retries.
-        _lastDoseWindowSignature = null;
-        _handleError(exception, stackTrace);
+        if (_isCurrent(generation)) {
+          _lastDoseWindowSignature = null;
+          _handleError(exception, stackTrace);
+        }
       } finally {
-        _doseWindowSyncInFlight = false;
-        if (completed) _maybeEnsureDoseWindow();
+        if (_isCurrent(generation)) {
+          _doseWindowSyncInFlight = false;
+          if (completed) _maybeEnsureDoseWindow();
+        }
       }
     }();
     unawaited(_doseWindowSync);
@@ -335,6 +393,7 @@ class MediaryDataStore extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     unawaited(stop());
     super.dispose();
   }

@@ -434,6 +434,7 @@ class _AuthGateState extends State<AuthGate> {
           );
         }
 
+        _syncDataStore(null);
         _confirmedVerifiedUid = null;
 
         return WebPageMetadata(
