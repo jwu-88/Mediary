@@ -33,7 +33,7 @@ void main() {
   test('native capture passes the confirmed camera bytes to OCR', () async {
     final bytes = Uint8List.fromList([1, 2, 3, 4]);
     final picker = _CameraPicker(
-      file: XFile.fromData(bytes, path: 'camera.jpg'),
+      file: XFile.fromData(bytes, name: 'camera.jpg', path: 'camera.jpg'),
     );
     final image = await captureMedicationPhoto(picker: picker);
     expect(picker.requestedSource, ImageSource.camera);
