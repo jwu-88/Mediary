@@ -11,6 +11,7 @@ import 'package:mediary/firebase_options.dart';
 import 'package:mediary/in_app_page.dart';
 import 'package:mediary/liquid_glass_tab_bar.dart';
 import 'package:mediary/main.dart';
+import 'package:mediary/medication_scan.dart';
 import 'package:mediary/profile_screen.dart';
 import 'package:mediary/settings_screen.dart';
 import 'package:mediary/web_navigation_sidebar.dart';
@@ -521,6 +522,7 @@ void main() {
           home: AuthenticatedHome(
             email: 'person@example.com',
             now: DateTime(2024, 2, 29),
+            cameraCapture: () async => const MedicationScanRequest.sample(),
             cameraPermissionRequester: () async {
               cameraRequests++;
               return CameraAccessState.granted;

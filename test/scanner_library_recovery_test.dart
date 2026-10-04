@@ -65,6 +65,7 @@ void main() {
         MaterialApp(
           home: AuthenticatedHome(
             email: 'test@example.com',
+            cameraCapture: () async => const MedicationScanRequest.sample(),
             scanDetector: _Detector(''),
             catalogClient: catalog,
             useSidebarNavigation: size.width > 800,
@@ -116,6 +117,7 @@ void main() {
       MaterialApp(
         home: AuthenticatedHome(
           email: 'test@example.com',
+          cameraCapture: () async => const MedicationScanRequest.sample(),
           scanDetector: _Detector('Claritin-D'),
           catalogClient: catalog,
           cameraPermissionRequester: () async => CameraAccessState.granted,
