@@ -14,6 +14,9 @@ class _User extends Fake implements User {
 
 class _Repository extends Fake implements MediaryRepository {
   final pending = <String, Completer<void>>{};
+  final removing = Completer<List<String>>();
+  @override
+  Future<List<String>> removeMedication(String id) => removing.future;
   @override
   Stream<UserProfileRecord?> watchProfile() => Stream.value(null);
   @override
@@ -72,4 +75,13 @@ void main() {
       store.dispose();
     },
   );
+  test('medication removal completed after disposal does not notify', () async {
+    final repository = _Repository();
+    final store = MediaryDataStore(repository: repository);
+    final removal = store.removeMedicationAndGetRelatedIds('medication');
+    await Future<void>.delayed(Duration.zero);
+    store.dispose();
+    repository.removing.complete(['dose']);
+    await expectLater(removal, throwsStateError);
+  });
 }
