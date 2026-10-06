@@ -75,6 +75,16 @@ Finder _dashboardScrollable() => find
     )
     .first;
 
+Future<void> _showDoseRows(WidgetTester tester) async {
+  if (find.byKey(const Key('dashboardScrollView')).evaluate().isEmpty) return;
+  await tester.scrollUntilVisible(
+    _deleteButton(_neighbor.id),
+    240,
+    scrollable: _dashboardScrollable(),
+  );
+  await tester.pumpAndSettle();
+}
+
 Future<void> _tapDelete(WidgetTester tester, String id) async {
   final button = _deleteButton(id);
   await tester.scrollUntilVisible(
@@ -84,8 +94,10 @@ Future<void> _tapDelete(WidgetTester tester, String id) async {
   );
   await tester.ensureVisible(button);
   await tester.pumpAndSettle();
+  await _showDoseRows(tester);
   await tester.tap(button);
   await tester.pumpAndSettle();
+  await _showDoseRows(tester);
 }
 
 Future<void> _tapUndo(WidgetTester tester) async {
@@ -95,8 +107,10 @@ Future<void> _tapUndo(WidgetTester tester) async {
     scrollable: _dashboardScrollable(),
   );
   await tester.pumpAndSettle();
+  await _showDoseRows(tester);
   await tester.tap(find.text('Undo'));
   await tester.pumpAndSettle();
+  await _showDoseRows(tester);
 }
 
 void _expectOtherDosesUnchanged() {
@@ -189,6 +203,7 @@ void main() {
     _expectOtherDosesUnchanged();
     pending.completeError(StateError('write failed'));
     await tester.pumpAndSettle();
+    await _showDoseRows(tester);
 
     expect(changes, [(_selected.id, 'cancelled')]);
     expect(_deleteButton(_selected.id), findsOneWidget);
@@ -214,6 +229,7 @@ void main() {
       await tester.pump(const Duration(seconds: 7));
       pending.completeError(StateError('network unavailable'));
       await tester.pumpAndSettle();
+      await _showDoseRows(tester);
 
       expect(_deleteButton(_selected.id), findsOneWidget);
       _expectOtherDosesUnchanged();
@@ -242,6 +258,7 @@ void main() {
       await _tapDelete(tester, _sameMedication.id);
       first.completeError(StateError('write failed'));
       await tester.pumpAndSettle();
+      await _showDoseRows(tester);
 
       expect(changes, [
         (_selected.id, 'cancelled'),
@@ -276,10 +293,12 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await _showDoseRows(tester);
       expect(_deleteButton(_selected.id), findsNothing);
       _expectOtherDosesUnchanged();
       pending.completeError(StateError('write failed'));
       await tester.pumpAndSettle();
+      await _showDoseRows(tester);
       expect(_deleteButton(_selected.id), findsOneWidget);
       _expectOtherDosesUnchanged();
 
@@ -291,6 +310,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await _showDoseRows(tester);
       expect(_deleteButton(_selected.id), findsOneWidget);
       _expectOtherDosesUnchanged();
     },
@@ -342,6 +362,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await _showDoseRows(tester);
       expect(_deleteButton(_selected.id), findsNothing);
       _expectOtherDosesUnchanged();
 
@@ -350,6 +371,7 @@ void main() {
         _dashboard(doses: snapshot, onStatusChanged: persist),
       );
       await tester.pumpAndSettle();
+      await _showDoseRows(tester);
       expect(_deleteButton(_selected.id), findsNothing);
       _expectOtherDosesUnchanged();
       expect(changes, [(_selected.id, 'cancelled')]);
@@ -395,6 +417,7 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpWidget(_dashboard(doses: snapshot));
       await tester.pumpAndSettle();
+      await _showDoseRows(tester);
       expect(_deleteButton(_selected.id), findsOneWidget);
       _expectOtherDosesUnchanged();
     },
@@ -469,8 +492,10 @@ void main() {
       );
       await tester.ensureVisible(find.text('200 MG\n8:00 AM'));
       await tester.pumpAndSettle();
+      await _showDoseRows(tester);
       await tester.tap(find.text('200 MG\n8:00 AM'));
       await tester.pumpAndSettle();
+      await _showDoseRows(tester);
       await tester.tap(find.text('Remind Me Later'));
       // The row remains busy while the snooze write is deliberately pending.
       await tester.pump();
@@ -481,6 +506,7 @@ void main() {
       await tester.pump(const Duration(minutes: 2));
       pendingSnooze.complete();
       await tester.pumpAndSettle();
+      await _showDoseRows(tester);
       await _tapDelete(tester, _selected.id);
       await _tapUndo(tester);
 

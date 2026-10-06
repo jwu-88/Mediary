@@ -61,6 +61,11 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(harness(onStatusChanged: (_) {}));
+    await tester.scrollUntilVisible(
+      find.text('Sunday, September 27'),
+      180,
+      scrollable: calendarScrollable(),
+    );
     expect(find.text('Sunday, September 27'), findsOneWidget);
 
     await tester.scrollUntilVisible(

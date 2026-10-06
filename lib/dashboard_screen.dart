@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'app_controls.dart';
 import 'app_interactions.dart';
 import 'app_layout.dart';
 import 'dose_action_error.dart';
@@ -12,7 +13,6 @@ import 'medication_artwork.dart';
 import 'profile_image_policy.dart';
 import 'text_formatting.dart';
 
-const _dashboardHorizontalInset = 16.0;
 const _dashboardNativeContentWidth = 520.0;
 const _dashboardDesktopContentWidth = 1120.0;
 
@@ -114,6 +114,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   bool _isOpeningReport = false;
   String? _announcement;
+  bool _announcementForReport = false;
   final Set<String> _removedDoseIds = <String>{};
   _RemovedDashboardDose? _undoDose;
   Timer? _undoTimer;
@@ -174,7 +175,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         scheduled: widget.weeklyScheduled,
       ),
     );
-    if (prepared == true && mounted) _showConfirmation('Report Ready');
+    if (prepared == true && mounted) {
+      _showConfirmation('Report Ready', forReport: true);
+    }
   }
 
   Future<void> _handleViewReport() async {
@@ -305,9 +308,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await _removeDose(_doses[index]);
   }
 
-  void _showConfirmation(String message) {
+  void _showConfirmation(String message, {bool forReport = false}) {
     if (!mounted) return;
-    setState(() => _announcement = message);
+    setState(() {
+      _announcement = message;
+      _announcementForReport = forReport;
+    });
   }
 
   void _setUndoDose(_RemovedDashboardDose removed) {
@@ -364,6 +370,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Widget _buildStatus({bool forReport = false}) => AnimatedSwitcher(
+    duration: const Duration(milliseconds: 180),
+    child: _announcement == null || _announcementForReport != forReport
+        ? const SizedBox.shrink()
+        : Padding(
+            key: ValueKey(_announcement),
+            padding: const EdgeInsets.only(top: AppSpacing.lg),
+            child: _DashboardInlineStatus(
+              message: _announcement!,
+              onDismiss: () => setState(() => _announcement = null),
+              onUndo: _undoDose == null ? null : _undoRemovedDose,
+            ),
+          ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final currentTime = widget.now ?? DateTime.now();
@@ -392,9 +413,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: ListView(
               key: const Key('dashboardScrollView'),
               padding: EdgeInsets.fromLTRB(
-                _dashboardHorizontalInset,
+                AppSpacing.pageGutterOf(context),
                 12,
-                _dashboardHorizontalInset,
+                AppSpacing.pageGutterOf(context),
                 widget.bottomPadding,
               ),
               children: [
@@ -415,17 +436,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               letterSpacing: .35,
                             ),
                           ),
-                          const SizedBox(height: 3),
+                          const SizedBox(height: AppSpacing.xs),
                           Text(
                             '${widget._greetingFor(currentTime)}, '
                             '${widget._greetingName}',
                             key: const Key('dashboardGreeting'),
-                            style: TextStyle(
+                            style: AppTextStyles.pageTitle.copyWith(
                               color: colors.onSurface,
-                              fontSize: 28,
-                              height: 1.12,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -.7,
                             ),
                           ),
                         ],
@@ -440,22 +457,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ],
                 ),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 180),
-                  child: _announcement == null
-                      ? const SizedBox.shrink()
-                      : Padding(
-                          key: ValueKey(_announcement),
-                          padding: const EdgeInsets.only(top: 18),
-                          child: _DashboardInlineStatus(
-                            message: _announcement!,
-                            onDismiss: () =>
-                                setState(() => _announcement = null),
-                            onUndo: _undoDose == null ? null : _undoRemovedDose,
-                          ),
-                        ),
-                ),
-                const SizedBox(height: 20),
+                const SizedBox(height: AppSpacing.xl),
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final focus = _DashboardFocusCard(
@@ -475,7 +477,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       onOpenCalendar: widget.onOpenCalendar,
                       onViewReport: _handleViewReport,
                     );
-                    if (constraints.maxWidth < 900) {
+                    if (constraints.maxWidth <
+                        900 *
+                            (MediaQuery.textScalerOf(context).scale(15) / 15)) {
                       return Column(
                         children: [focus, const SizedBox(height: 16), metrics],
                       );
@@ -501,6 +505,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   loadingKey: const Key('dashboardViewReportLoadingIndicator'),
                   onPressed: _handleViewReport,
                 ),
+                _buildStatus(forReport: true),
                 const SizedBox(height: 8),
                 _AdherenceSummary(
                   taken: widget.weeklyTaken,
@@ -511,6 +516,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   key: const Key('dashboardTodayScheduleHeader'),
                   title: 'Today’s Schedule',
                 ),
+                _buildStatus(),
                 const SizedBox(height: 12),
                 _CalendarManagementHint(onOpenCalendar: widget.onOpenCalendar),
                 const SizedBox(height: 16),
@@ -638,9 +644,11 @@ class _DashboardReportPage extends StatelessWidget {
     return InAppPageScaffold(
       title: 'Weekly Report',
       actions: [
-        TextButton(
+        AppButton(
+          label: 'Done',
+          compact: true,
+          variant: AppButtonVariant.tertiary,
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Done'),
         ),
         const SizedBox(width: 8),
       ],
@@ -670,11 +678,12 @@ class _DashboardReportPage extends StatelessWidget {
           const SizedBox(height: 24),
           Divider(color: colors.outlineVariant),
           const SizedBox(height: 24),
-          FilledButton.icon(
+          AppButton(
             key: const Key('prepareDashboardSummaryButton'),
+            label: 'Prepare Summary',
+            icon: CupertinoIcons.doc_text,
+            expand: true,
             onPressed: () => Navigator.of(context).pop(true),
-            icon: const Icon(CupertinoIcons.doc_text, size: 19),
-            label: const Text('Prepare Summary'),
           ),
         ],
       ),
@@ -700,32 +709,58 @@ class _DashboardInlineStatus extends StatelessWidget {
       liveRegion: true,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: colors.primary.withValues(alpha: .1),
-          borderRadius: BorderRadius.circular(12),
+          color: colors.primary.withValues(alpha: .08),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
-          child: Row(
-            children: [
-              Icon(Icons.check_circle_outline, color: colors.primary, size: 19),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  message,
-                  style: TextStyle(
-                    color: colors.onSurface,
-                    fontWeight: FontWeight.w600,
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final undo = onUndo == null
+                  ? null
+                  : AppButton(
+                      label: 'Undo',
+                      compact: true,
+                      variant: AppButtonVariant.tertiary,
+                      onPressed: onUndo,
+                    );
+              final separateUndo =
+                  undo != null &&
+                  constraints.maxWidth <
+                      440 * MediaQuery.textScalerOf(context).scale(15) / 15;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.check_circle_outline,
+                        color: colors.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Text(
+                          message,
+                          style: AppTextStyles.body.copyWith(
+                            color: colors.onSurface,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      if (undo != null && !separateUndo) undo,
+                      AppIconButton(
+                        tooltip: 'Dismiss',
+                        onPressed: onDismiss,
+                        icon: Icons.close_rounded,
+                      ),
+                    ],
                   ),
-                ),
-              ),
-              if (onUndo != null)
-                TextButton(onPressed: onUndo, child: const Text('Undo')),
-              IconButton(
-                tooltip: 'Dismiss',
-                onPressed: onDismiss,
-                icon: const Icon(Icons.close_rounded, size: 18),
-              ),
-            ],
+                  if (separateUndo)
+                    Align(alignment: Alignment.centerRight, child: undo),
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -841,54 +876,71 @@ class _SectionHeader extends StatelessWidget {
   final Key? actionKey;
   final Key? loadingKey;
   final bool busy;
-  final VoidCallback? onPressed;
+  final FutureOr<void> Function()? onPressed;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            title,
-            style: TextStyle(
-              color: colors.onSurface,
-              fontSize: 18,
-              height: 1.25,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -.25,
-            ),
+    final heading = Text(
+      title,
+      style: AppTextStyles.sectionTitle.copyWith(color: colors.onSurface),
+    );
+    if (actionLabel == null || onPressed == null) return heading;
+    final action = AppButton(
+      key: actionKey,
+      label: actionLabel!,
+      compact: true,
+      variant: AppButtonVariant.tertiary,
+      busy: busy,
+      loadingIndicatorKey: loadingKey,
+      onPressed: onPressed,
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scaler = MediaQuery.textScalerOf(context);
+        final titlePainter = TextPainter(
+          text: TextSpan(
+            text: title,
+            style: Theme.of(context).textTheme.titleMedium
+                ?.merge(AppTextStyles.sectionTitle),
           ),
-        ),
-        if (actionLabel != null && onPressed != null)
-          TextButton(
-            key: actionKey,
-            onPressed: busy ? null : onPressed,
-            style: TextButton.styleFrom(
-              minimumSize: const Size(44, 44),
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              foregroundColor: colors.primary,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: busy
-                ? SizedBox.square(
-                    key: loadingKey,
-                    dimension: 15,
-                    child: CircularProgressIndicator(
-                      value: .72,
-                      strokeWidth: 1.8,
-                      color: colors.primary,
-                    ),
-                  )
-                : Text(
-                    actionLabel!,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+          textScaler: scaler,
+          textDirection: Directionality.of(context),
+        )..layout();
+        final actionPainter = TextPainter(
+          text: TextSpan(
+            text: actionLabel,
+            style: Theme.of(context).textTheme.labelLarge
+                ?.copyWith(fontSize: 15, fontWeight: FontWeight.w600),
           ),
-      ],
+          textScaler: scaler,
+          textDirection: Directionality.of(context),
+        )..layout();
+        final fits =
+            titlePainter.width +
+                actionPainter.width +
+                (busy ? 56 : 28) +
+                AppSpacing.lg <=
+            constraints.maxWidth;
+        titlePainter.dispose();
+        actionPainter.dispose();
+        return fits
+            ? Row(
+                children: [
+                  Expanded(child: heading),
+                  const SizedBox(width: AppSpacing.sm),
+                  action,
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  heading,
+                  const SizedBox(height: AppSpacing.xs),
+                  Align(alignment: Alignment.centerRight, child: action),
+                ],
+              );
+      },
     );
   }
 }
@@ -903,8 +955,13 @@ class _AdherenceSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final ratio = scheduled == 0 ? 0.0 : (taken / scheduled).clamp(0.0, 1.0);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 8, 2, 0),
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colors.outlineVariant.withValues(alpha: .45)),
+      ),
       child: Row(
         children: [
           _ProgressRing(value: ratio),
@@ -914,7 +971,9 @@ class _AdherenceSummary extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  scheduled == 0 ? 'No doses scheduled yet' : 'Weekly progress',
+                  scheduled == 0
+                      ? 'No doses scheduled yet'
+                      : 'Doses taken this week',
                   style: TextStyle(
                     color: colors.onSurface,
                     fontSize: 15,
@@ -1005,18 +1064,11 @@ class _DashboardFocusCard extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: colors.primary.withValues(alpha: .18)),
-          boxShadow: [
-            BoxShadow(
-              color: colors.primary.withValues(alpha: dark ? .16 : .09),
-              blurRadius: 18,
-              offset: const Offset(0, 7),
-            ),
-          ],
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 17, 12, 14),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1064,12 +1116,18 @@ class _DashboardFocusCard extends StatelessWidget {
                           ),
                           color: colors.primary,
                         ),
-                        Text(
-                          '${(progress * 100).round()}%',
-                          style: TextStyle(
-                            color: colors.primary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
+                        Padding(
+                          padding: const EdgeInsets.all(7),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              '${(progress * 100).round()}%',
+                              style: TextStyle(
+                                color: colors.primary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -1080,8 +1138,6 @@ class _DashboardFocusCard extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 description,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: secondary,
                   fontSize: 13,
@@ -1122,33 +1178,13 @@ class _DashboardFocusCard extends StatelessWidget {
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerRight,
-                  child: TextButton.icon(
+                  child: AppButton(
                     key: const Key('dashboardFocusActionButton'),
+                    label: actionLabel,
                     onPressed: action,
-                    icon: Icon(
-                      onReviewNext != null
-                          ? CupertinoIcons.check_mark_circled
-                          : CupertinoIcons.calendar_badge_plus,
-                      size: 16,
-                    ),
-                    label: Text(actionLabel),
-                    style: TextButton.styleFrom(
-                      foregroundColor: colors.primary,
-                      backgroundColor: colors.primary.withValues(alpha: .12),
-                      minimumSize: const Size(0, 40),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      textStyle: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                    icon: onReviewNext != null
+                        ? CupertinoIcons.check_mark_circled
+                        : CupertinoIcons.calendar_badge_plus,
                   ),
                 ),
               ],
@@ -1182,34 +1218,45 @@ class _DashboardMetricStrip extends StatelessWidget {
     final weeklyPercent = weeklyScheduled == 0
         ? 0
         : ((weeklyTaken / weeklyScheduled) * 100).round();
-    return Row(
-      children: [
-        Expanded(
-          child: _DashboardMetricTile(
-            key: const Key('dashboardTodayMetric'),
-            icon: CupertinoIcons.today,
-            label: 'Today',
-            value: '$completedToday/$scheduledToday',
-            detail: scheduledToday == 0
-                ? 'Start in Calendar'
-                : 'Doses complete',
-            onTap: onOpenCalendar,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _DashboardMetricTile(
-            key: const Key('dashboardWeekMetric'),
-            icon: CupertinoIcons.chart_bar,
-            label: 'This Week',
-            value: '$weeklyPercent%',
-            detail: weeklyScheduled == 0
-                ? 'No doses yet'
-                : '$weeklyTaken of $weeklyScheduled taken',
-            onTap: onViewReport,
-          ),
-        ),
-      ],
+    final today = _DashboardMetricTile(
+      key: const Key('dashboardTodayMetric'),
+      icon: CupertinoIcons.today,
+      label: 'Today',
+      value: '$completedToday/$scheduledToday',
+      detail: scheduledToday == 0 ? 'Start in Calendar' : 'Doses complete',
+      onTap: onOpenCalendar,
+    );
+    final week = _DashboardMetricTile(
+      key: const Key('dashboardWeekMetric'),
+      icon: CupertinoIcons.chart_bar,
+      label: 'This Week',
+      value: '$weeklyPercent%',
+      detail: weeklyScheduled == 0
+          ? 'No doses yet'
+          : '$weeklyTaken of $weeklyScheduled taken',
+      onTap: onViewReport,
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final textScale = MediaQuery.textScalerOf(context).scale(15) / 15;
+        if (constraints.maxWidth < 320 * textScale) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              today,
+              const SizedBox(height: AppSpacing.sm),
+              week,
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: today),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(child: week),
+          ],
+        );
+      },
     );
   }
 }
@@ -1241,17 +1288,17 @@ class _DashboardMetricTile extends StatelessWidget {
         minimumSize: Size.zero,
         padding: EdgeInsets.zero,
         semanticLabel: '$label: $value',
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: colors.surfaceContainerHighest.withValues(alpha: .58),
-            borderRadius: BorderRadius.circular(18),
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: colors.outlineVariant.withValues(alpha: .55),
             ),
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(13, 12, 10, 12),
+            padding: const EdgeInsets.all(AppSpacing.md),
             child: Row(
               children: [
                 DecoratedBox(
@@ -1273,7 +1320,7 @@ class _DashboardMetricTile extends StatelessWidget {
                         label,
                         style: TextStyle(
                           color: colors.onSurfaceVariant,
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -1282,18 +1329,18 @@ class _DashboardMetricTile extends StatelessWidget {
                         value,
                         style: TextStyle(
                           color: colors.onSurface,
-                          fontSize: 18,
+                          fontSize: 20,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                       const SizedBox(height: 1),
                       Text(
                         detail,
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: colors.onSurfaceVariant,
-                          fontSize: 10,
+                          fontSize: 12,
                         ),
                       ),
                     ],
@@ -1341,12 +1388,18 @@ class _ProgressRing extends StatelessWidget {
               color: taken,
             ),
           ),
-          Text(
-            '${(value * 100).round()}%',
-            style: TextStyle(
-              color: colors.onSurface,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                '${(value * 100).round()}%',
+                style: TextStyle(
+                  color: colors.onSurface,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
           ),
         ],
@@ -1383,47 +1436,91 @@ class _ScheduleTable extends StatelessWidget {
         ),
       );
     }
-    return Semantics(
-      key: const Key('dashboardScheduleTable'),
-      container: true,
-      label: 'Today’s Medication Schedule',
-      child: Column(
-        children: [
-          const _ScheduleHeader(),
-          Divider(
-            key: const Key('dashboardScheduleHeaderDivider'),
-            height: 13,
-            thickness: .5,
-            indent: 30,
-            endIndent: 2,
-            color: colors.outlineVariant.withValues(alpha: .72),
-          ),
-          for (var index = 0; index < doses.length; index++) ...[
-            _DoseRow(
-              rowIndex: index,
-              artworkSeed: doses[index].id,
-              artworkLabel: titleCaseDisplay(doses[index].name),
-              name: doses[index].name,
-              details: doses[index].details,
-              status: doses[index].status,
-              statusColor: doses[index].tone == _DoseTone.taken ? taken : null,
-              onTap: () => onTapDose(index),
-              onRemove: () => onRemoveDose(index),
-              removeTooltip:
-                  'Remove ${titleCaseDisplay(doses[index].name)} from today',
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final textScale = MediaQuery.textScalerOf(context).scale(15) / 15;
+        if (textScale > 1.3 && constraints.maxWidth < 360 * textScale) {
+          return Semantics(
+            key: const Key('dashboardScheduleTable'),
+            container: true,
+            label: 'Today’s Medication Schedule',
+            child: Container(
+              decoration: BoxDecoration(
+                color: colors.surface,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                children: [
+                  for (var index = 0; index < doses.length; index++) ...[
+                    _ReadableDoseRow(
+                      id: doses[index].id,
+                      name: doses[index].name,
+                      details: doses[index].details,
+                      status: doses[index].status,
+                      statusColor: doses[index].tone == _DoseTone.taken
+                          ? taken
+                          : colors.onSurfaceVariant,
+                      onTap: () => onTapDose(index),
+                      onRemove: () => onRemoveDose(index),
+                    ),
+                    if (index < doses.length - 1)
+                      Divider(
+                        height: 1,
+                        indent: 16,
+                        endIndent: 16,
+                        color: colors.outlineVariant.withValues(alpha: .55),
+                      ),
+                  ],
+                ],
+              ),
             ),
-            if (index < doses.length - 1)
+          );
+        }
+        return Semantics(
+          key: const Key('dashboardScheduleTable'),
+          container: true,
+          label: 'Today’s Medication Schedule',
+          child: Column(
+            children: [
+              const _ScheduleHeader(),
               Divider(
-                key: ValueKey('dashboardScheduleRowDivider$index'),
-                height: 1,
+                key: const Key('dashboardScheduleHeaderDivider'),
+                height: 13,
                 thickness: .5,
                 indent: 30,
                 endIndent: 2,
-                color: colors.outlineVariant.withValues(alpha: .58),
+                color: colors.outlineVariant.withValues(alpha: .72),
               ),
-          ],
-        ],
-      ),
+              for (var index = 0; index < doses.length; index++) ...[
+                _DoseRow(
+                  rowIndex: index,
+                  artworkSeed: doses[index].id,
+                  artworkLabel: titleCaseDisplay(doses[index].name),
+                  name: doses[index].name,
+                  details: doses[index].details,
+                  status: doses[index].status,
+                  statusColor: doses[index].tone == _DoseTone.taken
+                      ? taken
+                      : null,
+                  onTap: () => onTapDose(index),
+                  onRemove: () => onRemoveDose(index),
+                  removeTooltip:
+                      'Remove ${titleCaseDisplay(doses[index].name)} from today',
+                ),
+                if (index < doses.length - 1)
+                  Divider(
+                    key: ValueKey('dashboardScheduleRowDivider$index'),
+                    height: 1,
+                    thickness: .5,
+                    indent: 30,
+                    endIndent: 2,
+                    color: colors.outlineVariant.withValues(alpha: .58),
+                  ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -1442,11 +1539,13 @@ class _CalendarManagementHint extends StatelessWidget {
       label: 'Add or manage medications in Calendar.',
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+        padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
-          color: colors.primary.withValues(alpha: .13),
+          color: colors.surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: colors.primary.withValues(alpha: .16)),
+          border: Border.all(
+            color: colors.outlineVariant.withValues(alpha: .45),
+          ),
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -1459,29 +1558,16 @@ class _CalendarManagementHint extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             );
-            final openButton = TextButton.icon(
+            final openButton = AppButton(
               key: const Key('dashboardCalendarGuidanceButton'),
+              label: 'Open Calendar',
+              icon: CupertinoIcons.arrow_right,
+              compact: true,
+              variant: AppButtonVariant.tertiary,
               onPressed: onOpenCalendar,
-              icon: const Icon(CupertinoIcons.arrow_right, size: 15),
-              label: const Text('Open Calendar'),
-              style: TextButton.styleFrom(
-                foregroundColor: colors.primary,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 7,
-                ),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
             );
-            if (constraints.maxWidth < 390) {
+            if (constraints.maxWidth <
+                480 * MediaQuery.textScalerOf(context).scale(15) / 15) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -1617,6 +1703,95 @@ class _ScheduleVerticalDivider extends StatelessWidget {
         width: 1,
         thickness: .5,
         color: colors.outlineVariant.withValues(alpha: .62),
+      ),
+    );
+  }
+}
+
+class _ReadableDoseRow extends StatelessWidget {
+  const _ReadableDoseRow({
+    required this.id,
+    required this.name,
+    required this.details,
+    required this.status,
+    required this.statusColor,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  final String id;
+  final String name;
+  final String details;
+  final String status;
+  final Color statusColor;
+  final VoidCallback onTap;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return AppPressable(
+      onPressed: onTap,
+      autoManageBusy: false,
+      semanticLabel:
+          '${titleCaseDisplay(name)}, ${titleCaseDisplay(details)}, $status',
+      borderRadius: BorderRadius.circular(14),
+      hoverScale: 1,
+      hoverOffset: Offset.zero,
+      pressedScale: .99,
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                MedicationArtwork(
+                  seed: id,
+                  label: titleCaseDisplay(name),
+                  size: 36,
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Text(
+                    titleCaseDisplay(name),
+                    key: Key('dashboardReadableDoseName_$id'),
+                    style: AppTextStyles.body.copyWith(
+                      color: colors.onSurface,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                AppIconButton(
+                  key: Key('dashboardDeleteDose_$id'),
+                  icon: CupertinoIcons.trash,
+                  tooltip: 'Remove ${titleCaseDisplay(name)} from day',
+                  foregroundColor: colors.error,
+                  onPressed: onRemove,
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              titleCaseDisplay(details),
+              key: Key('dashboardReadableDoseDetails_$id'),
+              style: AppTextStyles.body.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              status,
+              key: Key('dashboardReadableDoseStatus_$id'),
+              style: AppTextStyles.body.copyWith(
+                color: statusColor,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1769,19 +1944,12 @@ class _DoseRow extends StatelessWidget {
                     ),
                     SizedBox(
                       width: metrics.actionWidth,
-                      child: IconButton(
+                      child: AppIconButton(
                         key: Key('dashboardDeleteDose_$artworkSeed'),
                         onPressed: onRemove,
                         tooltip: removeTooltip,
-                        icon: const Icon(CupertinoIcons.trash),
-                        iconSize: 17,
-                        padding: EdgeInsets.zero,
-                        constraints: BoxConstraints.tightFor(
-                          width: metrics.actionWidth,
-                          height: 44,
-                        ),
-                        visualDensity: VisualDensity.compact,
-                        color: colors.error,
+                        icon: CupertinoIcons.trash,
+                        foregroundColor: colors.error,
                       ),
                     ),
                   ],

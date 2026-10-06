@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'app_controls.dart';
 import 'app_interactions.dart';
 import 'app_layout.dart';
 import 'dose_action_error.dart';
@@ -11,7 +12,6 @@ import 'in_app_page.dart';
 import 'medication_artwork.dart';
 import 'text_formatting.dart';
 
-const _calendarHorizontalInset = 16.0;
 const _calendarNativeContentWidth = 520.0;
 const _calendarDesktopContentWidth = 1120.0;
 
@@ -393,6 +393,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return '$weekday, ${_months[date.month - 1]} ${date.day}';
   }
 
+  Widget _buildStatus() => AnimatedSwitcher(
+    duration: const Duration(milliseconds: 180),
+    child: _announcement == null
+        ? const SizedBox.shrink()
+        : Padding(
+            key: ValueKey(_announcement),
+            padding: const EdgeInsets.only(top: AppSpacing.lg),
+            child: _CalendarInlineStatus(
+              message: _announcement!,
+              onDismiss: () => setState(() => _announcement = null),
+              onUndo: _undoDose == null ? null : _undoRemovedDose,
+            ),
+          ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final palette = _CalendarPalette.of(context);
@@ -421,31 +436,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 return ListView(
                   key: const Key('calendarScrollView'),
                   padding: EdgeInsets.fromLTRB(
-                    _calendarHorizontalInset,
+                    AppSpacing.pageGutterOf(context),
                     12,
-                    _calendarHorizontalInset,
+                    AppSpacing.pageGutterOf(context),
                     widget.bottomPadding,
                   ),
                   children: [
                     _CalendarHeader(onOptions: _showOptions),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 180),
-                      child: _announcement == null
-                          ? const SizedBox.shrink()
-                          : Padding(
-                              key: ValueKey(_announcement),
-                              padding: const EdgeInsets.only(top: 12),
-                              child: _CalendarInlineStatus(
-                                message: _announcement!,
-                                onDismiss: () =>
-                                    setState(() => _announcement = null),
-                                onUndo: _undoDose == null
-                                    ? null
-                                    : _undoRemovedDose,
-                              ),
-                            ),
-                    ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: AppSpacing.xl),
                     _AdherenceSummary(
                       month: _months[_visibleMonth.month - 1],
                       taken: _monthTaken,
@@ -458,7 +456,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
-                            flex: 6,
+                            flex: 1,
                             child: _CalendarCard(
                               visibleMonth: _visibleMonth,
                               selectedDate: _selectedDate,
@@ -472,7 +470,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           ),
                           const SizedBox(width: 20),
                           Expanded(
-                            flex: 5,
+                            flex: 1,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
@@ -481,6 +479,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                   title: _longDate(_selectedDate),
                                   onAdd: _addDose,
                                 ),
+                                _buildStatus(),
                                 const SizedBox(height: 12),
                                 _DoseList(
                                   doses: _dosesFor(_selectedDate),
@@ -509,6 +508,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         title: _longDate(_selectedDate),
                         onAdd: _addDose,
                       ),
+                      _buildStatus(),
                       const SizedBox(height: 12),
                       _DoseList(
                         doses: _dosesFor(_selectedDate),
@@ -579,32 +579,58 @@ class _CalendarInlineStatus extends StatelessWidget {
       liveRegion: true,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: colors.primary.withValues(alpha: .1),
-          borderRadius: BorderRadius.circular(12),
+          color: colors.primary.withValues(alpha: .08),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
-          child: Row(
-            children: [
-              Icon(Icons.check_circle_outline, color: colors.primary, size: 19),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  message,
-                  style: TextStyle(
-                    color: colors.onSurface,
-                    fontWeight: FontWeight.w600,
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final undo = onUndo == null
+                  ? null
+                  : AppButton(
+                      label: 'Undo',
+                      compact: true,
+                      variant: AppButtonVariant.tertiary,
+                      onPressed: onUndo,
+                    );
+              final separateUndo =
+                  undo != null &&
+                  constraints.maxWidth <
+                      440 * MediaQuery.textScalerOf(context).scale(15) / 15;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.check_circle_outline,
+                        color: colors.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Text(
+                          message,
+                          style: AppTextStyles.body.copyWith(
+                            color: colors.onSurface,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      if (undo != null && !separateUndo) undo,
+                      AppIconButton(
+                        tooltip: 'Dismiss',
+                        onPressed: onDismiss,
+                        icon: Icons.close_rounded,
+                      ),
+                    ],
                   ),
-                ),
-              ),
-              if (onUndo != null)
-                TextButton(onPressed: onUndo, child: const Text('Undo')),
-              IconButton(
-                tooltip: 'Dismiss',
-                onPressed: onDismiss,
-                icon: const Icon(Icons.close_rounded, size: 18),
-              ),
-            ],
+                  if (separateUndo)
+                    Align(alignment: Alignment.centerRight, child: undo),
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -621,7 +647,7 @@ class _CalendarHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = _CalendarPalette.of(context);
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
           child: Column(
@@ -637,28 +663,21 @@ class _CalendarHeader extends StatelessWidget {
                   letterSpacing: .45,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: AppSpacing.xs),
               Text(
                 'Calendar',
                 key: const Key('calendarTitle'),
-                style: TextStyle(
-                  color: palette.ink,
-                  fontSize: 28,
-                  height: 1.1,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -.8,
-                ),
+                style: AppTextStyles.pageTitle.copyWith(color: palette.ink),
               ),
             ],
           ),
         ),
-        ResponsiveCupertinoButton(
-          buttonKey: const Key('calendarOptionsButton'),
+        const SizedBox(width: AppSpacing.md),
+        AppIconButton(
+          key: const Key('calendarOptionsButton'),
           onPressed: onOptions,
-          minimumSize: const Size.square(44),
-          padding: EdgeInsets.zero,
-          semanticLabel: 'Calendar options',
-          child: Icon(CupertinoIcons.ellipsis, color: palette.accent, size: 21),
+          tooltip: 'Calendar options',
+          icon: CupertinoIcons.ellipsis,
         ),
       ],
     );
@@ -681,9 +700,11 @@ class _AdherenceSummary extends StatelessWidget {
     final palette = _CalendarPalette.of(context);
     final ratio = scheduled == 0 ? 0.0 : (taken / scheduled).clamp(0.0, 1.0);
     return Container(
-      padding: const EdgeInsets.fromLTRB(2, 7, 2, 15),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: palette.separator)),
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: palette.separator),
       ),
       child: Row(
         children: [
@@ -692,14 +713,10 @@ class _AdherenceSummary extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$month Adherence',
-                  style: TextStyle(
-                    color: palette.muted,
-                    fontSize: 11,
-                    height: 1.3,
-                  ),
+                  '$month adherence',
+                  style: AppTextStyles.caption.copyWith(color: palette.muted),
                 ),
-                const SizedBox(height: 1),
+                const SizedBox(height: AppSpacing.xs),
                 Text(
                   scheduled == 0
                       ? 'No scheduled doses'
@@ -754,12 +771,18 @@ class _AdherenceRing extends StatelessWidget {
                   color: palette.surface,
                   shape: BoxShape.circle,
                 ),
-                child: Text(
-                  '${(value * 100).round()}%',
-                  style: TextStyle(
-                    color: palette.ink,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
+                child: Padding(
+                  padding: const EdgeInsets.all(3),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '${(value * 100).round()}%',
+                      style: TextStyle(
+                        color: palette.ink,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -806,7 +829,7 @@ class _CalendarCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: palette.surface,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         children: [
@@ -866,7 +889,7 @@ class _CalendarCard extends StatelessWidget {
                   crossAxisCount: 7,
                   crossAxisSpacing: 4,
                   mainAxisSpacing: 6,
-                  childAspectRatio: cellWidth / 34,
+                  childAspectRatio: cellWidth / 44,
                 ),
                 itemBuilder: (context, index) {
                   final date = _dates[index];
@@ -903,26 +926,7 @@ class _MonthControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = _CalendarPalette.of(context);
-    return Semantics(
-      button: true,
-      label: label,
-      child: ResponsiveCupertinoButton(
-        onPressed: onPressed,
-        minimumSize: const Size.square(38),
-        padding: EdgeInsets.zero,
-        semanticLabel: label,
-        child: Container(
-          width: 30,
-          height: 30,
-          decoration: BoxDecoration(
-            color: palette.softAccent,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, size: 15, color: palette.accent),
-        ),
-      ),
-    );
+    return AppIconButton(tooltip: label, onPressed: onPressed, icon: icon);
   }
 }
 
@@ -935,14 +939,18 @@ class _WeekdayLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = _CalendarPalette.of(context);
     return Expanded(
-      child: Text(
-        label,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: palette.muted,
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
-          letterSpacing: .15,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: palette.muted,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
       ),
     );
@@ -1001,16 +1009,19 @@ class _CalendarDay extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.only(bottom: 3),
-                  child: Text(
-                    '${date.day}',
-                    style: TextStyle(
-                      color: selected
-                          ? palette.onAccent
-                          : inVisibleMonth
-                          ? palette.ink
-                          : palette.outsideMonth,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '${date.day}',
+                      style: TextStyle(
+                        color: selected
+                            ? palette.onAccent
+                            : inVisibleMonth
+                            ? palette.ink
+                            : palette.outsideMonth,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
@@ -1043,49 +1054,66 @@ class _SectionHeader extends StatelessWidget {
   const _SectionHeader({super.key, required this.title, required this.onAdd});
 
   final String title;
-  final VoidCallback onAdd;
+  final FutureOr<void> Function() onAdd;
 
   @override
   Widget build(BuildContext context) {
     final palette = _CalendarPalette.of(context);
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            title,
-            key: const Key('calendarSelectedDate'),
-            style: TextStyle(
-              color: palette.ink,
-              fontSize: 18,
-              height: 1.25,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -.25,
-            ),
+    final heading = Text(
+      title,
+      key: const Key('calendarSelectedDate'),
+      style: AppTextStyles.sectionTitle.copyWith(color: palette.ink),
+    );
+    final action = AppButton(
+      key: const Key('calendarAddButton'),
+      label: 'Add Medication',
+      icon: CupertinoIcons.add,
+      compact: true,
+      onPressed: onAdd,
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scaler = MediaQuery.textScalerOf(context);
+        final titlePainter = TextPainter(
+          text: TextSpan(
+            text: title,
+            style: Theme.of(context).textTheme.titleMedium
+                ?.merge(AppTextStyles.sectionTitle),
           ),
-        ),
-        ResponsiveCupertinoButton(
-          buttonKey: const Key('calendarAddButton'),
-          onPressed: onAdd,
-          minimumSize: const Size.square(44),
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          semanticLabel: 'Add medication',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(CupertinoIcons.add, size: 14, color: palette.accent),
-              const SizedBox(width: 3),
-              Text(
-                'Add',
-                style: TextStyle(
-                  color: palette.accent,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+          textScaler: scaler,
+          textDirection: Directionality.of(context),
+        )..layout();
+        final actionPainter = TextPainter(
+          text: TextSpan(
+            text: 'Add Medication',
+            style: Theme.of(context).textTheme.labelLarge
+                ?.copyWith(fontSize: 15, fontWeight: FontWeight.w600),
           ),
-        ),
-      ],
+          textScaler: scaler,
+          textDirection: Directionality.of(context),
+        )..layout();
+        final fits =
+            titlePainter.width + actionPainter.width + 52 + AppSpacing.lg <=
+            constraints.maxWidth;
+        titlePainter.dispose();
+        actionPainter.dispose();
+        return fits
+            ? Row(
+                children: [
+                  Expanded(child: heading),
+                  const SizedBox(width: AppSpacing.sm),
+                  action,
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  heading,
+                  const SizedBox(height: AppSpacing.sm),
+                  Align(alignment: Alignment.centerRight, child: action),
+                ],
+              );
+      },
     );
   }
 }
@@ -1117,6 +1145,44 @@ class _DoseList extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 390;
+        final textScale = MediaQuery.textScalerOf(context).scale(15) / 15;
+        if (textScale > 1.3 && constraints.maxWidth < 360 * textScale) {
+          return Semantics(
+            key: const Key('calendarDoseTable'),
+            container: true,
+            label: 'Medication dose list',
+            child: Container(
+              decoration: BoxDecoration(
+                color: palette.surface,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                children: [
+                  for (var index = 0; index < doses.length; index++) ...[
+                    _ReadableDoseRow(
+                      id: doses[index].id,
+                      name: doses[index].name,
+                      details: doses[index].details,
+                      status: doses[index].isTaken ? 'Taken' : 'Due',
+                      statusColor: doses[index].isTaken
+                          ? palette.positive
+                          : palette.muted,
+                      onTap: () => onTapDose(index),
+                      onRemove: () => onRemoveDose(index),
+                    ),
+                    if (index < doses.length - 1)
+                      Divider(
+                        height: 1,
+                        indent: 16,
+                        endIndent: 16,
+                        color: palette.separator,
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        }
         return Semantics(
           key: const Key('calendarDoseTable'),
           container: true,
@@ -1125,7 +1191,7 @@ class _DoseList extends StatelessWidget {
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: palette.surface,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Column(
               children: [
@@ -1256,6 +1322,95 @@ class _DoseTableVerticalDivider extends StatelessWidget {
   }
 }
 
+class _ReadableDoseRow extends StatelessWidget {
+  const _ReadableDoseRow({
+    required this.id,
+    required this.name,
+    required this.details,
+    required this.status,
+    required this.statusColor,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  final String id;
+  final String name;
+  final String details;
+  final String status;
+  final Color statusColor;
+  final VoidCallback onTap;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return AppPressable(
+      onPressed: onTap,
+      autoManageBusy: false,
+      semanticLabel:
+          '${titleCaseDisplay(name)}, ${titleCaseDisplay(details)}, $status',
+      borderRadius: BorderRadius.circular(14),
+      hoverScale: 1,
+      hoverOffset: Offset.zero,
+      pressedScale: .99,
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                MedicationArtwork(
+                  seed: id,
+                  label: titleCaseDisplay(name),
+                  size: 36,
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Text(
+                    titleCaseDisplay(name),
+                    key: Key('calendarReadableDoseName_$id'),
+                    style: AppTextStyles.body.copyWith(
+                      color: colors.onSurface,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                AppIconButton(
+                  key: Key('calendarDeleteDose_$id'),
+                  icon: CupertinoIcons.trash,
+                  tooltip: 'Remove ${titleCaseDisplay(name)} from day',
+                  foregroundColor: colors.error,
+                  onPressed: onRemove,
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              titleCaseDisplay(details),
+              key: Key('calendarReadableDoseDetails_$id'),
+              style: AppTextStyles.body.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              status,
+              key: Key('calendarReadableDoseStatus_$id'),
+              style: AppTextStyles.body.copyWith(
+                color: statusColor,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _DoseRow extends StatelessWidget {
   const _DoseRow({
     required this.artworkSeed,
@@ -1371,19 +1526,12 @@ class _DoseRow extends StatelessWidget {
               ),
               SizedBox(
                 width: actionColumnWidth,
-                child: IconButton(
+                child: AppIconButton(
                   key: Key('calendarDeleteDose_$artworkSeed'),
                   onPressed: onRemove,
                   tooltip: 'Remove ${titleCaseDisplay(name)} from day',
-                  icon: const Icon(CupertinoIcons.trash),
-                  iconSize: 17,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(
-                    width: actionColumnWidth,
-                    height: 44,
-                  ),
-                  visualDensity: VisualDensity.compact,
-                  color: palette.negative,
+                  icon: CupertinoIcons.trash,
+                  foregroundColor: palette.negative,
                 ),
               ),
             ],

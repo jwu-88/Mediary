@@ -29,6 +29,25 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
   }
 
+  Future<void> showDashboardPart(
+    WidgetTester tester,
+    Finder finder, {
+    bool reverse = false,
+  }) async {
+    await tester.scrollUntilVisible(
+      finder,
+      reverse ? -240 : 240,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('dashboardScrollView')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('dashboard actions update the daily schedule', (tester) async {
     usePhoneSize(tester);
     await tester.pumpWidget(
@@ -105,6 +124,7 @@ void main() {
     expect(find.byKey(const Key('dashboardAddButton')), findsNothing);
     expect(find.byKey(const Key('dashboardCalendarGuidance')), findsOneWidget);
 
+    await showDashboardPart(tester, find.text('Amoxicillin'));
     await tester.tap(find.text('Amoxicillin'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Mark As Taken'));
@@ -137,6 +157,7 @@ void main() {
     expect(find.byKey(const Key('dashboardWeekMetric')), findsOneWidget);
     final guidance = find.byKey(const Key('dashboardCalendarGuidance'));
     final emptySchedule = find.text('No medications scheduled');
+    await showDashboardPart(tester, emptySchedule);
     expect(guidance, findsOneWidget);
     expect(emptySchedule, findsOneWidget);
     expect(
@@ -148,6 +169,11 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('dashboardCalendarGuidanceButton')));
     expect(calendarOpens, 1);
+    await showDashboardPart(
+      tester,
+      find.byKey(const Key('dashboardFocusActionButton')),
+      reverse: true,
+    );
     await tester.tap(find.byKey(const Key('dashboardFocusActionButton')));
     expect(calendarOpens, 2);
   });
@@ -172,6 +198,10 @@ void main() {
       ),
     );
 
+    await showDashboardPart(
+      tester,
+      find.byKey(const Key('dashboardCalendarGuidanceButton')),
+    );
     expect(
       find.byKey(const Key('dashboardCalendarGuidanceButton')),
       findsOneWidget,
