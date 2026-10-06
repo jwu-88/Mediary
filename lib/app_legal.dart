@@ -1,4 +1,7 @@
+import 'app_controls.dart';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'in_app_page.dart';
@@ -83,7 +86,7 @@ class ThankYouPage extends StatelessWidget {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 440),
-            child: Padding(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -106,10 +109,10 @@ class ThankYouPage extends StatelessWidget {
                   ),
                   if (onDone != null) ...[
                     const SizedBox(height: 24),
-                    FilledButton(
+                    AppButton(
                       key: const Key('thankYouDoneButton'),
+                      label: 'Continue',
                       onPressed: onDone,
-                      child: const Text('Continue'),
                     ),
                   ],
                 ],
@@ -122,32 +125,113 @@ class ThankYouPage extends StatelessWidget {
   }
 }
 
-class ContactSupportPage extends StatelessWidget {
-  const ContactSupportPage({super.key});
+class ContactSupportPage extends StatefulWidget {
+  const ContactSupportPage({
+    super.key,
+    this.supportEmail = mediarySupportEmail,
+    this.onOpenEmail,
+  });
+  final String supportEmail;
+  final Future<bool> Function(Uri)? onOpenEmail;
+
+  @override
+  State<ContactSupportPage> createState() => _ContactSupportPageState();
+}
+
+class _ContactSupportPageState extends State<ContactSupportPage> {
+  String? _status;
+  bool _isError = false;
+
+  void _setStatus(String? message, {bool error = false}) {
+    if (mounted) {
+      setState(() {
+        _status = message;
+        _isError = error;
+      });
+    }
+  }
+
+  Future<void> _openEmail() async {
+    _setStatus(null);
+    try {
+      final uri = Uri(scheme: 'mailto', path: widget.supportEmail.trim());
+      final opened = await (widget.onOpenEmail?.call(uri) ?? launchUrl(uri));
+      if (!opened) {
+        _setStatus(
+          'Unable to open your email app. Copy the address below or try again.',
+          error: true,
+        );
+      }
+    } catch (_) {
+      _setStatus(
+        'Unable to open your email app. Copy the address below or try again.',
+        error: true,
+      );
+    }
+  }
+
+  Future<void> _copyEmail() async {
+    try {
+      await Clipboard.setData(ClipboardData(text: widget.supportEmail.trim()));
+      _setStatus('Support address copied.');
+    } catch (_) {
+      _setStatus(
+        'Unable to copy the address. Select the address below to copy it, or try again.',
+        error: true,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final hasAddress = mediarySupportEmail.trim().isNotEmpty;
+    final hasAddress = widget.supportEmail.trim().isNotEmpty;
+    final colors = Theme.of(context).colorScheme;
     return InAppPageScaffold(
       title: 'Contact Support',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: ListView(
+        padding: EdgeInsets.zero,
         children: [
           const Text(
             'For account or app questions, contact the Mediary team using the support address configured for this build.',
           ),
-          const SizedBox(height: 20),
-          if (hasAddress)
-            FilledButton.icon(
-              icon: const Icon(Icons.mail_outline),
-              label: Text(mediarySupportEmail),
-              onPressed: () =>
-                  launchUrl(Uri(scheme: 'mailto', path: mediarySupportEmail)),
-            )
-          else
+          const SizedBox(height: AppSpacing.xl),
+          if (hasAddress) ...[
+            AppButton(
+              key: const Key('openSupportEmailButton'),
+              icon: Icons.mail_outline,
+              label: 'Open Email App',
+              onPressed: _openEmail,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            AppButton(
+              key: const Key('copySupportEmailButton'),
+              icon: Icons.copy_outlined,
+              label: 'Copy Email Address',
+              variant: AppButtonVariant.secondary,
+              onPressed: _copyEmail,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            SelectableText(
+              widget.supportEmail.trim(),
+              style: AppTextStyles.body.copyWith(color: colors.onSurface),
+            ),
+            if (_status != null) ...[
+              const SizedBox(height: AppSpacing.lg),
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  _status!,
+                  key: const Key('supportActionStatus'),
+                  style: AppTextStyles.body.copyWith(
+                    color: _isError ? colors.error : colors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ] else
             Text(
               'Support contact is not configured yet.',
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+              style: TextStyle(color: colors.error),
             ),
         ],
       ),
@@ -230,19 +314,23 @@ class LegalLinksFooter extends StatelessWidget {
                 spacing: 12,
                 runSpacing: 4,
                 children: [
-                  TextButton.icon(
+                  AppButton(
                     key: const Key('authPrivacyPolicyLink'),
-                    icon: const Icon(Icons.privacy_tip_outlined, size: 18),
-                    label: const Text('Privacy Policy'),
+                    label: 'Privacy Policy',
+                    icon: Icons.privacy_tip_outlined,
+                    variant: AppButtonVariant.tertiary,
+                    compact: true,
                     onPressed: () => pushInAppPage<void>(
                       context,
                       builder: (_) => const PrivacyPolicyPage(),
                     ),
                   ),
-                  TextButton.icon(
+                  AppButton(
                     key: const Key('authTermsLink'),
-                    icon: const Icon(Icons.description_outlined, size: 18),
-                    label: const Text('Terms of Use'),
+                    label: 'Terms of Use',
+                    icon: Icons.description_outlined,
+                    variant: AppButtonVariant.tertiary,
+                    compact: true,
                     onPressed: () => pushInAppPage<void>(
                       context,
                       builder: (_) => const TermsPage(),

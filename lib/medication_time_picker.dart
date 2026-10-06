@@ -1,3 +1,5 @@
+import 'app_controls.dart';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -264,12 +266,14 @@ class _MedicationTimeSelectionPageState
     return InAppPageScaffold(
       title: 'Choose Time',
       actions: [
-        TextButton(
+        AppButton(
           key: const Key('confirmScheduleTimeButton'),
+          label: 'Done',
+          compact: true,
+          variant: AppButtonVariant.tertiary,
           onPressed: _isPastSelection || (keyboardInput && !_inputValid)
               ? null
               : () => Navigator.of(context).pop(_selectedTime),
-          child: const Text('Done'),
         ),
       ],
       child: ListView(

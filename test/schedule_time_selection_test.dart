@@ -1,3 +1,4 @@
+import 'package:mediary/app_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -55,15 +56,15 @@ void main() {
           final done = find.byKey(const Key('confirmScheduleTimeButton'));
           await tester.enterText(hour, use24HourFormat ? '24' : '13');
           await tester.pump();
-          expect(tester.widget<TextButton>(done).onPressed, isNull);
+          expect(tester.widget<AppButton>(done).onPressed, isNull);
           await tester.enterText(hour, use24HourFormat ? '23' : '11');
           await tester.pump();
           await tester.enterText(minute, '60');
           await tester.pump();
-          expect(tester.widget<TextButton>(done).onPressed, isNull);
+          expect(tester.widget<AppButton>(done).onPressed, isNull);
           await tester.enterText(minute, '');
           await tester.pump();
-          expect(tester.widget<TextButton>(done).onPressed, isNull);
+          expect(tester.widget<AppButton>(done).onPressed, isNull);
 
           final bedtime = find.byKey(const Key('scheduleTimePreset_Bedtime'));
           final scrollable = find
@@ -76,7 +77,7 @@ void main() {
           await tester.pumpAndSettle();
           await tester.tap(bedtime);
           await tester.pumpAndSettle();
-          expect(tester.widget<TextButton>(done).onPressed, isNotNull);
+          expect(tester.widget<AppButton>(done).onPressed, isNotNull);
           await tester.scrollUntilVisible(hour, -200, scrollable: scrollable);
           await tester.pumpAndSettle();
           expect(
@@ -177,7 +178,7 @@ void main() {
     );
 
     expect(find.byKey(const Key('pastScheduleTimeError')), findsOneWidget);
-    final done = tester.widget<TextButton>(
+    final done = tester.widget<AppButton>(
       find.byKey(const Key('confirmScheduleTimeButton')),
     );
     expect(done.onPressed, isNull);
@@ -212,7 +213,7 @@ void main() {
       await tester.pump();
       expect(
         tester
-            .widget<TextButton>(
+            .widget<AppButton>(
               find.byKey(const Key('confirmScheduleTimeButton')),
             )
             .onPressed,
@@ -226,7 +227,7 @@ void main() {
       expect(find.text('9:45 AM'), findsOneWidget);
       expect(
         tester
-            .widget<TextButton>(
+            .widget<AppButton>(
               find.byKey(const Key('confirmScheduleTimeButton')),
             )
             .onPressed,
