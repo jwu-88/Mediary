@@ -99,12 +99,7 @@ class ResponsiveCupertinoButton extends StatelessWidget {
         padding: padding,
         child: DefaultTextStyle.merge(
           style: AppButtonMetrics.labelStyle,
-          child: color == null
-              ? child
-              : DecoratedBox(
-                  decoration: BoxDecoration(color: color, borderRadius: radius),
-                  child: child,
-                ),
+          child: child,
         ),
       ),
     );
@@ -126,7 +121,12 @@ class ResponsiveCupertinoButton extends StatelessWidget {
         dimension: AppButtonMetrics.loadingIndicatorSize,
         child: CircularProgressIndicator(strokeWidth: 2, color: colors.primary),
       ),
-      child: content,
+      child: color == null
+          ? content
+          : DecoratedBox(
+              decoration: BoxDecoration(color: color, borderRadius: radius),
+              child: content,
+            ),
     );
   }
 }
@@ -379,8 +379,10 @@ class _AppPressableState extends State<AppPressable> {
     // translating a full-width surface can paint into adjacent UI, especially
     // beside the expanding web sidebar. Keep motion for the intentional press
     // response and use the overlay above for hover feedback instead.
-    final effectiveCursor = !_isInteractive
-        ? SystemMouseCursors.forbidden
+    final effectiveCursor = _isBusy
+        ? SystemMouseCursors.progress
+        : !_isInteractive
+        ? SystemMouseCursors.basic
         : widget.mouseCursor ?? SystemMouseCursors.click;
 
     Widget content = widget.child;
@@ -401,6 +403,9 @@ class _AppPressableState extends State<AppPressable> {
               decoration: BoxDecoration(
                 color: overlayColor,
                 borderRadius: widget.borderRadius,
+                border: _focused
+                    ? Border.all(color: colorScheme.primary, width: 2)
+                    : null,
               ),
             ),
           ),
