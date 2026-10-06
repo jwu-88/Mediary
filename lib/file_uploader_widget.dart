@@ -1,3 +1,5 @@
+import 'app_controls.dart';
+
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -130,16 +132,13 @@ class _FileUploaderWidgetState extends State<FileUploaderWidget> {
                 ),
               ),
               const SizedBox(height: 16),
-              FilledButton.icon(
+              AppButton(
                 key: const Key('fileUploaderButton'),
+                label: 'Choose a file',
+                loadingLabel: 'Opening files…',
+                icon: Icons.upload_file,
+                busy: _isPicking,
                 onPressed: _isPicking ? null : _pickFile,
-                icon: _isPicking
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.upload_file),
-                label: Text(_isPicking ? 'Opening files…' : 'Choose a file'),
               ),
               if (_fileName != null && _fileSizeBytes != null) ...[
                 const SizedBox(height: 14),

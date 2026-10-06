@@ -242,6 +242,16 @@ void main() {
     expect(find.text('Library'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
     expect(find.text('Weekly Progress'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Today’s Schedule'),
+      180,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('dashboardScrollView')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     expect(find.text('Today’s Schedule'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('No medications scheduled'),
@@ -286,7 +296,23 @@ void main() {
     );
 
     expect(find.text('No doses scheduled yet'), findsOneWidget);
+    final dashboardScrollable = find
+        .descendant(
+          of: find.byKey(const Key('dashboardScrollView')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.text('No medications scheduled'),
+      180,
+      scrollable: dashboardScrollable,
+    );
     expect(find.text('No medications scheduled'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('dashboardViewReportButton')),
+      -180,
+      scrollable: dashboardScrollable,
+    );
 
     await tester.tap(find.byKey(const Key('dashboardViewReportButton')));
     await tester.pumpAndSettle();

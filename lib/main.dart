@@ -10,6 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'add_medication_screen.dart';
 import 'app_legal.dart';
+import 'app_controls.dart';
 import 'app_interactions.dart';
 import 'app_layout.dart';
 import 'app_theme.dart';
@@ -663,40 +664,31 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                     ),
                   ],
                   const SizedBox(height: 28),
-                  FilledButton(
+                  AppButton(
                     key: const Key('refreshEmailVerificationButton'),
+                    label: 'I Have Verified My Email',
+                    variant: AppButtonVariant.primary,
                     onPressed: _isBusy ? null : _refresh,
-                    child: _busyAction == _VerificationAction.refresh
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('I Have Verified My Email'),
+                    busy: _busyAction == _VerificationAction.refresh,
+                    haptic: AppHapticKind.none,
                   ),
                   const SizedBox(height: 12),
-                  OutlinedButton(
+                  AppButton(
                     key: const Key('resendVerificationButton'),
+                    label: 'Send a New Verification Email',
+                    variant: AppButtonVariant.secondary,
                     onPressed: _isBusy ? null : _resend,
-                    child: _busyAction == _VerificationAction.resend
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Send a New Verification Email'),
+                    busy: _busyAction == _VerificationAction.resend,
+                    haptic: AppHapticKind.none,
                   ),
                   const SizedBox(height: 12),
-                  TextButton(
+                  AppButton(
                     key: const Key('verificationSignOutButton'),
+                    label: 'Use a Different Account',
+                    variant: AppButtonVariant.tertiary,
                     onPressed: _isBusy ? null : _signOut,
-                    child: _busyAction == _VerificationAction.signOut
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Use a Different Account'),
+                    busy: _busyAction == _VerificationAction.signOut,
+                    haptic: AppHapticKind.none,
                   ),
                 ],
               ),
@@ -922,23 +914,23 @@ class _AuthFormState extends State<AuthForm> {
         foregroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         actions: [
-          IconButton(
+          AppIconButton(
             key: const Key('settingsButton'),
             // Web tooltips render in an OverlayPortal. Removing this
             // transient overlay before pushing Settings avoids a Flutter
             // web overlay-size assertion while keeping the icon semantic
             // label below available to assistive technology.
-            tooltip: kIsWeb ? null : 'Settings',
+            tooltip: 'Settings',
+            showTooltip: !kIsWeb,
+            overImage: true,
+            haptic: AppHapticKind.none,
             onPressed: widget.onOpenSettings == null
                 ? null
                 : () {
                     unawaited(AppHaptics.selection());
                     widget.onOpenSettings!();
                   },
-            icon: const Icon(
-              Icons.settings_outlined,
-              semanticLabel: 'Settings',
-            ),
+            icon: Icons.settings_outlined,
           ),
         ],
       ),
@@ -1068,7 +1060,7 @@ class _AuthFormState extends State<AuthForm> {
                                       prefixIcon: const Icon(
                                         Icons.lock_outline,
                                       ),
-                                      suffixIcon: IconButton(
+                                      suffixIcon: AppIconButton(
                                         tooltip: _obscurePassword
                                             ? 'Show password'
                                             : 'Hide password',
@@ -1083,11 +1075,10 @@ class _AuthFormState extends State<AuthForm> {
                                                       !_obscurePassword,
                                                 );
                                               },
-                                        icon: Icon(
-                                          _obscurePassword
-                                              ? Icons.visibility_outlined
-                                              : Icons.visibility_off_outlined,
-                                        ),
+                                        icon: _obscurePassword
+                                            ? Icons.visibility_outlined
+                                            : Icons.visibility_off_outlined,
+                                        haptic: AppHapticKind.none,
                                       ),
                                     ),
                                   ),
@@ -1127,50 +1118,42 @@ class _AuthFormState extends State<AuthForm> {
                                     ),
                                   ],
                                   SizedBox(height: compactWeb ? 16 : 24),
-                                  FilledButton(
+                                  AppButton(
                                     key: const Key('submitButton'),
+                                    label: action,
                                     onPressed: _isBusy ? null : _submit,
-                                    child: _isSubmitting
-                                        ? const SizedBox(
-                                            height: 20,
-                                            width: 20,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                            ),
-                                          )
-                                        : Text(action),
+                                    busy: _isSubmitting,
+                                    loadingLabel: _createAccount
+                                        ? 'Creating Account…'
+                                        : 'Signing In…',
+                                    haptic: AppHapticKind.none,
                                   ),
                                   const SizedBox(height: 12),
-                                  OutlinedButton.icon(
+                                  AppButton(
                                     key: const Key('googleSignInButton'),
+                                    label: 'Sign In with Google',
+                                    variant: AppButtonVariant.secondary,
+                                    leading: const Text(
+                                      'G',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                     onPressed:
                                         _isBusy || widget.onGoogleSignIn == null
                                         ? null
                                         : _signInWithGoogle,
-                                    icon: _isGoogleSubmitting
-                                        ? const SizedBox(
-                                            height: 20,
-                                            width: 20,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                            ),
-                                          )
-                                        : const Text(
-                                            'G',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                    label: const Text('Sign In with Google'),
+                                    busy: _isGoogleSubmitting,
+                                    haptic: AppHapticKind.none,
                                   ),
                                   const SizedBox(height: 12),
-                                  TextButton(
+                                  AppButton(
+                                    label: _createAccount
+                                        ? 'Already have an account? Sign In'
+                                        : 'Need an account? Create One',
+                                    variant: AppButtonVariant.tertiary,
                                     onPressed: _isBusy ? null : _changeMode,
-                                    child: Text(
-                                      _createAccount
-                                          ? 'Already have an account? Sign In'
-                                          : 'Need an account? Create One',
-                                    ),
+                                    haptic: AppHapticKind.none,
                                   ),
                                 ],
                               ),
@@ -1672,33 +1655,38 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
+        scrollable: true,
         title: const Text('Camera access unavailable'),
         content: const Text(
           'You can still identify a medication by choosing a photo or pasting '
           'an image from your clipboard.',
         ),
         actions: [
-          TextButton(
+          AppButton(
             key: const Key('cameraAlternativeCancelButton'),
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+            label: 'Cancel',
+            variant: AppButtonVariant.tertiary,
           ),
-          TextButton(
+          AppButton(
             key: const Key('cameraAlternativeChoosePhotoButton'),
             onPressed: () =>
                 Navigator.of(dialogContext).pop(_ScanAlternative.choosePhoto),
-            child: const Text('Choose photo'),
+            label: 'Choose photo',
+            variant: AppButtonVariant.tertiary,
           ),
-          TextButton(
+          AppButton(
             key: const Key('cameraAlternativePasteButton'),
             onPressed: () =>
                 Navigator.of(dialogContext).pop(_ScanAlternative.pasteImage),
-            child: const Text('Paste image'),
+            label: 'Paste image',
+            variant: AppButtonVariant.tertiary,
           ),
-          FilledButton(
+          AppButton(
             key: const Key('cameraAlternativeOkButton'),
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('OK'),
+            label: 'OK',
+            variant: AppButtonVariant.primary,
           ),
         ],
       ),
@@ -1723,18 +1711,21 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
+        scrollable: true,
         title: Text(title),
         content: Text(message),
         actions: [
-          TextButton(
+          AppButton(
             key: const Key('scanAccessCancelButton'),
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+            label: 'Cancel',
+            variant: AppButtonVariant.tertiary,
           ),
-          FilledButton(
+          AppButton(
             key: const Key('scanAccessOkButton'),
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('OK'),
+            label: 'OK',
+            variant: AppButtonVariant.primary,
           ),
         ],
       ),
@@ -2358,21 +2349,24 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
+        scrollable: true,
         title: const Text('Duplicate medication'),
         content: const Text(
           'This medication already has the same dose and time on your '
           'calendar. Duplicate medications are not allowed.',
         ),
         actions: [
-          TextButton(
+          AppButton(
             key: const Key('duplicateMedicationCancelButton'),
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+            label: 'Cancel',
+            variant: AppButtonVariant.tertiary,
           ),
-          FilledButton(
+          AppButton(
             key: const Key('duplicateMedicationOkButton'),
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('OK'),
+            label: 'OK',
+            variant: AppButtonVariant.primary,
           ),
         ],
       ),
@@ -3225,10 +3219,11 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
-            child: FilledButton(
+            child: AppButton(
               key: const Key('saveScheduleDetailsButton'),
               onPressed: _save,
-              child: const Text('Create Schedule'),
+              label: 'Create Schedule',
+              variant: AppButtonVariant.primary,
             ),
           ),
         ],
@@ -3278,10 +3273,11 @@ class _LegacyMedicationTimeSelectionPageState
     return InAppPageScaffold(
       title: 'Choose Time',
       actions: [
-        TextButton(
+        AppButton(
           key: const Key('confirmScheduleTimeButton'),
           onPressed: () => Navigator.of(context).pop(_time),
-          child: const Text('Done'),
+          label: 'Done',
+          variant: AppButtonVariant.tertiary,
         ),
       ],
       child: ListView(
@@ -3358,11 +3354,12 @@ class _LegacyMedicationTimeSelectionPageState
             ],
           ),
           const SizedBox(height: 18),
-          OutlinedButton.icon(
+          AppButton(
             key: const Key('customScheduleTimeButton'),
+            label: 'Choose Custom Time',
+            variant: AppButtonVariant.secondary,
+            icon: Icons.access_time,
             onPressed: _chooseCustomTime,
-            icon: const Icon(Icons.access_time),
-            label: const Text('Choose Custom Time'),
           ),
           const SizedBox(height: 12),
           Text(
