@@ -47,14 +47,14 @@ class InAppPageScaffold extends StatelessWidget {
     required this.child,
     this.actions = const [],
     this.maxContentWidth = 680,
-    this.padding = const EdgeInsets.fromLTRB(20, 12, 20, 24),
+    this.padding,
   });
 
   final String title;
   final Widget child;
   final List<Widget> actions;
   final double maxContentWidth;
-  final EdgeInsetsGeometry padding;
+  final EdgeInsetsGeometry? padding;
 
   @override
   Widget build(BuildContext context) {
@@ -68,10 +68,11 @@ class InAppPageScaffold extends StatelessWidget {
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        toolbarHeight: 68,
-        leadingWidth: 68,
+        toolbarHeight:
+            64 + (MediaQuery.textScalerOf(context).scale(22) - 22).clamp(0, 44),
+        leadingWidth: 64,
         leading: Padding(
-          padding: const EdgeInsets.only(left: 12),
+          padding: const EdgeInsets.only(left: AppSpacing.md),
           child: Center(
             child: LiquidGlassBackButton(
               semanticLabel: 'Back from $title',
@@ -85,12 +86,7 @@ class InAppPageScaffold extends StatelessWidget {
           title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: colors.onSurface,
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -.35,
-          ),
+          style: AppTextStyles.pageTitle.copyWith(color: colors.onSurface),
         ),
         actions: actions,
       ),
@@ -99,7 +95,17 @@ class InAppPageScaffold extends StatelessWidget {
         child: Center(
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: contentWidth),
-            child: Padding(padding: padding, child: child),
+            child: Padding(
+              padding:
+                  padding ??
+                  EdgeInsets.fromLTRB(
+                    AppSpacing.pageGutterOf(context),
+                    AppSpacing.md,
+                    AppSpacing.pageGutterOf(context),
+                    AppSpacing.xl,
+                  ),
+              child: child,
+            ),
           ),
         ),
       ),
@@ -306,7 +312,10 @@ class _InAppOptionRow<T> extends StatelessWidget {
       child: AppPressable(
         key: ValueKey('inAppOption-${option.label}'),
         onPressed: () => onSelected(option),
-        semanticLabel: option.label,
+        semanticLabel: option.detail == null
+            ? option.label
+            : '${option.label}, ${option.detail}',
+        excludeFromSemantics: true,
         haptic: option.destructive
             ? AppHapticKind.primaryAction
             : AppHapticKind.selection,
@@ -338,7 +347,8 @@ class _InAppOptionRow<T> extends StatelessWidget {
                         option.label,
                         style: TextStyle(
                           color: foreground,
-                          fontSize: 16,
+                          fontSize: 15,
+                          height: 1.45,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -348,8 +358,8 @@ class _InAppOptionRow<T> extends StatelessWidget {
                           option.detail!,
                           style: TextStyle(
                             color: colors.onSurfaceVariant,
-                            fontSize: 13,
-                            height: 1.3,
+                            fontSize: 12,
+                            height: 1.35,
                           ),
                         ),
                       ],

@@ -36,7 +36,7 @@ abstract final class AppButtonMetrics {
   static const minWidth = 64.0;
   static const minHeight = 48.0;
   static const height = minHeight;
-  static const compactHeight = 40.0;
+  static const compactHeight = 44.0;
   static const iconButtonSize = 44.0;
   static const navigationHeight = 64.0;
   static const horizontalPadding = 18.0;
@@ -52,6 +52,35 @@ abstract final class AppButtonMetrics {
     fontWeight: FontWeight.w600,
     height: 1.2,
   );
+}
+
+/// The common spacing rhythm used by both touch and pointer layouts.
+abstract final class AppSpacing {
+  static const xs = 4.0;
+  static const sm = 8.0;
+  static const md = 12.0;
+  static const lg = 16.0;
+  static const xl = 24.0;
+  static const xxl = 32.0;
+  static double pageGutterOf(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < 600 ? lg : xl;
+}
+
+abstract final class AppTextStyles {
+  static const pageTitle = TextStyle(
+    fontSize: 30,
+    fontWeight: FontWeight.w700,
+    height: 1.15,
+    letterSpacing: -.6,
+  );
+  static const sectionTitle = TextStyle(
+    fontSize: 18,
+    fontWeight: FontWeight.w700,
+    height: 1.25,
+    letterSpacing: -.2,
+  );
+  static const body = TextStyle(fontSize: 15, height: 1.45);
+  static const caption = TextStyle(fontSize: 12, height: 1.35);
 }
 
 /// User-selectable accent palettes. Blue remains Mediary's default.
@@ -185,22 +214,85 @@ abstract final class AppTheme {
     );
 
     return baseTheme.copyWith(
-      textTheme: baseTheme.textTheme.apply(bodyColor: text, displayColor: text),
-      dividerTheme: DividerThemeData(color: outline),
+      textTheme: baseTheme.textTheme
+          .apply(bodyColor: text, displayColor: text)
+          .copyWith(
+            headlineLarge: AppTextStyles.pageTitle.copyWith(color: text),
+            headlineMedium: AppTextStyles.pageTitle.copyWith(
+              color: text,
+              fontSize: 28,
+            ),
+            headlineSmall: AppTextStyles.sectionTitle.copyWith(
+              color: text,
+              fontSize: 22,
+            ),
+            titleLarge: AppTextStyles.sectionTitle.copyWith(
+              color: text,
+              fontSize: 22,
+            ),
+            titleMedium: AppTextStyles.sectionTitle.copyWith(color: text),
+            bodyLarge: AppTextStyles.body.copyWith(color: text, fontSize: 16),
+            bodyMedium: AppTextStyles.body.copyWith(color: text),
+            bodySmall: AppTextStyles.caption.copyWith(color: mutedText),
+            labelLarge: AppButtonMetrics.labelStyle.copyWith(color: text),
+          ),
+      dividerTheme: DividerThemeData(
+        color: outline.withValues(alpha: .65),
+        thickness: .7,
+        space: 1,
+      ),
+      cardTheme: CardThemeData(
+        color: surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadii.standard),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        titleTextStyle: AppTextStyles.sectionTitle.copyWith(color: text),
+        contentTextStyle: AppTextStyles.body.copyWith(color: text),
+      ),
       inputDecorationTheme: InputDecorationTheme(
-        border: OutlineInputBorder(borderSide: BorderSide(color: outline)),
+        filled: true,
+        fillColor: surface,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadii.standard),
+          borderSide: BorderSide(color: outline),
+        ),
         enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadii.standard),
           borderSide: BorderSide(color: outline),
         ),
         focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadii.standard),
           borderSide: BorderSide(color: colorScheme.primary, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadii.standard),
+          borderSide: BorderSide(color: error),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadii.standard),
+          borderSide: BorderSide(color: error, width: 2),
+        ),
+        disabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadii.standard),
+          borderSide: BorderSide(color: outline.withValues(alpha: .5)),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
-        style: _buttonInteractionStyle(colorScheme, includeElevation: true),
+        style: _buttonInteractionStyle(colorScheme, filled: true),
       ),
       filledButtonTheme: FilledButtonThemeData(
-        style: _buttonInteractionStyle(colorScheme, includeElevation: true),
+        style: _buttonInteractionStyle(colorScheme, filled: true),
       ),
       textButtonTheme: TextButtonThemeData(
         style: _buttonInteractionStyle(colorScheme),
@@ -254,7 +346,7 @@ abstract final class AppTheme {
 
   static ButtonStyle _buttonInteractionStyle(
     ColorScheme colorScheme, {
-    bool includeElevation = false,
+    bool filled = false,
   }) {
     return ButtonStyle(
       animationDuration: AppButtonMetrics.interactionDuration,
@@ -262,7 +354,10 @@ abstract final class AppTheme {
         Size(AppButtonMetrics.minWidth, AppButtonMetrics.minHeight),
       ),
       padding: const WidgetStatePropertyAll(
-        EdgeInsets.symmetric(horizontal: AppButtonMetrics.horizontalPadding),
+        EdgeInsets.symmetric(
+          horizontal: AppButtonMetrics.horizontalPadding,
+          vertical: 12,
+        ),
       ),
       shape: const WidgetStatePropertyAll(
         RoundedRectangleBorder(
@@ -276,39 +371,42 @@ abstract final class AppTheme {
       visualDensity: VisualDensity.standard,
       mouseCursor: WidgetStateProperty.resolveWith(
         (states) => states.contains(WidgetState.disabled)
-            ? SystemMouseCursors.forbidden
+            ? SystemMouseCursors.basic
             : SystemMouseCursors.click,
       ),
       overlayColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.disabled)) return Colors.transparent;
         if (states.contains(WidgetState.pressed)) {
-          return colorScheme.primary.withValues(alpha: .16);
+          return (filled ? colorScheme.onPrimary : colorScheme.primary)
+              .withValues(alpha: .13);
         }
         if (states.contains(WidgetState.hovered)) {
-          return colorScheme.primary.withValues(alpha: .09);
+          return (filled ? colorScheme.onPrimary : colorScheme.primary)
+              .withValues(alpha: .08);
         }
         if (states.contains(WidgetState.focused)) {
           return colorScheme.primary.withValues(alpha: .11);
         }
         return Colors.transparent;
       }),
+      backgroundColor: WidgetStateProperty.resolveWith(
+        (states) => filled
+            ? states.contains(WidgetState.disabled)
+                  ? colorScheme.primary.withValues(alpha: .12)
+                  : colorScheme.primary
+            : Colors.transparent,
+      ),
+      surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
       foregroundColor: WidgetStateProperty.resolveWith(
         (states) => states.contains(WidgetState.disabled)
             ? colorScheme.onSurface.withValues(
                 alpha: AppButtonMetrics.disabledForegroundOpacity,
               )
-            : null,
+            : filled
+            ? colorScheme.onPrimary
+            : colorScheme.primary,
       ),
-      elevation: includeElevation
-          ? WidgetStateProperty.resolveWith((states) {
-              if (states.contains(WidgetState.disabled) ||
-                  states.contains(WidgetState.pressed)) {
-                return 0;
-              }
-              if (states.contains(WidgetState.hovered)) return 2;
-              return 0;
-            })
-          : null,
+      elevation: const WidgetStatePropertyAll(0),
     );
   }
 }

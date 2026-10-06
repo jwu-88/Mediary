@@ -9,7 +9,7 @@ void main() {
   test('shared button metrics define the common control geometry', () {
     expect(AppButtonMetrics.height, 48);
     expect(AppButtonMetrics.minWidth, 64);
-    expect(AppButtonMetrics.compactHeight, 40);
+    expect(AppButtonMetrics.compactHeight, 44);
     expect(AppButtonMetrics.iconButtonSize, 44);
     expect(AppButtonMetrics.radius, AppRadii.standard);
     expect(AppButtonMetrics.iconGap, 8);

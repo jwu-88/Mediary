@@ -82,7 +82,7 @@ void main() {
         find.byType(FocusableActionDetector),
       );
       expect(opacity.opacity, .46);
-      expect(detector.mouseCursor, SystemMouseCursors.forbidden);
+      expect(detector.mouseCursor, SystemMouseCursors.basic);
       expect(activations, 0);
     });
 
@@ -314,17 +314,17 @@ void main() {
 
     expect(
       style.overlayColor!.resolve({WidgetState.hovered}),
-      AppAccentColor.blue.light.withValues(alpha: .09),
+      theme.colorScheme.onPrimary.withValues(alpha: .08),
     );
     expect(
       style.overlayColor!.resolve({WidgetState.pressed}),
-      AppAccentColor.blue.light.withValues(alpha: .16),
+      theme.colorScheme.onPrimary.withValues(alpha: .13),
     );
     expect(
       style.mouseCursor!.resolve({WidgetState.disabled}),
-      SystemMouseCursors.forbidden,
+      SystemMouseCursors.basic,
     );
-    expect(style.elevation!.resolve({WidgetState.hovered}), 2);
+    expect(style.elevation!.resolve({WidgetState.hovered}), 0);
     expect(iconStyle.shape!.resolve({}), isA<CircleBorder>());
   });
 }

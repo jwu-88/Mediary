@@ -1,10 +1,12 @@
 import 'dart:ui';
+import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'app_interactions.dart';
+import 'app_controls.dart';
 
 /// A capsule search field that uses the same glass treatment as the native
 /// bottom navigator. Web keeps the capsule shape but uses a solid surface.
@@ -92,7 +94,10 @@ class _LiquidGlassSearchFieldState extends State<LiquidGlassSearchField> {
 
     final surface = Container(
       key: widget.surfaceKey,
-      height: 52,
+      height: math.max(
+        52,
+        MediaQuery.textScalerOf(context).scale(16) * 1.25 + 28,
+      ),
       decoration: BoxDecoration(
         borderRadius: radius,
         // A restrained solid tint keeps the field glassy without the
@@ -179,29 +184,18 @@ class _LiquidGlassSearchFieldState extends State<LiquidGlassSearchField> {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (_showClear)
-          Semantics(
-            button: true,
-            label: 'Clear search',
-            child: ResponsiveCupertinoButton(
-              buttonKey: const Key('liquidGlassSearchClearButton'),
-              minimumSize: const Size(40, 52),
-              padding: EdgeInsets.zero,
+          DecoratedBox(
+            key: const Key('liquidGlassSearchClearSurface'),
+            decoration: BoxDecoration(
+              color: colors.surfaceContainerHighest.withValues(alpha: .94),
+              shape: BoxShape.circle,
+            ),
+            child: AppIconButton(
+              key: const Key('liquidGlassSearchClearButton'),
+              icon: CupertinoIcons.xmark,
+              tooltip: 'Clear search',
+              showTooltip: false,
               onPressed: _clear,
-              semanticLabel: 'Clear search',
-              child: DecoratedBox(
-                key: const Key('liquidGlassSearchClearSurface'),
-                decoration: BoxDecoration(
-                  color: colors.surfaceContainerHighest.withValues(alpha: .94),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: colors.outlineVariant.withValues(alpha: .82),
-                  ),
-                ),
-                child: const Padding(
-                  padding: EdgeInsets.all(5),
-                  child: Icon(CupertinoIcons.xmark, size: 15),
-                ),
-              ),
             ),
           ),
         ?widget.trailing,
