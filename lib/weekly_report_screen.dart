@@ -5,13 +5,12 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'app_interactions.dart';
+import 'app_controls.dart';
 import 'app_layout.dart';
 import 'data/mediary_repository.dart';
 import 'in_app_page.dart';
 import 'liquid_glass_back_button.dart';
 
-const _weeklyReportHorizontalInset = 16.0;
 const _weeklyReportNativeContentWidth = 520.0;
 const _weeklyReportDesktopContentWidth = 1120.0;
 const _weeklyChartHorizontalPadding = 10.0;
@@ -242,10 +241,16 @@ class WeeklyReportScreen extends StatelessWidget {
             onPressed: () => Navigator.maybePop(context),
           ),
         ),
-        centerTitle: true,
+        centerTitle: false,
+        titleSpacing: 4,
+        toolbarHeight:
+            64 + (MediaQuery.textScalerOf(context).scale(22) - 22).clamp(0, 44),
+        leadingWidth: 64,
         title: const Text(
           'Weekly Report',
-          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTextStyles.pageTitle,
         ),
       ),
       body: SafeArea(
@@ -255,11 +260,11 @@ class WeeklyReportScreen extends StatelessWidget {
             constraints: BoxConstraints(maxWidth: contentWidth),
             child: ListView(
               key: const Key('weeklyReportScrollView'),
-              padding: const EdgeInsets.fromLTRB(
-                _weeklyReportHorizontalInset,
-                12,
-                _weeklyReportHorizontalInset,
-                32,
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.pageGutterOf(context),
+                AppSpacing.md,
+                AppSpacing.pageGutterOf(context),
+                AppSpacing.xxl,
               ),
               children: [
                 Text(
@@ -430,13 +435,22 @@ class _PrepareSummaryButton extends StatefulWidget {
 
 class _PrepareSummaryButtonState extends State<_PrepareSummaryButton> {
   bool _busy = false;
+  String? _error;
 
   Future<void> _prepare() async {
     if (_busy) return;
-    setState(() => _busy = true);
-    unawaited(AppHaptics.primaryAction());
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     try {
       await widget.onPressed();
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _error = 'Your summary could not be prepared. Check your connection and try again.',
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -444,25 +458,32 @@ class _PrepareSummaryButtonState extends State<_PrepareSummaryButton> {
 
   @override
   Widget build(BuildContext context) {
-    return FilledButton(
-      key: const Key('prepareSummaryButton'),
-      onPressed: _busy ? null : _prepare,
-      style: FilledButton.styleFrom(
-        minimumSize: const Size.fromHeight(52),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-      ),
-      child: _busy
-          ? SizedBox.square(
-              key: const Key('prepareSummaryLoadingIndicator'),
-              dimension: 21,
-              child: CircularProgressIndicator(
-                value: .72,
-                strokeWidth: 2,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            )
-          : const Text('Prepare Summary'),
+    final colors = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppButton(
+          key: const Key('prepareSummaryButton'),
+          label: 'Prepare Summary',
+          icon: CupertinoIcons.doc_text,
+          onPressed: _busy ? null : _prepare,
+          busy: _busy,
+          loadingLabel: 'Preparing Summary',
+          loadingIndicatorKey: const Key('prepareSummaryLoadingIndicator'),
+          expand: true,
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              _error!,
+              key: const Key('prepareSummaryError'),
+              style: AppTextStyles.body.copyWith(color: colors.error),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -600,14 +621,25 @@ class _PreparedSummaryPage extends StatefulWidget {
 class _PreparedSummaryPageState extends State<_PreparedSummaryPage> {
   var _copyStatus = 'Ready to review and copy';
   var _hasCopied = false;
+  var _copyFailed = false;
 
   Future<void> _copySummary() async {
-    await Clipboard.setData(ClipboardData(text: widget.summary));
-    if (!mounted) return;
-    setState(() {
-      _hasCopied = true;
-      _copyStatus = 'Summary copied';
-    });
+    try {
+      await Clipboard.setData(ClipboardData(text: widget.summary));
+      if (!mounted) return;
+      setState(() {
+        _hasCopied = true;
+        _copyFailed = false;
+        _copyStatus = 'Summary copied';
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _copyFailed = true;
+          _copyStatus = 'Summary could not be copied. Try again.';
+        });
+      }
+    }
   }
 
   @override
@@ -627,11 +659,15 @@ class _PreparedSummaryPageState extends State<_PreparedSummaryPage> {
                 key: ValueKey(_copyStatus),
                 children: [
                   Icon(
-                    _hasCopied
+                    _copyFailed
+                        ? CupertinoIcons.exclamationmark_circle_fill
+                        : _hasCopied
                         ? CupertinoIcons.check_mark_circled_solid
                         : CupertinoIcons.doc_text,
                     size: 18,
-                    color: theme.colorScheme.primary,
+                    color: _copyFailed
+                        ? theme.colorScheme.error
+                        : theme.colorScheme.primary,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -656,36 +692,22 @@ class _PreparedSummaryPageState extends State<_PreparedSummaryPage> {
           const SizedBox(height: 28),
           LayoutBuilder(
             builder: (context, constraints) {
-              final stackButtons = constraints.maxWidth < 360;
-              final copyButton = OutlinedButton(
+              final stackButtons =
+                  constraints.maxWidth < 440 ||
+                  MediaQuery.textScalerOf(context).scale(15) > 21;
+              final copyButton = AppButton(
                 key: const Key('copySummaryAgainButton'),
+                label: _hasCopied ? 'Copy Again' : 'Copy Summary',
+                icon: CupertinoIcons.doc_on_doc,
+                variant: AppButtonVariant.secondary,
                 onPressed: _copySummary,
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  textStyle: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                child: Text(_hasCopied ? 'Copy Again' : 'Copy Summary'),
+                expand: true,
               );
-              final doneButton = FilledButton(
+              final doneButton = AppButton(
                 key: const Key('closeSummaryButton'),
+                label: 'Done',
                 onPressed: () => Navigator.pop(context),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  textStyle: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                child: const Text('Done'),
+                expand: true,
               );
               if (stackButtons) {
                 return Column(
@@ -863,7 +885,7 @@ class _DailyDoseChartPainter extends CustomPainter {
         text: text,
         style: TextStyle(
           color: color,
-          fontSize: 11,
+          fontSize: 12,
           fontWeight: FontWeight.w500,
         ),
       ),
@@ -962,7 +984,7 @@ class _TimingChartPainter extends CustomPainter {
         text: text,
         style: TextStyle(
           color: color,
-          fontSize: 11,
+          fontSize: 12,
           fontWeight: FontWeight.w500,
         ),
       ),

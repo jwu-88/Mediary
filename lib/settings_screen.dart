@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'app_controls.dart';
 import 'app_theme.dart';
 import 'app_legal.dart';
 import 'app_interactions.dart';
@@ -394,7 +395,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               backgroundColor: _background,
               surfaceTintColor: Colors.transparent,
               elevation: 0,
-              centerTitle: true,
+              centerTitle: false,
+              titleSpacing: 4,
+              toolbarHeight:
+                  64 +
+                  (MediaQuery.textScalerOf(context).scale(22) - 22).clamp(
+                    0,
+                    44,
+                  ),
+              leadingWidth: 64,
               leading: Center(
                 child: LiquidGlassBackButton(
                   semanticLabel: widget.pageTitle == 'Account'
@@ -405,11 +414,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               title: Text(
                 widget.pageTitle,
-                style: TextStyle(
-                  color: _ink,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.pageTitle.copyWith(color: _ink),
               ),
             ),
       body: SafeArea(
@@ -425,21 +432,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: ListView(
                 key: const PageStorageKey<String>('settingsScrollPosition'),
                 scrollCacheExtent: const ScrollCacheExtent.pixels(5000),
-                padding: EdgeInsets.fromLTRB(16, 2, 16, widget.bottomPadding),
+                padding: EdgeInsets.fromLTRB(
+                  AppSpacing.pageGutterOf(context),
+                  AppSpacing.sm,
+                  AppSpacing.pageGutterOf(context),
+                  widget.bottomPadding,
+                ),
                 children: [
                   if (widget.embedded)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(2, 8, 2, 4),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: AppSpacing.md,
+                      ),
                       child: Text(
                         'Settings',
                         key: const Key('settingsPageTitle'),
-                        style: TextStyle(
-                          color: _ink,
-                          fontSize: 32,
-                          height: 1.08,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -.8,
-                        ),
+                        style: AppTextStyles.pageTitle.copyWith(color: _ink),
                       ),
                     ),
                   if (showAccount) ...[
@@ -586,10 +594,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         trailing: _isExportingData
                             ? SizedBox.square(
                                 key: const Key('exportDataLoadingIndicator'),
-                                dimension: 17,
+                                dimension:
+                                    AppButtonMetrics.loadingIndicatorSize,
                                 child: CircularProgressIndicator(
-                                  value: .72,
-                                  strokeWidth: 1.8,
+                                  strokeWidth: 2,
                                   color: _accent,
                                 ),
                               )
@@ -648,7 +656,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Text(
                     'Mediary 1.0.0 · Reference only',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: _muted, fontSize: 10, height: 1.5),
+                    style: TextStyle(color: _muted, fontSize: 12, height: 1.5),
                   ),
                 ],
               ),
@@ -662,7 +670,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _sectionTitle(String label, {Key? key}) {
     return Padding(
       key: key,
-      padding: const EdgeInsets.fromLTRB(2, 20, 2, 8),
+      padding: const EdgeInsets.fromLTRB(0, 24, 0, 8),
       child: Text(
         label,
         style: TextStyle(
@@ -723,13 +731,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _value(String label) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(label, style: TextStyle(color: _muted, fontSize: 11)),
-        const SizedBox(width: 5),
-        _chevron(),
-      ],
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 180),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.end,
+              style: AppTextStyles.caption.copyWith(color: _muted),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          _chevron(),
+        ],
+      ),
     );
   }
 }
@@ -825,10 +844,12 @@ class _PrivacyControlsPageState extends State<_PrivacyControlsPage> {
       key: const Key('privacyControlsPage'),
       title: 'Privacy Controls',
       actions: [
-        TextButton(
+        AppButton(
           key: const Key('privacyControlsDoneButton'),
+          label: 'Done',
+          compact: true,
+          variant: AppButtonVariant.tertiary,
           onPressed: () => Navigator.of(context).maybePop(),
-          child: const Text('Done'),
         ),
         const SizedBox(width: 8),
       ],
@@ -838,11 +859,7 @@ class _PrivacyControlsPageState extends State<_PrivacyControlsPage> {
           Text(
             'Camera access is managed by your device. Integrations that are '
             'not configured remain off.',
-            style: TextStyle(
-              color: colors.onSurfaceVariant,
-              fontSize: 14,
-              height: 1.4,
-            ),
+            style: AppTextStyles.body.copyWith(color: colors.onSurfaceVariant),
           ),
           const SizedBox(height: 18),
           ClipRRect(
@@ -851,32 +868,61 @@ class _PrivacyControlsPageState extends State<_PrivacyControlsPage> {
               color: colors.surface,
               child: Column(
                 children: [
-                  ListTile(
-                    key: const Key('cameraAccessControl'),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                    hoverColor: colors.primary.withValues(alpha: .07),
-                    focusColor: colors.primary.withValues(alpha: .10),
-                    splashColor: colors.primary.withValues(alpha: .12),
-                    title: const Text('Camera Access'),
-                    subtitle: Text(
-                      _cameraStatus ??
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final action = AppButton(
+                        label: _cameraAccess ? 'Manage' : 'Allow',
+                        variant: AppButtonVariant.secondary,
+                        compact: true,
+                        busy: _cameraBusy,
+                        loadingLabel: 'Updating',
+                        onPressed: _cameraBusy ? null : _manageCameraAccess,
+                      );
+                      final description =
+                          _cameraStatus ??
                           (_cameraAccess
                               ? 'Allowed by device settings'
-                              : 'Off until you allow it'),
-                    ),
-                    trailing: _cameraBusy
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(
-                            _cameraAccess ? 'Manage' : 'Allow',
-                            style: TextStyle(
-                              color: colors.primary,
-                              fontWeight: FontWeight.w600,
-                            ),
+                              : 'Off until you allow it');
+                      if (MediaQuery.textScalerOf(context).scale(15) > 21) {
+                        return Padding(
+                          key: const Key('cameraAccessControl'),
+                          padding: const EdgeInsets.all(AppSpacing.lg),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                'Camera Access',
+                                style: AppTextStyles.body.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: AppSpacing.xs),
+                              Text(
+                                description,
+                                style: AppTextStyles.body.copyWith(
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: AppSpacing.md),
+                              action,
+                            ],
                           ),
-                    onTap: _cameraBusy ? null : _manageCameraAccess,
+                        );
+                      }
+                      return ListTile(
+                        key: const Key('cameraAccessControl'),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                        ),
+                        hoverColor: colors.primary.withValues(alpha: .07),
+                        focusColor: colors.primary.withValues(alpha: .10),
+                        splashColor: colors.primary.withValues(alpha: .12),
+                        title: const Text('Camera Access'),
+                        subtitle: Text(description),
+                        trailing: action,
+                        onTap: _cameraBusy ? null : _manageCameraAccess,
+                      );
+                    },
                   ),
                   const _PrivacyDivider(key: Key('privacyControlDivider0')),
                   const _PrivacySwitchRow(
@@ -983,7 +1029,7 @@ class _AccountSettingsRow extends StatelessWidget {
                           trimmedEmail,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: muted, fontSize: 11),
+                          style: TextStyle(color: muted, fontSize: 12),
                         ),
                       ],
                     ],
@@ -1076,42 +1122,61 @@ class _SettingsRow extends StatelessWidget {
         hoverOffset: Offset.zero,
         pressedScale: .99,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 58),
+          constraints: const BoxConstraints(minHeight: 64),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 28,
-                  child: Center(child: Icon(icon, color: iconColor, size: 18)),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final text = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: AppTextStyles.body.copyWith(
+                        color: colors.onSurface,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(
+                      subtitle,
+                      style: AppTextStyles.caption.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                );
+                final identity = Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 28,
+                      child: Center(
+                        child: Icon(icon, color: iconColor, size: 20),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(child: text),
+                  ],
+                );
+                if (MediaQuery.textScalerOf(context).scale(15) > 21) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          color: colors.onSurface,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          color: colors.onSurfaceVariant,
-                          fontSize: 10,
-                        ),
-                      ),
+                      identity,
+                      const SizedBox(height: AppSpacing.sm),
+                      Align(alignment: Alignment.centerRight, child: trailing),
                     ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                trailing,
-              ],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: identity),
+                    const SizedBox(width: AppSpacing.sm),
+                    trailing,
+                  ],
+                );
+              },
             ),
           ),
         ),
