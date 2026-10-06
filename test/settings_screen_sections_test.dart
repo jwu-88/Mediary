@@ -43,7 +43,7 @@ void main() {
     );
     expect(
       tester.widget<ListView>(settingsList).padding,
-      const EdgeInsets.fromLTRB(16, 2, 16, 144),
+      const EdgeInsets.fromLTRB(16, 8, 16, 144),
     );
 
     final account = find.byKey(const Key('settingsAccountGroup'));
