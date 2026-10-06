@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'app_controls.dart';
 import 'app_interactions.dart';
 import 'app_layout.dart';
 import 'app_theme.dart';
@@ -209,6 +210,18 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
     });
   }
 
+  void _resetSearchAndFilters() {
+    _searchController.clear();
+    // An abandoned saved-list request must not restore an error after clearing.
+    _savedRequest++;
+    setState(() {
+      _savedOnly = false;
+      _savedError = null;
+      _isLoadingSaved = false;
+    });
+    _onSearchChanged('');
+  }
+
   Future<void> _openMedication(_Medication medication) async {
     var record = medication.catalogRecord;
     if (record != null && widget.catalogClient != null) {
@@ -266,7 +279,12 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               slivers: [
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 7, 16, 0),
+                  padding: EdgeInsets.fromLTRB(
+                    AppSpacing.pageGutterOf(context),
+                    AppSpacing.sm,
+                    AppSpacing.pageGutterOf(context),
+                    0,
+                  ),
                   sliver: SliverList.list(
                     children: [
                       _LibraryHeader(
@@ -305,8 +323,8 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: _muted,
-                              fontSize: 11,
-                              height: 1.45,
+                              fontSize: 12,
+                              height: 1.35,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -317,9 +335,9 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
                 ),
                 SliverPadding(
                   padding: EdgeInsets.fromLTRB(
-                    16,
-                    20,
-                    16,
+                    AppSpacing.pageGutterOf(context),
+                    AppSpacing.xl,
+                    AppSpacing.pageGutterOf(context),
                     widget.bottomPadding,
                   ),
                   sliver: SliverList.list(
@@ -337,18 +355,25 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
                           child: Center(child: CircularProgressIndicator()),
                         )
                       else if (_searchError != null || _savedError != null)
-                        _LibraryError(message: _searchError ?? _savedError!)
+                        _LibraryError(
+                          message: _searchError ?? _savedError!,
+                          onRetry: () {
+                            if (_savedOnly &&
+                                _searchController.text.trim().isEmpty) {
+                              unawaited(_loadSavedMedications());
+                            } else {
+                              _onSearchChanged(_searchController.text);
+                            }
+                          },
+                          onClear: _resetSearchAndFilters,
+                        )
                       else if (medications.isEmpty)
                         _EmptyResults(
                           ink: _ink,
                           muted: _muted,
                           savedOnly: _savedOnly,
                           hasQuery: _searchController.text.trim().isNotEmpty,
-                          onReset: () {
-                            _searchController.clear();
-                            setState(() => _savedOnly = false);
-                            _onSearchChanged('');
-                          },
+                          onReset: _resetSearchAndFilters,
                         )
                       else
                         _MedicationList(
@@ -388,7 +413,6 @@ class _LibraryHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
@@ -416,13 +440,7 @@ class _LibraryHeader extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 'Medication Library',
-                style: TextStyle(
-                  color: ink,
-                  fontSize: 28,
-                  height: 1.12,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -.8,
-                ),
+                style: AppTextStyles.pageTitle.copyWith(color: ink),
               ),
             ],
           ),
@@ -431,21 +449,16 @@ class _LibraryHeader extends StatelessWidget {
           button: true,
           selected: savedOnly,
           label: savedOnly ? 'Show all medications' : 'Show saved medications',
-          child: ResponsiveCupertinoButton(
-            buttonKey: const Key('savedMedicationsButton'),
-            minimumSize: const Size(44, 44),
-            padding: EdgeInsets.zero,
-            onPressed: onSavedPressed,
-            semanticLabel: savedOnly
+          child: AppIconButton(
+            key: const Key('savedMedicationsButton'),
+            icon: savedOnly
+                ? CupertinoIcons.bookmark_fill
+                : CupertinoIcons.bookmark,
+            tooltip: savedOnly
                 ? 'Show all medications'
                 : 'Show saved medications',
-            child: Icon(
-              savedOnly
-                  ? CupertinoIcons.bookmark_fill
-                  : CupertinoIcons.bookmark,
-              color: primary,
-              size: 21,
-            ),
+            selected: savedOnly,
+            onPressed: onSavedPressed,
           ),
         ),
       ],
@@ -466,7 +479,6 @@ class _SearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
     return LiquidGlassSearchField(
       controller: controller,
       textFieldKey: const Key('medicationSearchField'),
@@ -475,17 +487,11 @@ class _SearchField extends StatelessWidget {
       trailing: Semantics(
         button: true,
         label: 'Filter medications',
-        child: ResponsiveCupertinoButton(
-          buttonKey: const Key('medicationFilterButton'),
-          minimumSize: const Size(44, 52),
-          padding: EdgeInsets.zero,
+        child: AppIconButton(
+          key: const Key('medicationFilterButton'),
+          icon: CupertinoIcons.slider_horizontal_3,
+          tooltip: 'Filter medications',
           onPressed: onFilterPressed,
-          semanticLabel: 'Filter medications',
-          child: Icon(
-            CupertinoIcons.slider_horizontal_3,
-            color: primary,
-            size: 20,
-          ),
         ),
       ),
     );
@@ -507,33 +513,19 @@ class _SectionHeading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
     return Row(
       children: [
         Expanded(
           child: Text(
             title,
-            style: TextStyle(
-              color: ink,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -.25,
-            ),
+            style: AppTextStyles.sectionTitle.copyWith(color: ink),
           ),
         ),
-        ResponsiveCupertinoButton(
-          minimumSize: const Size(44, 36),
-          padding: const EdgeInsets.symmetric(horizontal: 2),
+        AppButton(
+          label: action,
           onPressed: onPressed,
-          semanticLabel: action,
-          child: Text(
-            action,
-            style: TextStyle(
-              color: primary,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          variant: AppButtonVariant.tertiary,
+          compact: true,
         ),
       ],
     );
@@ -731,8 +723,8 @@ class _EmptyResults extends StatelessWidget {
                 : 'Search the medication catalog',
             style: TextStyle(
               color: ink,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 4),
@@ -742,15 +734,15 @@ class _EmptyResults extends StatelessWidget {
                 : hasQuery
                 ? 'Try another medication name or strength.'
                 : 'Search by name, strength, or dosage form.',
-            style: TextStyle(color: muted, fontSize: 12),
+            textAlign: TextAlign.center,
+            style: AppTextStyles.body.copyWith(color: muted),
           ),
-          FilledButton.tonal(
+          const SizedBox(height: AppSpacing.lg),
+          AppButton(
+            label: savedOnly ? 'Show All Medications' : 'Clear Search',
             onPressed: onReset,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(0, 36),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-            ),
-            child: Text(savedOnly ? 'Show All Medications' : 'Clear Search'),
+            variant: AppButtonVariant.secondary,
+            compact: true,
           ),
         ],
       ),
@@ -759,9 +751,15 @@ class _EmptyResults extends StatelessWidget {
 }
 
 class _LibraryError extends StatelessWidget {
-  const _LibraryError({required this.message});
+  const _LibraryError({
+    required this.message,
+    required this.onRetry,
+    required this.onClear,
+  });
 
   final String message;
+  final VoidCallback onRetry;
+  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
@@ -783,8 +781,8 @@ class _LibraryError extends StatelessWidget {
             rateLimited ? 'Catalog limit reached' : 'Catalog unavailable',
             style: TextStyle(
               color: colors.onSurface,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 4),
@@ -793,7 +791,28 @@ class _LibraryError extends StatelessWidget {
                 ? 'Please wait a moment and try again.'
                 : 'Check your connection and try again.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
+            style: AppTextStyles.body.copyWith(color: colors.onSurfaceVariant),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              AppButton(
+                key: const Key('retryLibrarySearchButton'),
+                label: 'Try Again',
+                compact: true,
+                onPressed: onRetry,
+              ),
+              AppButton(
+                key: const Key('clearLibrarySearchButton'),
+                label: 'Clear Search',
+                compact: true,
+                variant: AppButtonVariant.tertiary,
+                onPressed: onClear,
+              ),
+            ],
           ),
         ],
       ),
@@ -826,6 +845,8 @@ class MedicationDetailScreen extends StatefulWidget {
 class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
   late bool _isBookmarked = widget.initialBookmarked;
   bool _isAdded = false;
+  bool _isSavingBookmark = false;
+  String? _bookmarkError;
   late MedicationCatalogRecord _medication = widget.medication;
   var _isLoadingDetails = false;
 
@@ -889,9 +910,9 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
     final contentWidth = media.size.width >= 900
         ? responsiveContentWidth(context, nativeMaxWidth: 1120)
         : 520.0;
-    return ColoredBox(
-      color: _background,
-      child: Stack(
+    return Scaffold(
+      backgroundColor: _background,
+      body: Stack(
         children: [
           Positioned(
             top: 0,
@@ -901,6 +922,7 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
             child: _DetailHero(
               topPadding: media.padding.top,
               bookmarked: _isBookmarked,
+              bookmarkBusy: _isSavingBookmark,
               onBack: _goBack,
               onBookmark: _toggleBookmark,
             ),
@@ -919,12 +941,47 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
                     child: SingleChildScrollView(
                       key: const Key('medicationDetailScrollView'),
                       padding: EdgeInsets.fromLTRB(
-                        16,
-                        20,
-                        16,
-                        118 + media.padding.bottom,
+                        AppSpacing.pageGutterOf(context),
+                        AppSpacing.xl,
+                        AppSpacing.pageGutterOf(context),
+                        96 * media.textScaler.scale(1) + media.padding.bottom,
                       ),
                       child: _DetailContent(
+                        bookmarkFeedback: _bookmarkError == null
+                            ? null
+                            : Semantics(
+                                key: const Key('medicationDetailBookmarkError'),
+                                liveRegion: true,
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Text(
+                                      _bookmarkError!,
+                                      style: AppTextStyles.body.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .error,
+                                      ),
+                                    ),
+                                    const SizedBox(height: AppSpacing.sm),
+                                    AppButton(
+                                      key: const Key(
+                                        'retryMedicationBookmarkButton',
+                                      ),
+                                      label: 'Retry',
+                                      loadingLabel: 'Saving',
+                                      busy: _isSavingBookmark,
+                                      onPressed: _isSavingBookmark
+                                          ? null
+                                          : _toggleBookmark,
+                                      variant: AppButtonVariant.secondary,
+                                      compact: true,
+                                    ),
+                                    const SizedBox(height: AppSpacing.lg),
+                                  ],
+                                ),
+                              ),
                         medication: _medication,
                         ink: _ink,
                         muted: _muted,
@@ -955,12 +1012,24 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
   }
 
   Future<void> _toggleBookmark() async {
+    if (_isSavingBookmark) return;
     final next = !_isBookmarked;
-    setState(() => _isBookmarked = next);
+    setState(() {
+      _isBookmarked = next;
+      _isSavingBookmark = true;
+    });
     try {
       await widget.onBookmarkChanged?.call(next);
+      if (mounted) setState(() => _bookmarkError = null);
     } catch (_) {
-      if (mounted) setState(() => _isBookmarked = !next);
+      if (mounted) {
+        setState(() {
+          _isBookmarked = !next;
+          _bookmarkError = 'Could not update saved medications. Try again.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isSavingBookmark = false);
     }
   }
 }
@@ -969,14 +1038,16 @@ class _DetailHero extends StatelessWidget {
   const _DetailHero({
     required this.topPadding,
     required this.bookmarked,
+    required this.bookmarkBusy,
     required this.onBack,
     required this.onBookmark,
   });
 
   final double topPadding;
   final bool bookmarked;
+  final bool bookmarkBusy;
   final VoidCallback onBack;
-  final VoidCallback onBookmark;
+  final Future<void> Function() onBookmark;
 
   @override
   Widget build(BuildContext context) {
@@ -1006,6 +1077,7 @@ class _DetailHero extends StatelessWidget {
                     ? CupertinoIcons.bookmark_fill
                     : CupertinoIcons.bookmark,
                 onPressed: onBookmark,
+                busy: bookmarkBusy,
               ),
             ],
           ),
@@ -1021,37 +1093,79 @@ class _HeroButton extends StatelessWidget {
     required this.semanticLabel,
     required this.icon,
     required this.onPressed,
+    this.busy = false,
   });
 
   final String semanticLabel;
   final IconData icon;
-  final VoidCallback onPressed;
+  final FutureOr<void> Function() onPressed;
+  final bool busy;
 
   @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Semantics(
-      button: true,
-      label: semanticLabel,
-      child: ResponsiveCupertinoButton(
-        minimumSize: const Size(44, 44),
-        padding: EdgeInsets.zero,
-        onPressed: onPressed,
-        semanticLabel: semanticLabel,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: colors.surface.withValues(alpha: .86),
-            shape: BoxShape.circle,
-            border: Border.all(color: colors.outlineVariant, width: .7),
-          ),
-          child: SizedBox.square(
-            dimension: 38,
-            child: Icon(icon, color: colors.onSurface, size: 20),
+  Widget build(BuildContext context) => AppIconButton(
+    icon: icon,
+    tooltip: semanticLabel,
+    onPressed: onPressed,
+    busy: busy,
+    selected: icon == CupertinoIcons.bookmark_fill,
+  );
+}
+
+class _CurrentLabelButton extends StatefulWidget {
+  const _CurrentLabelButton({required this.url});
+  final String url;
+  @override
+  State<_CurrentLabelButton> createState() => _CurrentLabelButtonState();
+}
+
+class _CurrentLabelButtonState extends State<_CurrentLabelButton> {
+  String? _error;
+  Future<void> _open() async {
+    setState(() => _error = null);
+    try {
+      final opened = await launchUrl(
+        Uri.parse(widget.url),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened) throw StateError('Label unavailable');
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _error =
+              'Unable to open the label. Check your connection and try again.',
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      AppButton(
+        key: const Key('openMedicationLabelButton'),
+        label: 'Open the current label',
+        icon: CupertinoIcons.link,
+        variant: AppButtonVariant.tertiary,
+        compact: true,
+        onPressed: _open,
+      ),
+      if (_error != null)
+        Padding(
+          padding: const EdgeInsets.only(top: AppSpacing.sm),
+          child: Semantics(
+            liveRegion: true,
+            child: Text(
+              _error!,
+              key: const Key('medicationLabelError'),
+              style: AppTextStyles.body.copyWith(
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ),
           ),
         ),
-      ),
-    );
-  }
+    ],
+  );
 }
 
 class _DetailContent extends StatelessWidget {
@@ -1062,6 +1176,7 @@ class _DetailContent extends StatelessWidget {
     required this.line,
     required this.onViewAllSideEffects,
     required this.loading,
+    this.bookmarkFeedback,
   });
 
   final MedicationCatalogRecord medication;
@@ -1070,6 +1185,7 @@ class _DetailContent extends StatelessWidget {
   final Color line;
   final VoidCallback onViewAllSideEffects;
   final bool loading;
+  final Widget? bookmarkFeedback;
 
   @override
   Widget build(BuildContext context) {
@@ -1079,6 +1195,7 @@ class _DetailContent extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          ?bookmarkFeedback,
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1088,13 +1205,7 @@ class _DetailContent extends StatelessWidget {
                   children: [
                     Text(
                       titleCaseDisplay(medication.name),
-                      style: TextStyle(
-                        color: ink,
-                        fontSize: 28,
-                        height: 1.1,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -.8,
-                      ),
+                      style: AppTextStyles.pageTitle.copyWith(color: ink),
                     ),
                     const SizedBox(height: 5),
                     Text(
@@ -1131,7 +1242,7 @@ class _DetailContent extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 17),
+          const SizedBox(height: AppSpacing.xl),
           if (loading) const LinearProgressIndicator(minHeight: 2),
           _MedicationFacts(
             medication: medication,
@@ -1154,20 +1265,7 @@ class _DetailContent extends StatelessWidget {
           ],
           if (medication.labelUrl != null) ...[
             const SizedBox(height: 4),
-            TextButton.icon(
-              onPressed: () => launchUrl(
-                Uri.parse(medication.labelUrl!),
-                mode: LaunchMode.externalApplication,
-              ),
-              icon: const Icon(CupertinoIcons.link, size: 13),
-              label: const Text('Open the current label'),
-              style: TextButton.styleFrom(
-                padding: EdgeInsets.zero,
-                minimumSize: const Size(44, 32),
-                alignment: Alignment.centerLeft,
-                textStyle: const TextStyle(fontSize: 11),
-              ),
-            ),
+            _CurrentLabelButton(url: medication.labelUrl!),
           ],
           _CopySection(
             title: 'What It Treats',
@@ -1180,33 +1278,23 @@ class _DetailContent extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           _SafetyCallout(warnings: medication.warnings),
-          const SizedBox(height: 20),
-          Row(
+          const SizedBox(height: AppSpacing.xl),
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
             children: [
-              Expanded(
-                child: Text(
-                  'Common Side Effects',
-                  style: TextStyle(
-                    color: ink,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -.25,
-                  ),
-                ),
+              Text(
+                'Common Side Effects',
+                style: AppTextStyles.sectionTitle.copyWith(color: ink),
               ),
-              ResponsiveCupertinoButton(
-                minimumSize: const Size(44, 36),
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                onPressed: onViewAllSideEffects,
+              AppButton(
+                label: 'View All',
                 semanticLabel: 'View all side effects',
-                child: Text(
-                  'View All',
-                  style: TextStyle(
-                    color: colors.primary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                onPressed: onViewAllSideEffects,
+                variant: AppButtonVariant.tertiary,
+                compact: true,
               ),
             ],
           ),
@@ -1276,7 +1364,7 @@ class _MedicationFacts extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       facts[index].$2,
-                      style: TextStyle(color: muted, fontSize: 9),
+                      style: AppTextStyles.caption.copyWith(color: muted),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -1284,7 +1372,7 @@ class _MedicationFacts extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: ink,
-                        fontSize: 11,
+                        fontSize: 15,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -1330,19 +1418,9 @@ class _CopySection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: ink,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          Text(title, style: AppTextStyles.sectionTitle.copyWith(color: ink)),
           const SizedBox(height: 7),
-          Text(
-            body,
-            style: TextStyle(color: muted, fontSize: 11, height: 1.55),
-          ),
+          Text(body, style: AppTextStyles.body.copyWith(color: muted)),
         ],
       ),
     );
@@ -1379,11 +1457,7 @@ class _SafetyCallout extends StatelessWidget {
         children: [
           Text(
             'Important Safety',
-            style: TextStyle(
-              color: titleColor,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
+            style: AppTextStyles.sectionTitle.copyWith(color: titleColor),
           ),
           const SizedBox(height: 9),
           for (final warning in visibleWarnings)
@@ -1404,11 +1478,7 @@ class _SafetyCallout extends StatelessWidget {
                   Expanded(
                     child: Text(
                       warning,
-                      style: TextStyle(
-                        color: bodyColor,
-                        fontSize: 11,
-                        height: 1.25,
-                      ),
+                      style: AppTextStyles.body.copyWith(color: bodyColor),
                     ),
                   ),
                 ],
@@ -1435,12 +1505,16 @@ class _StickyAddAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     return ClipRect(
       child: WebAwareBlur(
         sigma: 20,
         child: Container(
-          padding: EdgeInsets.fromLTRB(16, 10, 16, bottomPadding + 10),
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.pageGutterOf(context),
+            AppSpacing.md,
+            AppSpacing.pageGutterOf(context),
+            bottomPadding + AppSpacing.md,
+          ),
           decoration: BoxDecoration(
             color: dark
                 ? AppColors.darkSurface.withValues(alpha: .90)
@@ -1453,33 +1527,14 @@ class _StickyAddAction extends StatelessWidget {
             top: false,
             bottom: false,
             child: SizedBox(
-              height: 50,
-              child: FilledButton.icon(
+              child: AppButton(
                 key: const Key('addMedicationButton'),
+                label: added ? 'Added to My Schedule' : 'Add to My Schedule',
+                icon: added
+                    ? CupertinoIcons.check_mark_circled_solid
+                    : CupertinoIcons.calendar_badge_plus,
                 onPressed: onPressed,
-                style: FilledButton.styleFrom(
-                  backgroundColor: added
-                      ? const Color(0xFF278E49)
-                      : colors.primary,
-                  foregroundColor: added ? Colors.white : colors.onPrimary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(11),
-                  ),
-                  elevation: 0,
-                ),
-                icon: Icon(
-                  added
-                      ? CupertinoIcons.check_mark_circled_solid
-                      : CupertinoIcons.calendar_badge_plus,
-                  size: 18,
-                ),
-                label: Text(
-                  added ? 'Added to My Schedule' : 'Add to My Schedule',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                expand: true,
               ),
             ),
           ),
@@ -1506,18 +1561,15 @@ class _InformationPage extends StatelessWidget {
         children: [
           Text(
             body,
-            style: TextStyle(
-              color: colors.onSurfaceVariant,
-              fontSize: 14,
-              height: 1.5,
-            ),
+            style: AppTextStyles.body.copyWith(color: colors.onSurfaceVariant),
           ),
           const SizedBox(height: 28),
           SizedBox(
             width: double.infinity,
-            child: FilledButton(
+            child: AppButton(
+              label: 'Done',
               onPressed: () => Navigator.pop(context),
-              child: const Text('Done'),
+              expand: true,
             ),
           ),
           const SizedBox(height: 12),
