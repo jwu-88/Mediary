@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'app_controls.dart';
 import 'app_interactions.dart';
 import 'app_layout.dart';
 import 'data/medication_catalog_client.dart';
@@ -240,10 +241,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
             onPressed: () => Navigator.of(context).maybePop(),
           ),
         ),
-        title: const Text(
-          'Add Medication',
-          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-        ),
+        title: const Text('Add Medication', style: AppTextStyles.sectionTitle),
       ),
       body: SafeArea(
         top: false,
@@ -265,7 +263,12 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                              padding: EdgeInsets.fromLTRB(
+                                AppSpacing.pageGutterOf(context),
+                                AppSpacing.sm,
+                                AppSpacing.pageGutterOf(context),
+                                AppSpacing.lg,
+                              ),
                               child: LiquidGlassSearchField(
                                 controller: _searchController,
                                 textFieldKey: const Key(
@@ -276,7 +279,12 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                               ),
                             ),
                             Padding(
-                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                              padding: EdgeInsets.fromLTRB(
+                                AppSpacing.pageGutterOf(context),
+                                0,
+                                AppSpacing.pageGutterOf(context),
+                                AppSpacing.sm,
+                              ),
                               child: Row(
                                 children: [
                                   Expanded(
@@ -329,11 +337,11 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                               )
                             else
                               Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  20,
+                                padding: EdgeInsets.fromLTRB(
+                                  AppSpacing.pageGutterOf(context),
                                   0,
-                                  20,
-                                  12,
+                                  AppSpacing.pageGutterOf(context),
+                                  AppSpacing.md,
                                 ),
                                 child: Text(
                                   _usesLiveCatalog
@@ -352,7 +360,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                           _searchError == null &&
                           medications.isNotEmpty)
                         SliverPadding(
-                          padding: const EdgeInsets.only(bottom: 84),
+                          padding: EdgeInsets.only(bottom: 96 * textScale),
                           sliver: SliverList.separated(
                             itemCount: medications.length,
                             separatorBuilder: (_, _) => Divider(
@@ -431,116 +439,24 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
       ),
       bottomNavigationBar: SafeArea(
         top: false,
-        minimum: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        minimum: EdgeInsets.fromLTRB(
+          AppSpacing.pageGutterOf(context),
+          AppSpacing.md,
+          AppSpacing.pageGutterOf(context),
+          AppSpacing.md,
+        ),
         child: Center(
           heightFactor: 1,
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: actionWidth),
-            child: _LiquidGlassAddButton(
+            child: AppButton(
               key: const Key('addSelectedMedicationsButton'),
               onPressed: selectionCount == 0 ? null : _completeSelection,
               label: selectionCount == 0
                   ? 'Add Selected'
                   : 'Add Selected ($selectionCount)',
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LiquidGlassAddButton extends StatelessWidget {
-  const _LiquidGlassAddButton({
-    super.key,
-    required this.label,
-    required this.onPressed,
-  });
-
-  final String label;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final mediaQuery = MediaQuery.maybeOf(context);
-    final highContrast = mediaQuery?.highContrast ?? false;
-    final reduceMotion = mediaQuery?.disableAnimations ?? false;
-    final enabled = onPressed != null;
-    final enabledAccent = highContrast
-        ? Color.lerp(colors.primary, dark ? Colors.white : Colors.black, .18)!
-        : colors.primary;
-    final buttonColor = enabled
-        ? enabledAccent.withValues(alpha: highContrast ? .98 : .92)
-        : (dark ? const Color(0xFF292A2F) : const Color(0xFFE1E3E8));
-
-    return AppPressable(
-      onPressed: onPressed,
-      enabled: enabled,
-      haptic: AppHapticKind.primaryAction,
-      semanticLabel: label,
-      excludeFromSemantics: true,
-      borderRadius: BorderRadius.circular(25),
-      hoverScale: 1.01,
-      hoverOffset: const Offset(0, -1),
-      pressedScale: .975,
-      disabledOpacity: 1,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(
-          minWidth: double.infinity,
-          minHeight: 50,
-        ),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(25),
-            boxShadow: enabled
-                ? [
-                    BoxShadow(
-                      color: enabledAccent.withValues(alpha: dark ? .25 : .20),
-                      blurRadius: 22,
-                      spreadRadius: -7,
-                      offset: const Offset(0, 8),
-                    ),
-                  ]
-                : const [],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(25),
-            child: WebAwareBlur(
-              sigma: 22,
-              child: AnimatedContainer(
-                duration: reduceMotion
-                    ? Duration.zero
-                    : const Duration(milliseconds: 180),
-                curve: Curves.easeOut,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(25),
-                  color: buttonColor,
-                ),
-                child: Center(
-                  heightFactor: 1,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                    child: Text(
-                      label,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: enabled
-                            ? colors.onPrimary
-                            : colors.onSurfaceVariant.withValues(alpha: .68),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+              icon: CupertinoIcons.add,
+              expand: true,
             ),
           ),
         ),
@@ -566,7 +482,12 @@ class _SelectedMedicationSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.pageGutterOf(context),
+        0,
+        AppSpacing.pageGutterOf(context),
+        AppSpacing.md,
+      ),
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: maxHeight),
         child: DecoratedBox(
@@ -595,14 +516,12 @@ class _SelectedMedicationSummary extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    FilledButton.tonal(
+                    AppButton(
                       key: const Key('clearMedicationSelectionButton'),
                       onPressed: onClear,
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size(44, 32),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                      ),
-                      child: const Text('Clear'),
+                      label: 'Clear',
+                      variant: AppButtonVariant.tertiary,
+                      compact: true,
                     ),
                   ],
                 ),
@@ -688,7 +607,10 @@ class _MedicationOptionRow extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 92),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              padding: EdgeInsets.symmetric(
+                horizontal: AppSpacing.pageGutterOf(context),
+                vertical: AppSpacing.sm,
+              ),
               child: Row(
                 children: [
                   MedicationArtwork(
@@ -778,7 +700,7 @@ class _EmptyMedicationSearch extends StatelessWidget {
         primary: false,
         physics: const NeverScrollableScrollPhysics(),
         child: Padding(
-          padding: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(AppSpacing.xxl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -792,10 +714,9 @@ class _EmptyMedicationSearch extends StatelessWidget {
                 prompt
                     ? 'Search the medication catalog'
                     : 'No Medications Found',
-                style: TextStyle(
+                textAlign: TextAlign.center,
+                style: AppTextStyles.sectionTitle.copyWith(
                   color: colors.onSurface,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 6),
@@ -804,17 +725,17 @@ class _EmptyMedicationSearch extends StatelessWidget {
                     ? 'Search by medication name, strength, or form.'
                     : 'Try a different name or strength.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14),
+                style: AppTextStyles.body.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
               ),
               if (!prompt) ...[
-                const SizedBox(height: 8),
-                FilledButton.tonal(
+                const SizedBox(height: AppSpacing.lg),
+                AppButton(
                   onPressed: onClear,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(0, 36),
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                  ),
-                  child: const Text('Clear Search'),
+                  label: 'Clear Search',
+                  variant: AppButtonVariant.secondary,
+                  compact: true,
                 ),
               ],
             ],
@@ -845,7 +766,7 @@ class _CatalogError extends StatelessWidget {
         primary: false,
         physics: const NeverScrollableScrollPhysics(),
         child: Padding(
-          padding: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(AppSpacing.xxl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -859,10 +780,9 @@ class _CatalogError extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 rateLimited ? 'Catalog limit reached' : 'Catalog unavailable',
-                style: TextStyle(
+                textAlign: TextAlign.center,
+                style: AppTextStyles.sectionTitle.copyWith(
                   color: colors.onSurface,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 6),
@@ -871,20 +791,27 @@ class _CatalogError extends StatelessWidget {
                     ? 'Please wait a moment and try again.'
                     : 'Check your connection and try again.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14),
+                style: AppTextStyles.body.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.lg),
               Wrap(
                 spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
                 children: [
-                  FilledButton.tonal(
+                  AppButton(
                     key: const Key('retryMedicationSearchButton'),
                     onPressed: onRetry,
-                    child: const Text('Try Again'),
+                    label: 'Try Again',
+                    compact: true,
                   ),
-                  TextButton(
+                  AppButton(
                     onPressed: onClear,
-                    child: const Text('Clear Search'),
+                    label: 'Clear Search',
+                    variant: AppButtonVariant.tertiary,
+                    compact: true,
                   ),
                 ],
               ),

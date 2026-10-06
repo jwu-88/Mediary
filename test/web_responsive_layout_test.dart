@@ -192,7 +192,7 @@ void main() {
         screen: const AddMedicationScreen(),
         content: find.byKey(const Key('medicationSearchField')),
       ),
-      1086,
+      1070,
     );
     expect(
       await renderWidth(

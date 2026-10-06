@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/add_medication_screen.dart';
 import 'package:mediary/app_interactions.dart';
+import 'package:mediary/app_controls.dart';
 import 'package:mediary/calendar_screen.dart';
 import 'package:mediary/library_screens.dart';
 import 'package:mediary/profile_screen.dart';
@@ -43,15 +44,9 @@ void main() {
     await tester.pump();
     expect(find.text('1 Selected'), findsOneWidget);
 
-    final cta = find.descendant(
-      of: find.byKey(const Key('addSelectedMedicationsButton')),
-      matching: find.byType(AppPressable),
-    );
-    expect(cta, findsOneWidget);
-    expect(
-      tester.widget<AppPressable>(cta).haptic,
-      AppHapticKind.primaryAction,
-    );
+    final cta = find.byKey(const Key('addSelectedMedicationsButton'));
+    expect(tester.widget<AppButton>(cta).variant, AppButtonVariant.primary);
+    expect(tester.widget<AppButton>(cta).onPressed, isNotNull);
   });
 
   testWidgets('library starts with a search-first surface', (tester) async {
