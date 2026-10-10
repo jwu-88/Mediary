@@ -164,6 +164,7 @@ void main() {
             ),
             home: MedicationDetailScreen(
               medication: _RecoveringCatalog.medication,
+              onAddToSchedule: (_, _) async => true,
             ),
           ),
         );
