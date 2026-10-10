@@ -1,6 +1,9 @@
 @TestOn('browser')
 library;
 
+import 'dart:async';
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:ui_web' as ui_web;
 
 import 'package:web/web.dart' as web;
@@ -56,8 +59,99 @@ void main() {
     expect(bytes, isNotNull);
     expect(bytes!.take(8), orderedEquals([137, 80, 78, 71, 13, 10, 26, 10]));
     expect(bytes.length, greaterThan(100));
+    expect(await waitForWebCameraFrame(timeout: Duration.zero), isTrue);
+    final video = element.querySelector('video') as web.HTMLVideoElement;
+    final stream = video.srcObject as web.MediaStream;
+    final tracks = stream.getTracks().toDart;
+    final frozen = await captureWebCameraFrame(freezePreview: true);
+    expect(frozen, isNotNull);
+    expect(video.paused, isTrue);
+    expect(await waitForWebCameraFrame(timeout: Duration.zero), isFalse);
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: WebCameraPreview(active: false))),
+    );
+    expect(tracks.every((track) => track.readyState == 'ended'), isTrue);
+    expect(await captureWebCameraFrame(), isNull);
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: WebCameraPreview(active: true))),
+    );
+    for (var attempt = 0; attempt < 30; attempt++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+      await tester.pump();
+      bytes = await captureWebCameraFrame();
+      if (bytes != null) break;
+    }
+    expect(bytes, isNotNull, reason: 'Retake must restart a live camera.');
+    expect(video.paused, isFalse);
+    final resumedStream = video.srcObject as web.MediaStream;
+    final resumedTracks = resumedStream.getTracks().toDart;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    expect(resumedTracks.every((track) => track.readyState == 'ended'), isTrue);
+    expect(await captureWebCameraFrame(), isNull);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    for (var attempt = 0; attempt < 30; attempt++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+      await tester.pump();
+      bytes = await captureWebCameraFrame();
+      if (bytes != null) break;
+    }
+    expect(bytes, isNotNull, reason: 'Foreground camera must resume.');
     stopWebCamera();
     expect(await captureWebCameraFrame(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   }, skip: !const bool.fromEnvironment('MEDIARY_SYNTHETIC_CAMERA_TEST'));
+
+  testWidgets(
+    'concurrent access shares one request and late permission cannot revive a stopped camera',
+    (tester) async {
+      stopWebCamera();
+      final devices = web.window.navigator.mediaDevices;
+      final original = devices.getProperty<JSFunction>('getUserMedia'.toJS);
+      late Completer<void> release;
+      web.MediaStream? acquired;
+      var requests = 0;
+      devices.setProperty(
+        'getUserMedia'.toJS,
+        ((web.MediaStreamConstraints constraints) {
+          requests++;
+          return (() async {
+            final promise = original.callAsFunction(
+              devices,
+              constraints,
+            ) as JSPromise<web.MediaStream>;
+            acquired = await promise.toDart;
+            await release.future;
+            return acquired!;
+          })().toJS;
+        }).toJS,
+      );
+      addTearDown(() {
+        devices.setProperty('getUserMedia'.toJS, original);
+        stopWebCamera();
+      });
+      await tester.runAsync(() async {
+        release = Completer<void>();
+        final first = requestWebCameraAccess();
+        final second = requestWebCameraAccess();
+        expect(identical(first, second), isTrue);
+        expect(requests, 1);
+        stopWebCamera();
+        release.complete();
+        expect(await first, isFalse);
+        expect(await second, isFalse);
+        expect(
+          acquired!.getTracks().toDart.every(
+            (track) => track.readyState == 'ended',
+          ),
+          isTrue,
+        );
+      });
+      expect(await captureWebCameraFrame(), isNull);
+    },
+    skip: !const bool.fromEnvironment('MEDIARY_SYNTHETIC_CAMERA_TEST'),
+  );
 }

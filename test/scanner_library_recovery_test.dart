@@ -89,6 +89,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('captureMedicationButton')));
       await tester.pumpAndSettle();
+      await confirmCameraPhoto(tester);
       await tester.ensureVisible(find.byKey(const Key('addScanResultButton')));
       await tester.tap(find.byKey(const Key('addScanResultButton')));
       await tester.pumpAndSettle();
@@ -130,6 +131,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('captureMedicationButton')));
     await tester.pumpAndSettle();
+    await confirmCameraPhoto(tester);
     expect(catalog.queries, ['Claritin-D']);
     expect(catalog.details, isEmpty);
     expect(find.text('MANUAL REVIEW REQUIRED'), findsOneWidget);

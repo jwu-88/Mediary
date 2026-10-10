@@ -197,6 +197,7 @@ Future<void> _openScan(
   await _selectDestination(tester, 2);
   await tester.tap(find.byKey(const Key('captureMedicationButton')));
   await tester.pumpAndSettle();
+  await confirmCameraPhoto(tester);
 }
 
 Future<void> _openManualDetails(

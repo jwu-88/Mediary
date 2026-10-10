@@ -579,6 +579,8 @@ void main() {
       await tester.tap(find.byKey(const Key('captureMedicationButton')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 900));
+      expect(find.text('Review photo'), findsOneWidget);
+      await confirmCameraPhoto(tester);
       expect(find.byKey(const Key('liquidGlassTabBar')), findsOneWidget);
       expect(toolbar().currentIndex, 2);
       expect(find.text('Review Medication'), findsOneWidget);

@@ -512,15 +512,11 @@ class _ScannerCaptureButton extends StatelessWidget {
     final isWide = !AppBreakpoints.isMobile(context);
     final diameter = isWide ? 76.0 : 78.0;
     return Tooltip(
-      message: isAnalyzing
-          ? 'Analyzing medication'
-          : 'Capture medication label',
+      message: isAnalyzing ? 'Preparing photo' : 'Capture medication label',
       child: Semantics(
         button: true,
         enabled: !isAnalyzing,
-        label: isAnalyzing
-            ? 'Analyzing medication'
-            : 'Capture medication label',
+        label: isAnalyzing ? 'Preparing photo' : 'Capture medication label',
         child: AppPressable(
           key: const Key('captureMedicationButton'),
           onPressed: isAnalyzing ? null : onPressed,
