@@ -1,0 +1,220 @@
+{
+  "purpose": "Test medication camera/OCR recognition on at least five distinct adverse-condition labels",
+  "fixture_generation": "Simulated low light, blur, rotation, glare, and cylinder projection; these inputs are not newly captured physical-camera photographs",
+  "sources": "Manufacturer images linked by official product pages, and NIH NLM DailyMed submitted package artwork",
+  "fixtures": [
+    {
+      "id": "excedrin_cylindrical_dim_tilt",
+      "brand": "Excedrin",
+      "variant": "Migraine Relief",
+      "ingredients": [
+        "acetaminophen 250 mg",
+        "aspirin 250 mg",
+        "caffeine 65 mg"
+      ],
+      "source_file": "excedrin-source.png",
+      "page_url": "https://www.excedrin.com/products/head-pain-relief/migraine/",
+      "image_url": "https://i-cf65.ch-static.com/content/dam/cf-consumer-healthcare/bp-excedrin-v2/en_US/products/migraine/excredrin-migraine-bottle.png",
+      "crop": null,
+      "transparent": true,
+      "cylinder": null,
+      "condition": "Actual curved bottle packshot with simulated dim exposure, 11 degree tilt, and mild blur",
+      "angle": 11,
+      "brightness": 0.69,
+      "blur": 0.6,
+      "label_width": 720,
+      "label_height": 610,
+      "source_sha256": "face1460b2fb2a6d5129786062ffbb2654337696adde429ad19ab818e2eb0940",
+      "baseline_path": "excedrin_cylindrical_dim_tilt-baseline.png",
+      "test_path": "excedrin_cylindrical_dim_tilt.png",
+      "input_kind": "synthetic degradation of official source",
+      "physical_camera_capture": false,
+      "expected_result": "Brand identified or manual-review fallback without false medication attribution; exact strength requires label confirmation",
+      "path": "excedrin_cylindrical_dim_tilt.png",
+      "expectedMedicationName": "Excedrin Migraine",
+      "acceptedMedicationNames": [
+        "Excedrin Migraine",
+        "Acetaminophen/Aspirin/Caffeine",
+        "Acetaminophen / Aspirin / Caffeine"
+      ],
+      "sourceUrl": "https://www.excedrin.com/products/head-pain-relief/migraine/"
+    },
+    {
+      "id": "advil_curved_low_light",
+      "brand": "Advil",
+      "variant": "Tablets",
+      "ingredients": [
+        "ibuprofen 200 mg"
+      ],
+      "source_file": "advil-source.png",
+      "page_url": "https://www.advil.com/our-products/advil-pain/advil-tablets/",
+      "image_url": "https://i-cf65.ch-static.com/content/dam/cf-consumer-healthcare/bp-advil-v2/en_US/products/product-01/avl204-packshots/products-advil-pain/adviltablets.jpg",
+      "crop": null,
+      "transparent": false,
+      "cylinder": 67,
+      "condition": "Flat manufacturer label projected around a cylinder, simulated dim side lighting and 8 degree tilt",
+      "angle": -8,
+      "brightness": 0.61,
+      "blur": 0.65,
+      "label_width": 830,
+      "label_height": 570,
+      "source_sha256": "661e71df3c26db5ccc08ee6d34b6d6f99dc8877cd3a7ab3275e682cda7e77d3a",
+      "baseline_path": "advil_curved_low_light-baseline.png",
+      "test_path": "advil_curved_low_light.png",
+      "input_kind": "synthetic degradation of official source",
+      "physical_camera_capture": false,
+      "expected_result": "Brand identified or manual-review fallback without false medication attribution; exact strength requires label confirmation",
+      "path": "advil_curved_low_light.png",
+      "expectedMedicationName": "Advil",
+      "acceptedMedicationNames": [
+        "Advil",
+        "Ibuprofen"
+      ],
+      "sourceUrl": "https://www.advil.com/our-products/advil-pain/advil-tablets/"
+    },
+    {
+      "id": "tylenol_dim_blur_tilt",
+      "brand": "Tylenol",
+      "variant": "Extra Strength Caplets",
+      "ingredients": [
+        "acetaminophen 500 mg"
+      ],
+      "source_file": "tylenol-source.png",
+      "page_url": "https://www.tylenol.com/products/headache-pain-relief/tylenol-extra-strength-caplets",
+      "image_url": "https://images.ctfassets.net/g574hlexgjps/Pw9NPMsex8BV3YV94CPOq/7732fdecf47f82b65e6ba145f94bca6d/4e0ef5c9c7babce9f089625072c3df6aa927a42a.webp?fm=png&q=100&w=1920",
+      "crop": null,
+      "transparent": true,
+      "cylinder": null,
+      "condition": "Carton packshot with simulated dim exposure, 13 degree tilt, and defocus blur",
+      "angle": -13,
+      "brightness": 0.54,
+      "blur": 1.15,
+      "label_width": 760,
+      "label_height": 610,
+      "source_sha256": "0540a119d48e1001c0ea7e05ebffa2025b08511b3e3edcbf9bb511e5c82e13b1",
+      "baseline_path": "tylenol_dim_blur_tilt-baseline.png",
+      "test_path": "tylenol_dim_blur_tilt.png",
+      "input_kind": "synthetic degradation of official source",
+      "physical_camera_capture": false,
+      "expected_result": "Brand identified or manual-review fallback without false medication attribution; exact strength requires label confirmation",
+      "path": "tylenol_dim_blur_tilt.png",
+      "expectedMedicationName": "Tylenol",
+      "acceptedMedicationNames": [
+        "Tylenol",
+        "Acetaminophen"
+      ],
+      "sourceUrl": "https://www.tylenol.com/products/headache-pain-relief/tylenol-extra-strength-caplets"
+    },
+    {
+      "id": "aleve_curved_dim_tilt",
+      "brand": "Aleve",
+      "variant": "Tablets",
+      "ingredients": [
+        "naproxen sodium 220 mg"
+      ],
+      "source_file": "aleve-source.png",
+      "page_url": "https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=00ef5b30-71d0-4cb4-84a3-48c67d1cea2a",
+      "image_url": "https://dailymed.nlm.nih.gov/dailymed/image.cfm?name=Aleve+Tablets+-+24+Count+Carton.jpg&setid=00ef5b30-71d0-4cb4-84a3-48c67d1cea2a",
+      "crop": [
+        1670,
+        660,
+        2450,
+        1920
+      ],
+      "transparent": false,
+      "cylinder": 64,
+      "condition": "NIH DailyMed front panel projected around a cylinder with dim side lighting, 14 degree tilt, and mild blur",
+      "angle": 14,
+      "brightness": 0.59,
+      "blur": 0.75,
+      "label_width": 790,
+      "label_height": 580,
+      "source_sha256": "7ffe8197eb3dff08366732452a714a66da31ab7dec7f120aa4a33f49b2364b74",
+      "baseline_path": "aleve_curved_dim_tilt-baseline.png",
+      "test_path": "aleve_curved_dim_tilt.png",
+      "input_kind": "synthetic degradation of official source",
+      "physical_camera_capture": false,
+      "expected_result": "Brand identified or manual-review fallback without false medication attribution; exact strength requires label confirmation",
+      "path": "aleve_curved_dim_tilt.png",
+      "expectedMedicationName": "Aleve",
+      "acceptedMedicationNames": [
+        "Aleve",
+        "Naproxen",
+        "Naproxen Sodium"
+      ],
+      "sourceUrl": "https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=00ef5b30-71d0-4cb4-84a3-48c67d1cea2a"
+    },
+    {
+      "id": "claritin_curved_glare",
+      "brand": "Claritin",
+      "variant": "24 Hour Tablets",
+      "ingredients": [
+        "loratadine 10 mg"
+      ],
+      "source_file": "claritin-pouch-source.png",
+      "page_url": "https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=677bf76d-e75d-4212-b1f2-eaaf25b27cb7",
+      "image_url": "https://dailymed.nlm.nih.gov/dailymed/image.cfm?name=claritin-01.jpg&setid=677bf76d-e75d-4212-b1f2-eaaf25b27cb7",
+      "crop": [
+        342,
+        27,
+        660,
+        470
+      ],
+      "transparent": false,
+      "cylinder": 57,
+      "condition": "NIH DailyMed front panel projected around a cylinder with mild glare, dim exposure, 7 degree tilt, and blur",
+      "angle": -7,
+      "brightness": 0.67,
+      "blur": 0.7,
+      "label_width": 800,
+      "label_height": 600,
+      "glare": true,
+      "source_sha256": "082a24a228ce77a47e1980775988cacc5a2b81d8166957b87aaabea63473ff0e",
+      "baseline_path": "claritin_curved_glare-baseline.png",
+      "test_path": "claritin_curved_glare.png",
+      "input_kind": "synthetic degradation of official source",
+      "physical_camera_capture": false,
+      "expected_result": "Brand identified or manual-review fallback without false medication attribution; exact strength requires label confirmation",
+      "path": "claritin_curved_glare.png",
+      "expectedMedicationName": "Claritin",
+      "acceptedMedicationNames": [
+        "Claritin",
+        "Loratadine"
+      ],
+      "sourceUrl": "https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=677bf76d-e75d-4212-b1f2-eaaf25b27cb7"
+    },
+    {
+      "id": "benadryl_dim_blur_tilt",
+      "brand": "Benadryl",
+      "variant": "Allergy Ultratabs Go Packs",
+      "ingredients": [
+        "diphenhydramine HCl 25 mg"
+      ],
+      "source_file": "benadryl-source.png",
+      "page_url": "https://www.benadryl.com/products/benadryl-allergy-ultratabs-tablets",
+      "image_url": "https://images.ctfassets.net/00ko9qtwe33b/2Gju2xoNzxsIb2v9F8O4Wg/e1e93f6832dfba43acd2aaed7aa998ff/BEN_Front-of-Pack-for-300450170088_Allergy_ULTRATAB_Go_Packs_8ct.webp?fm=png&q=100&w=1920",
+      "crop": null,
+      "transparent": true,
+      "cylinder": null,
+      "condition": "Carton packshot with simulated dim exposure, 10 degree tilt, and blur",
+      "angle": 10,
+      "brightness": 0.6,
+      "blur": 0.9,
+      "label_width": 740,
+      "label_height": 610,
+      "source_sha256": "dde2651d6e0a018bfe65ca626829d569caae486145c1964cc84f58207fb2dbe7",
+      "baseline_path": "benadryl_dim_blur_tilt-baseline.png",
+      "test_path": "benadryl_dim_blur_tilt.png",
+      "input_kind": "synthetic degradation of official source",
+      "physical_camera_capture": false,
+      "expected_result": "Brand identified or manual-review fallback without false medication attribution; exact strength requires label confirmation",
+      "path": "benadryl_dim_blur_tilt.png",
+      "expectedMedicationName": "Benadryl",
+      "acceptedMedicationNames": [
+        "Benadryl",
+        "Diphenhydramine"
+      ],
+      "sourceUrl": "https://www.benadryl.com/products/benadryl-allergy-ultratabs-tablets"
+    }
+  ]
+}
