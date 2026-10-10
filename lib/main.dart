@@ -15,6 +15,7 @@ import 'app_interactions.dart';
 import 'app_layout.dart';
 import 'app_theme.dart';
 import 'calendar_screen.dart';
+import 'camera_photo_review_screen.dart';
 import 'dashboard_screen.dart';
 import 'data/mediary_data_store.dart';
 import 'data/mediary_models.dart';
@@ -1242,9 +1243,10 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
   int _selectedIndex = 0;
   final Set<int> _visitedDestinations = {0};
   bool _showScanResult = false;
+  bool _reviewingCameraPhoto = false;
+  bool _cameraCaptureInProgress = false;
   MedicationScanResult? _scanResult;
   MedicationCatalogRecord? _scanMedication;
-  String? _scanRecordId;
   DateTime? _calendarFocusDate;
   final List<CalendarDoseData> _pendingCalendarDoses = [];
   final Map<String, String> _pendingCalendarDoseMedicationIds = {};
@@ -2000,10 +2002,9 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
     final store = widget.dataStore;
     if (_showScanResult) {
       return ScanResultScreen(
-        onBack: () => setState(() => _showScanResult = false),
+        onBack: _resetScan,
         onScanAgain: _resetScan,
         onScanReady: store?.saveScan,
-        scanRecordId: _scanRecordId,
         scanResult: _scanResult,
         medication: _scanMedication,
         onScheduleConfirmed: store == null ? null : _commitScanSchedule,
@@ -2031,7 +2032,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       onCapture: _runMedicationScan,
       onChoosePhoto: _chooseMedicationPhoto,
       onOpenSettings: widget.onOpenCameraSettings ?? openAppSettings,
-      isActive: _selectedIndex == 2,
+      isActive: _selectedIndex == 2 && !_reviewingCameraPhoto,
       bottomNavigationInset: _usesSidebarNavigation ? 16 : 112,
     );
   }
@@ -2041,20 +2042,26 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       _showScanResult = false;
       _scanResult = null;
       _scanMedication = null;
-      _scanRecordId = null;
     });
   }
 
   Future<void> _runMedicationScan() async {
+    if (_cameraCaptureInProgress) return;
+    _cameraCaptureInProgress = true;
     try {
       final MedicationScanRequest? request;
       if (widget.cameraCapture != null) {
         request = await widget.cameraCapture!();
       } else if (kIsWeb) {
-        final bytes = await captureWebCameraFrame();
+        final ready = await waitForWebCameraFrame();
+        final bytes = ready
+            ? await captureWebCameraFrame(freezePreview: true)
+            : null;
         request = bytes == null
             ? null
-            : MedicationScanRequest.fromImage(
+            : MedicationScanRequest(
+                source: MedicationScanSource.camera,
+                imageUrl: '',
                 imageBytes: bytes,
                 fileName: 'camera.png',
               );
@@ -2062,23 +2069,46 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
         final picked = await captureMedicationPhoto();
         request = picked == null
             ? null
-            : MedicationScanRequest.fromImage(
+            : MedicationScanRequest(
+                source: MedicationScanSource.camera,
+                imageUrl: '',
                 imageBytes: picked.bytes,
                 fileName: picked.fileName,
               );
       }
-      if (!mounted) return;
+      if (!mounted || _selectedIndex != 2) return;
       if (request == null) {
         if (kIsWeb) await _showCameraAlternatives();
         return;
       }
-      await _runMedicationScanRequest(request);
+      final MedicationScanRequest capturedRequest = request;
+      final bytes = request.imageBytes;
+      if (bytes == null || bytes.isEmpty) {
+        throw StateError('No captured photo data.');
+      }
+      setState(() => _reviewingCameraPhoto = true);
+      stopWebCamera();
+      await pushInAppPage<bool>(
+        context,
+        builder: (_) => CameraPhotoReviewScreen(
+          imageBytes: bytes,
+          onUsePhoto: () => _runMedicationScanRequest(capturedRequest),
+        ),
+      );
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || _selectedIndex != 2) return;
       await _showScanAccessDialog(
         title: 'Camera capture unavailable',
         message: 'Mediary could not capture a photo. Try again or choose a photo instead.',
       );
+    } finally {
+      if (mounted && _reviewingCameraPhoto) {
+        setState(() => _reviewingCameraPhoto = false);
+        if (kIsWeb && _selectedIndex == 2 && !_showScanResult) {
+          await waitForWebCameraFrame();
+        }
+      }
+      _cameraCaptureInProgress = false;
     }
   }
 
@@ -2095,7 +2125,6 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _scanRecordId = null;
         _scanResult = const MedicationScanResult(
           imageUrl: '',
           extractedText: '',
@@ -2141,23 +2170,8 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
   }
 
   Future<void> _runMedicationScanRequest(MedicationScanRequest request) async {
-    final store = widget.dataStore;
-    String? scanRecordId;
-    if (store != null) {
-      try {
-        scanRecordId = await store.saveScan(
-          const ScanWrite(
-            status: 'processing',
-            detectedMedicationName: '',
-            extractedText: '',
-            confidence: 0,
-          ),
-        );
-      } catch (_) {
-        // The review flow remains useful when the scan metadata write fails.
-      }
-    }
-
+    // The result screen saves complete metadata with its existing retry flow.
+    // Do not block local recognition on an initial, empty server write.
     MedicationScanResult result;
     try {
       result = await _scanDetector.detect(request);
@@ -2183,7 +2197,6 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
 
     if (!mounted) return;
     setState(() {
-      _scanRecordId = scanRecordId;
       _scanResult = result;
       _scanMedication = medication;
       _showScanResult = true;
@@ -2810,6 +2823,12 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
   }
 
   ({String title, String description}) get _webPageMetadata {
+    if (_reviewingCameraPhoto) {
+      return (
+        title: 'Review photo — Mediary',
+        description: 'Confirm a captured medication photo before recognition.',
+      );
+    }
     if (_showScanResult) {
       return (
         title: 'Review Medication — Mediary',

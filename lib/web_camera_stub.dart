@@ -7,7 +7,12 @@ import 'package:flutter/widgets.dart';
 Future<bool> requestWebCameraAccess() async => false;
 
 /// Browser frames are unavailable on native platforms.
-Future<Uint8List?> captureWebCameraFrame() async => null;
+Future<Uint8List?> captureWebCameraFrame({bool freezePreview = false}) async =>
+    null;
+
+Future<bool> waitForWebCameraFrame({
+  Duration timeout = const Duration(seconds: 3),
+}) async => false;
 
 /// Releases any browser camera stream. This is a no-op on native platforms.
 void stopWebCamera() {}

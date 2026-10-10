@@ -10,15 +10,30 @@ import 'package:web/web.dart' as web;
 web.MediaStream? _cameraStream;
 web.HTMLVideoElement? _activeVideo;
 int _viewCounter = 0;
+int _cameraGeneration = 0;
+Future<bool>? _pendingCameraAccess;
 
 /// Requests the browser camera stream. On macOS this delegates to the
 /// browser's normal camera permission prompt and keeps the stream available
 /// for the scanner preview.
-Future<bool> requestWebCameraAccess() async {
-  if (_cameraStream != null) return true;
+Future<bool> requestWebCameraAccess() {
+  if (_cameraStream != null) return Future.value(true);
+  final pending = _pendingCameraAccess;
+  if (pending != null) return pending;
+  final request = _requestCameraStream(_cameraGeneration);
+  _pendingCameraAccess = request;
+  unawaited(
+    request.whenComplete(() {
+      if (identical(_pendingCameraAccess, request)) _pendingCameraAccess = null;
+    }),
+  );
+  return request;
+}
+
+Future<bool> _requestCameraStream(int generation) async {
   final mediaDevices = web.window.navigator.mediaDevices;
   try {
-    _cameraStream = await mediaDevices
+    final stream = await mediaDevices
         .getUserMedia(
           web.MediaStreamConstraints(
             video: web.MediaTrackConstraints(
@@ -32,16 +47,46 @@ Future<bool> requestWebCameraAccess() async {
           ),
         )
         .toDart;
+    // Permission can finish after retake, navigation, or disposal. A stale
+    // request must release its tracks instead of reviving a hidden camera.
+    if (generation != _cameraGeneration) {
+      stream.getTracks().toDart.forEach((track) => track.stop());
+      return false;
+    }
+    _cameraStream = stream;
     return true;
   } catch (_) {
-    _cameraStream = null;
+    if (generation == _cameraGeneration) _cameraStream = null;
     return false;
   }
 }
 
-/// Captures the frame currently visible in the active browser preview.
-/// A loading, detached, or stopped preview has no usable image yet.
-Future<Uint8List?> captureWebCameraFrame() async {
+/// Waits for a visible live frame without encoding an unused image.
+Future<bool> waitForWebCameraFrame({
+  Duration timeout = const Duration(seconds: 3),
+}) async {
+  final deadline = DateTime.now().add(timeout);
+  do {
+    final video = _activeVideo;
+    if (_cameraStream != null &&
+        video != null &&
+        video.isConnected &&
+        !video.paused &&
+        video.readyState >= 2 &&
+        video.videoWidth > 0 &&
+        video.videoHeight > 0) {
+      return true;
+    }
+    if (!DateTime.now().isBefore(deadline)) {
+      return false;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 16));
+  } while (DateTime.now().isBefore(deadline));
+  return false;
+}
+
+/// Captures the displayed frame, optionally pausing the preview at the shutter.
+Future<Uint8List?> captureWebCameraFrame({bool freezePreview = false}) async {
   final video = _activeVideo;
   if (_cameraStream == null ||
       video == null ||
@@ -51,6 +96,7 @@ Future<Uint8List?> captureWebCameraFrame() async {
     return null;
   }
   try {
+    if (freezePreview) video.pause();
     final canvas = web.HTMLCanvasElement()
       ..width = video.videoWidth
       ..height = video.videoHeight;
@@ -61,11 +107,16 @@ Future<Uint8List?> captureWebCameraFrame() async {
     if (separator < 0) return null;
     return base64Decode(dataUrl.substring(separator + 1));
   } catch (_) {
+    if (freezePreview && identical(_activeVideo, video)) {
+      unawaited(video.play().toDart.then<void>((_) {}, onError: (Object _) {}));
+    }
     return null;
   }
 }
 
 void stopWebCamera() {
+  _cameraGeneration++;
+  _pendingCameraAccess = null;
   final stream = _cameraStream;
   _cameraStream = null;
   _activeVideo = null;
@@ -81,16 +132,38 @@ class WebCameraPreview extends StatefulWidget {
   State<WebCameraPreview> createState() => _WebCameraPreviewState();
 }
 
-class _WebCameraPreviewState extends State<WebCameraPreview> {
+class _WebCameraPreviewState extends State<WebCameraPreview>
+    with WidgetsBindingObserver {
   late final String _viewType = 'mediary-camera-preview-${_viewCounter++}';
   web.HTMLVideoElement? _video;
   bool _mountedFactory = false;
+  bool _foreground = true;
 
   @override
   void initState() {
     super.initState();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _foreground =
+        lifecycle != AppLifecycleState.hidden &&
+        lifecycle != AppLifecycleState.paused &&
+        lifecycle != AppLifecycleState.detached;
+    WidgetsBinding.instance.addObserver(this);
     _registerView();
     unawaited(_syncCamera());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _foreground = true;
+      unawaited(_syncCamera());
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      _foreground = false;
+      _detachVideo();
+      stopWebCamera();
+    }
   }
 
   @override
@@ -135,7 +208,7 @@ class _WebCameraPreviewState extends State<WebCameraPreview> {
   }
 
   Future<void> _syncCamera() async {
-    if (!widget.active) {
+    if (!widget.active || !_foreground) {
       _detachVideo();
       stopWebCamera();
       return;
@@ -143,7 +216,7 @@ class _WebCameraPreviewState extends State<WebCameraPreview> {
     if (_cameraStream == null) {
       final granted = await requestWebCameraAccess();
       if (!granted || !mounted) return;
-      if (!widget.active) {
+      if (!widget.active || !_foreground) {
         stopWebCamera();
         return;
       }
@@ -154,10 +227,12 @@ class _WebCameraPreviewState extends State<WebCameraPreview> {
   void _attachStream() {
     final video = _video;
     final stream = _cameraStream;
-    if (video == null || stream == null || !widget.active) return;
+    if (video == null || stream == null || !widget.active || !_foreground) {
+      return;
+    }
     video.srcObject = stream;
     _activeVideo = video;
-    unawaited(video.play().toDart);
+    unawaited(video.play().toDart.then<void>((_) {}, onError: (Object _) {}));
   }
 
   void _detachVideo() {
@@ -170,6 +245,7 @@ class _WebCameraPreviewState extends State<WebCameraPreview> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _detachVideo();
     stopWebCamera();
     super.dispose();
