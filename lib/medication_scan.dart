@@ -65,11 +65,26 @@ MedicationCatalogRecord? matchMedicationCatalogRecord(
   final normalizedQuery = _normalizeCatalogMedicationName(query);
   if (normalizedQuery.isEmpty) return null;
   final queryTokens = normalizedQuery.split(' ');
-  final queryIngredients = _catalogIngredients([normalizedQuery]);
+  var queryIngredients = _catalogIngredients([normalizedQuery]);
   final queryClaritinD = _hasClaritinD(normalizedQuery);
   final context = _productLabelText(extractedText);
+  // Excedrin also names an aspirin-free product. A brand-only query cannot
+  // choose the first catalog formulation unless the label supplies all three
+  // ingredients of the standard combination.
+  if (normalizedQuery == 'excedrin') {
+    queryIngredients = _catalogIngredients([_normalizeMedicationName(context)]);
+    if (queryIngredients.length != _excedrinMigraineIngredients.length ||
+        !queryIngredients.containsAll(_excedrinMigraineIngredients)) {
+      return null;
+    }
+  }
   final duration = _labelDuration(query) ?? _labelDuration(context);
   final strengths = _labelStrengths(context);
+  final ingredientStrengths = _labelIngredientStrengths(context);
+  if (queryIngredients.length > 1 &&
+      ingredientStrengths.values.any((values) => values.length > 1)) {
+    return null;
+  }
   MedicationCatalogRecord? bestRecord;
   var bestScore = 0;
 
@@ -78,6 +93,10 @@ MedicationCatalogRecord? matchMedicationCatalogRecord(
         .map(_normalizeCatalogMedicationName)
         .where((name) => name.isNotEmpty)
         .toList();
+    if (queryIngredients.isNotEmpty &&
+        !_hasCompatibleExplicitIngredients(record, queryIngredients)) {
+      continue;
+    }
     final recordIngredients = _catalogIngredients(names);
     // A shared brand/ingredient token is not enough to match a different
     // formulation. Include all fields so a short synonym cannot conceal the
@@ -102,6 +121,17 @@ MedicationCatalogRecord? matchMedicationCatalogRecord(
       continue;
     }
     final recordStrengths = _labelStrengths(recordText);
+    final recordIngredientStrengths = _labelIngredientStrengths(recordText);
+    // Associate a dose with its ingredient. A set of bare numbers loses the
+    // repeated 250 mg strengths on a three-ingredient Excedrin label and can
+    // also accept a catalog product with the doses assigned the wrong way.
+    if (queryIngredients.length > 1 &&
+        ingredientStrengths.entries.any((entry) {
+          final recordValues = recordIngredientStrengths[entry.key];
+          return recordValues != null && !recordValues.containsAll(entry.value);
+        })) {
+      continue;
+    }
     // Two readable strengths on a combination label are stronger evidence
     // than a short brand synonym. A single OCR number is only a ranking hint.
     if (queryIngredients.length > 1 &&
@@ -126,10 +156,12 @@ MedicationCatalogRecord? matchMedicationCatalogRecord(
       }
     }
     // RxNorm may return the generic combination for a branded query, or a
-    // brand-only record for a generic combination. Require both ingredients;
-    // plain Claritin is never an alternative for Claritin-D.
+    // brand-only record for a generic combination. Require the complete known
+    // ingredient set so neither plain Claritin nor aspirin-free Excedrin can
+    // stand in for a different combination.
     if (recordScore == 0 &&
-        queryIngredients.containsAll({'loratadine', 'pseudoephedrine'}) &&
+        (queryIngredients.containsAll({'loratadine', 'pseudoephedrine'}) ||
+            queryIngredients.contains('caffeine')) &&
         recordIngredients.length == queryIngredients.length &&
         recordIngredients.containsAll(queryIngredients)) {
       recordScore = 600;
@@ -144,6 +176,48 @@ MedicationCatalogRecord? matchMedicationCatalogRecord(
     }
   }
   return bestRecord;
+}
+
+bool _hasCompatibleExplicitIngredients(
+  MedicationCatalogRecord record,
+  Set<String> expected,
+) {
+  // A brand synonym cannot fill in an ingredient missing from an explicit
+  // formula. Unknown slash-separated ingredients must not disappear merely
+  // because the camera's alias list does not recognize their names.
+  for (final field in [record.name, record.genericName]) {
+    final withoutBrand = field.replaceAll(RegExp(r'\[[^\]]*\]'), '');
+    final components = withoutBrand.split(
+      RegExp(r'/|,|\+|\band\b', caseSensitive: false),
+    );
+    final explicit = <String>{};
+    var unknownComponent = false;
+    for (final component in components) {
+      final normalized = _normalizeMedicationName(component);
+      if (normalized.isEmpty) continue;
+      final tokens = normalized.split(' ').toSet();
+      final ingredients = _genericMedicationAliases.keys
+          .where(tokens.contains)
+          .toSet();
+      explicit.addAll(ingredients);
+      if (components.length > 1 && ingredients.isEmpty) {
+        if (_brandMedicationAliases.keys.any(tokens.contains)) continue;
+        // A concentration denominator is not another active ingredient.
+        // For example, do not treat "5 mL" in "12.5 mg / 5 mL" as a drug.
+        if (!RegExp(r'^(?:\d+(?:\s+\d+)?\s*)?(?:ml|l|mg|mcg|g)\b')
+            .hasMatch(normalized)) {
+          unknownComponent = true;
+        }
+      }
+    }
+    if (unknownComponent ||
+        (explicit.isNotEmpty &&
+            (explicit.length != expected.length ||
+                !explicit.containsAll(expected)))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 String _normalizeMedicationName(String value) =>
@@ -175,10 +249,71 @@ Set<String> _labelStrengths(String text) =>
       return '${double.parse(match[1]!)} ${match[2]!.toLowerCase()}';
     }).toSet();
 
+Map<String, Set<String>> _labelIngredientStrengths(String text) {
+  final strengths = <String, Set<String>>{};
+  for (final ingredient in _genericMedicationAliases.keys) {
+    final pattern = RegExp(
+      '\\b$ingredient\\s+(?:(?:hcl|hydrochloride|sulfate)\\s+)?'
+      r'(\d+(?:\.\d+)?)\s*(mg|mcg|g)\b',
+      caseSensitive: false,
+    );
+    for (final match in pattern.allMatches(text)) {
+      strengths
+          .putIfAbsent(ingredient, () => {})
+          .add('${double.parse(match[1]!)} ${match[2]!.toLowerCase()}');
+    }
+  }
+  return strengths;
+}
+
+const _excedrinMigraineIngredients = {'acetaminophen', 'aspirin', 'caffeine'};
+const _excedrinTensionIngredients = {'acetaminophen', 'caffeine'};
+
+Set<String> _excedrinFormulations(String normalized) {
+  final formulations = <String>{};
+  if (RegExp(r'\bmigraine(?: relief)?\b').hasMatch(normalized)) {
+    formulations.add('Excedrin Migraine');
+  }
+  if (RegExp(r'\bextra strength\b').hasMatch(normalized)) {
+    formulations.add('Excedrin Extra Strength');
+  }
+  if (RegExp(r'\btension headache\b|\baspirin free\b').hasMatch(normalized)) {
+    formulations.add('Excedrin Tension Headache');
+  }
+  return formulations;
+}
+
+Map<String, double> _excedrinOcrFormulations(String normalized) {
+  final formulations = {
+    for (final name in _excedrinFormulations(normalized)) name: .94,
+  };
+  // A cylindrical label can compress one letter in MIGRAINE even when the
+  // independently read Excedrin brand is intact. Keep this correction local
+  // to Excedrin detection and cap its confidence; never fuzzy-match catalog
+  // formulations or infer a variant from the brand alone.
+  if (!formulations.containsKey('Excedrin Migraine') &&
+      normalized
+          .split(' ')
+          .any(
+            (token) =>
+                !token.startsWith('migraine') &&
+                _editDistanceAtMostOne(token, 'migraine'),
+          )) {
+    formulations['Excedrin Migraine'] = .7;
+  }
+  return formulations;
+}
+
+Set<String> _excedrinFormulationIngredients(String name) =>
+    name == 'Excedrin Tension Headache'
+    ? _excedrinTensionIngredients
+    : _excedrinMigraineIngredients;
+
 const _genericMedicationAliases = <String, String>{
   'acetaminophen': 'Acetaminophen',
   'amoxicillin': 'Amoxicillin',
   'aspirin': 'Aspirin',
+  'caffeine': 'Caffeine',
   'diphenhydramine': 'Diphenhydramine',
   'ibuprofen': 'Ibuprofen',
   'loratadine': 'Loratadine',
@@ -197,6 +332,7 @@ const _brandMedicationAliases = <String, String>{
   'benadryl': 'Benadryl',
   'claritin': 'Claritin',
   'dayquil': 'DayQuil',
+  'excedrin': 'Excedrin',
   'lipitor': 'Lipitor',
   'motrin': 'Motrin',
   'nyquil': 'NyQuil',
@@ -216,6 +352,11 @@ Set<String> _catalogIngredients(Iterable<String> names) {
       ingredients.add('loratadine');
     } else if (tokens.contains('benadryl')) {
       ingredients.add('diphenhydramine');
+    }
+    if (tokens.contains('excedrin')) {
+      for (final formulation in _excedrinFormulations(name)) {
+        ingredients.addAll(_excedrinFormulationIngredients(formulation));
+      }
     }
   }
   return ingredients;
@@ -290,9 +431,9 @@ class MedicationOcrDetector implements MedicationScanDetector {
       );
     }
 
-    String extractedText;
+    medication_ocr.MedicationOcrEvidence evidence;
     try {
-      extractedText = await medication_ocr.recognizeMedicationText(
+      evidence = await medication_ocr.recognizeMedicationEvidence(
         request.imageBytes!,
         fileName: request.fileName,
       );
@@ -308,6 +449,7 @@ class MedicationOcrDetector implements MedicationScanDetector {
             'medication manually.',
       );
     }
+    final extractedText = evidence.text;
     if (extractedText.trim().isEmpty) {
       return MedicationScanResult(
         imageUrl: request.imageUrl,
@@ -327,7 +469,9 @@ class MedicationOcrDetector implements MedicationScanDetector {
       imageBytes: request.imageBytes,
       extractedText: extractedText.trim(),
       detectedMedicationName: detection.name ?? '',
-      confidence: detection.confidence,
+      confidence: evidence.recoveredUncertainText && detection.confidence > .65
+          ? .65
+          : detection.confidence,
       errorMessage: detection.name == null
           ? 'We could not identify a medication from this photo. Retake it '
                 'with the name facing the camera, hold steady, and use even '
@@ -409,6 +553,34 @@ String? detectMedicationName(String extractedText) =>
   // Conflicting brands require review instead of whichever token OCR listed
   // first. Likewise, keep a readable combination intact when no brand is read.
   if (brands.length > 1) return (name: null, confidence: .25);
+  if (brands.containsKey('Excedrin')) {
+    final formulations = _excedrinOcrFormulations(normalized);
+    if (formulations.length > 1) return (name: null, confidence: .25);
+    if (formulations.length == 1) {
+      final name = formulations.keys.single;
+      final expectedIngredients = _excedrinFormulationIngredients(name);
+      if (!expectedIngredients.containsAll(ingredients.keys)) {
+        return (name: null, confidence: .25);
+      }
+      return (
+        name: name,
+        confidence: brands['Excedrin']! < formulations[name]!
+            ? brands['Excedrin']!
+            : formulations[name]!,
+      );
+    }
+    if (ingredients.length != _excedrinMigraineIngredients.length ||
+        !ingredients.keys.toSet().containsAll(_excedrinMigraineIngredients)) {
+      return (name: null, confidence: .25);
+    }
+    return (
+      name: 'Excedrin',
+      confidence: [
+        brands['Excedrin']!,
+        ...ingredients.values,
+      ].reduce((first, second) => first < second ? first : second),
+    );
+  }
   if (brands.length == 1) {
     return (name: brands.keys.single, confidence: brands.values.single);
   }

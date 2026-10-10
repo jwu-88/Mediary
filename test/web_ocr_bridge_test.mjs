@@ -45,7 +45,10 @@ function harness({ failFirst = false, decode = false, width = 800, height = 715,
       toDataURL() { return 'data:image/png;base64,test'; },
       getContext() {
         return {
-          fillRect() {}, drawImage() {},
+          fillRect() {}, drawImage(...args) {
+            result.draws ||= [];
+            result.draws.push(args);
+          },
           putImageData(pixels) { result.pixels = Array.from(pixels.data); },
           translate() {}, rotate() {},
           getImageData() { return { data: new Uint8ClampedArray([128, 128, 128, 255]) }; },
@@ -121,4 +124,24 @@ test('light-on-dark text gets an inverted grayscale recognition pass', async () 
   const h = harness({ decode: true });
   await h.ocr.recognize('camera');
   assert.ok(h.canvases.some(canvas => canvas.pixels?.[0] === 127 && canvas.pixels?.[3] === 255));
+});
+
+test('repeated uncertain standalone words survive with explicit uncertainty', async () => {
+  const h = harness({ decode: true, results: [
+    { lines: [{ text: 'EXCEDRIN', confidence: 21 }] },
+    { lines: [{ text: 'EXCEDRIN)', confidence: 38 }, { text: 'MGRAINE RELIEF', confidence: 47 }] },
+  ] });
+  const result = JSON.parse(await h.ocr.recognizeWithEvidence('curved'));
+  assert.match(result.text, /EXCEDRIN/);
+  assert.equal(result.recoveredUncertainText, true);
+});
+
+test('a lone uncertain word and repeated multiword noise are not recovered', async () => {
+  const results = Array.from({ length: 14 }, (_, index) => ({ lines: [
+    { text: index === 0 ? 'EXCEDRIN' : '', confidence: 21 },
+    { text: 'anhcnhydmmme HCl 25 mg', confidence: 22 },
+  ] }));
+  const h = harness({ decode: true, results });
+  assert.deepEqual(JSON.parse(await h.ocr.recognizeWithEvidence('noise')),
+    { text: '', recoveredUncertainText: false });
 });
