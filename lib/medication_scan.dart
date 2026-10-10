@@ -179,6 +179,7 @@ const _genericMedicationAliases = <String, String>{
   'acetaminophen': 'Acetaminophen',
   'amoxicillin': 'Amoxicillin',
   'aspirin': 'Aspirin',
+  'diphenhydramine': 'Diphenhydramine',
   'ibuprofen': 'Ibuprofen',
   'loratadine': 'Loratadine',
   'melatonin': 'Melatonin',
@@ -213,6 +214,8 @@ Set<String> _catalogIngredients(Iterable<String> names) {
       ingredients.addAll({'loratadine', 'pseudoephedrine'});
     } else if (tokens.contains('claritin')) {
       ingredients.add('loratadine');
+    } else if (tokens.contains('benadryl')) {
+      ingredients.add('diphenhydramine');
     }
   }
   return ingredients;
@@ -325,6 +328,11 @@ class MedicationOcrDetector implements MedicationScanDetector {
       extractedText: extractedText.trim(),
       detectedMedicationName: detection.name ?? '',
       confidence: detection.confidence,
+      errorMessage: detection.name == null
+          ? 'We could not identify a medication from this photo. Retake it '
+                'with the name facing the camera, hold steady, and use even '
+                'lighting. You can also search for the medication manually.'
+          : '',
     );
   }
 }
@@ -334,7 +342,8 @@ class MedicationOcrDetector implements MedicationScanDetector {
 /// Brand aliases are checked before generic names because OTC labels usually
 /// lead with the brand name (for example, "Advil"). The line fallback keeps
 /// the detector useful for other labels without inventing a name when OCR is
-/// too noisy; RxNorm still verifies the returned candidate before scheduling.
+/// too noisy; an unfamiliar name needs a readable strength or dosage form,
+/// and RxNorm still verifies the returned candidate before scheduling.
 String? detectMedicationName(String extractedText) =>
     _detectMedicationName(extractedText).name;
 
@@ -413,25 +422,40 @@ String? detectMedicationName(String extractedText) =>
     );
   }
 
-  final firstUsefulLine = productText
-      .split(RegExp(r'[\r\n]+'))
-      .map((line) => line.trim())
-      .firstWhere(
-        (line) =>
-            line.length >= 3 &&
-            RegExp(r'[A-Za-z]').hasMatch(line) &&
-            !_looksLikeInstruction(line),
-        orElse: () => '',
-      );
-  if (firstUsefulLine.isEmpty) return (name: null, confidence: .25);
-  final candidate = firstUsefulLine
-      .split(RegExp(r'[.;|]'))
-      .first
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
-  return candidate.length > 48
-      ? (name: null, confidence: .25)
-      : (name: candidate, confidence: .35);
+  // A symptom, package slogan, or punctuation fragment is not a medication
+  // name. Retain support for unfamiliar medicines only when the same line
+  // contains a name-shaped phrase followed by product evidence.
+  final labelName = RegExp(
+    r'^([A-Za-z][A-Za-z-]{3,}(?:\s+[A-Za-z][A-Za-z-]{2,})?)\s+'
+    r'(?:\d+(?:\.\d+)?\s*(?:mg|mcg|g)\b|(?:tablets?|capsules?)\b)',
+    caseSensitive: false,
+  );
+  for (final line in productText.split(RegExp(r'[\r\n]+'))) {
+    if (_looksLikeInstruction(line)) continue;
+    final match = labelName.firstMatch(line.trim());
+    if (match == null) continue;
+    final candidate = match[1]!;
+    final words = candidate.toLowerCase().split(RegExp(r'\s+'));
+    if (words.any((word) => !RegExp(r'[aeiouy]').hasMatch(word)) ||
+        words.any(
+          const {
+            'allergy',
+            'relief',
+            'antihistamine',
+            'tablets',
+            'capsules',
+            'contains',
+            'ultratabs',
+            'strength',
+            'extra',
+            'maximum',
+          }.contains,
+        )) {
+      continue;
+    }
+    return (name: candidate, confidence: .35);
+  }
+  return (name: null, confidence: .25);
 }
 
 double? _medicationAliasAt(List<String> tokens, int index, String alias) {
