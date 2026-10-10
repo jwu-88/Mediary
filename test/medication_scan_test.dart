@@ -36,6 +36,90 @@ void main() {
     );
   });
 
+  group('Benadryl camera labels', () {
+    test('reads brand and ingredient with common OCR substitutions', () {
+      for (final text in [
+        'Benadryl\nALLERGY\nDiphenhydramine HCl 25 mg',
+        'Benadry1\nALLERGY',
+        'Bena dryl\nALLERGY',
+        // Actual Tesseract output from the supplied dim, tilted camera feed.
+        'LDCIId( ) |\nl ALLERGY\n'
+            '= D|ph(=nhydramme HCI 25mg | Anlahvstamlne\n'
+            'Dlphenhydramme HCI 25mg | Anhhnstamlne\n'
+            'Benadry! |\n_x ALLERGY |\nenadry!| |\n'
+            'wipnennhydramine HCI 25mg | Antihistamine\nULTRATABS',
+      ]) {
+        expect(detectMedicationName(text), 'Benadryl', reason: text);
+      }
+      expect(
+        detectMedicationName('ALLERGY\nDiphenhydramine HCl 25 mg'),
+        'Diphenhydramine',
+      );
+      expect(
+        detectMedicationName('D1phenhydramine HCl 25 mg'),
+        'Diphenhydramine',
+      );
+    });
+
+    test('camera fragments and symptoms never become medication names', () {
+      for (final text in [
+        '_— M——\n& ALLERGY\nP anhcnhydmmme HCl 25 mg | Anhhlstamme',
+        'ALLERGY\nSneezing\nItchy, Watery Eyes\nULTRATABS',
+        'M---\ni\no\n&\ny S\n>',
+        'Allergy tablets',
+        'Antihistamine 25 mg',
+      ]) {
+        expect(detectMedicationName(text), isNull, reason: text);
+      }
+    });
+
+    test('generic Benadryl ingredient excludes combination catalog hits', () {
+      expect(
+        matchMedicationCatalogRecord('Diphenhydramine', const [
+          MedicationCatalogRecord(
+            rxcui: 'combo',
+            name: 'Diphenhydramine / Phenylephrine [Benadryl]',
+          ),
+        ]),
+        isNull,
+      );
+      expect(
+        matchMedicationCatalogRecord('Benadryl', const [
+          MedicationCatalogRecord(
+            rxcui: 'combo',
+            name: 'Diphenhydramine / Phenylephrine [Benadryl]',
+          ),
+        ]),
+        isNull,
+      );
+    });
+
+    test('readable strength ranks the matching Benadryl product first', () {
+      expect(
+        matchMedicationCatalogRecord('Benadryl', const [
+          MedicationCatalogRecord(
+            rxcui: 'small',
+            name: 'Diphenhydramine 12.5 MG Oral Tablet [Benadryl]',
+          ),
+          MedicationCatalogRecord(
+            rxcui: 'adult',
+            name: 'Diphenhydramine 25 MG Oral Tablet [Benadryl]',
+          ),
+        ], extractedText: 'Benadry! |\nHCl 25mg | Antihistamine')?.rxcui,
+        'adult',
+      );
+    });
+
+    test('unfamiliar names need readable product evidence', () {
+      expect(
+        detectMedicationName('Fexofenadine 180 mg tablets'),
+        'Fexofenadine',
+      );
+      expect(detectMedicationName('Fexofenadine tablets'), 'Fexofenadine');
+      expect(detectMedicationName('Qzxv label'), isNull);
+    });
+  });
+
   group('Claritin formulation extraction', () {
     for (final text in [
       'Claritin-D',
@@ -395,10 +479,10 @@ void main() {
     );
 
     test(
-      'literal unknown text remains low confidence for catalog verification',
+      'unfamiliar product names remain low confidence for catalog verification',
       () async {
-        final result = await scan('Qzxv label');
-        expect(result.detectedMedicationName, 'Qzxv label');
+        final result = await scan('Fexofenadine 180 mg tablets');
+        expect(result.detectedMedicationName, 'Fexofenadine');
         expect(result.confidence, lessThan(.5));
         expect(
           matchMedicationCatalogRecord(result.detectedMedicationName, const [
@@ -406,6 +490,17 @@ void main() {
           ]),
           isNull,
         );
+      },
+    );
+
+    test(
+      'noisy camera text asks for a retake instead of naming fragments',
+      () async {
+        final result = await scan('_— M——\nALLERGY\nULTRATABS');
+        expect(result.detectedMedicationName, isEmpty);
+        expect(result.hasError, isTrue);
+        expect(result.errorMessage, contains('Retake'));
+        expect(result.extractedText, contains('ALLERGY'));
       },
     );
 

@@ -278,6 +278,40 @@ void main() {
     expect(find.text('SET YOUR SCHEDULE'), findsOneWidget);
   });
 
+  testWidgets('unclear camera text stays collapsed until requested', (
+    tester,
+  ) async {
+    const rawText = 'Benadry! |\nD|ph(=nhydramme HCI 25mg';
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: ScanResultScreen(
+          scanResult: MedicationScanResult(
+            imageUrl: '',
+            extractedText: rawText,
+            detectedMedicationName: 'Benadryl',
+            confidence: .7,
+          ),
+          bottomNavigationInset: 0,
+        ),
+      ),
+    );
+    expect(find.text('Benadryl'), findsOneWidget);
+    expect(find.textContaining('Some label text is unclear'), findsOneWidget);
+    expect(find.text(rawText), findsNothing);
+    final toggle = find.byKey(const Key('scanLabelTextToggle'));
+    await Scrollable.ensureVisible(
+      tester.element(toggle),
+      alignment: .5,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(find.text(rawText), findsOneWidget);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(find.text(rawText), findsNothing);
+  });
+
   testWidgets('choose photo opens the gallery directly instead of capture', (
     tester,
   ) async {

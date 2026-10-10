@@ -2163,7 +2163,10 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
 
     MedicationCatalogRecord? medication;
     if (!result.hasError) {
-      medication = await _resolveScanMedication(result.detectedMedicationName);
+      medication = await _resolveScanMedication(
+        result.detectedMedicationName,
+        extractedText: result.extractedText,
+      );
     }
 
     if (!mounted) return;
@@ -2175,13 +2178,20 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
     });
   }
 
-  Future<MedicationCatalogRecord?> _resolveScanMedication(String name) async {
+  Future<MedicationCatalogRecord?> _resolveScanMedication(
+    String name, {
+    String extractedText = '',
+  }) async {
     final query = name.trim();
     if (query.isEmpty) return null;
     try {
       final page = await _catalogClient.search(query);
       if (page.items.isEmpty) return null;
-      final candidate = matchMedicationCatalogRecord(query, page.items);
+      final candidate = matchMedicationCatalogRecord(
+        query,
+        page.items,
+        extractedText: extractedText,
+      );
       // Approximate catalog results still need a name match. A lone result
       // can be a different formulation (for example Claritin vs Claritin-D).
       if (candidate == null) return null;
