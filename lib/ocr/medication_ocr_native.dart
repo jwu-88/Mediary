@@ -1,6 +1,15 @@
 import 'package:flutter/services.dart';
 
+import 'medication_ocr_result.dart';
+
 const _nativeOcrChannel = MethodChannel('com.mediary/medication_ocr');
+
+Future<MedicationOcrEvidence> recognizeMedicationEvidence(
+  Uint8List bytes, {
+  String fileName = '',
+}) async => MedicationOcrEvidence(
+  await recognizeMedicationText(bytes, fileName: fileName),
+);
 
 /// Uses the platform's native OCR implementation without exposing dart:io to
 /// web builds. iOS uses Apple's Vision framework and Android uses ML Kit

@@ -92,6 +92,16 @@ void main() {
         ]),
         isNull,
       );
+      expect(
+        matchMedicationCatalogRecord('Excedrin Migraine', const [
+          MedicationCatalogRecord(
+            rxcui: 'unknown-formula',
+            name: 'Pyrilamine / Doxylamine Oral Tablet',
+            synonym: 'Excedrin Migraine',
+          ),
+        ]),
+        isNull,
+      );
     });
 
     test('readable strength ranks the matching Benadryl product first', () {
@@ -208,6 +218,279 @@ void main() {
     });
   });
 
+  group('Excedrin cylindrical labels', () {
+    test(
+      'one compressed migraine letter needs an independently read brand',
+      () {
+        for (final text in [
+          'EXCEDRIN\nMGRAINE RELIEF',
+          'EXCEDRIN\nMIGRA1NE RELIEF',
+        ]) {
+          expect(detectMedicationName(text), 'Excedrin Migraine', reason: text);
+        }
+        for (final text in [
+          'MGRAINE RELIEF',
+          'MIGRA1NE RELIEF',
+          'EXCEDRIN\nMGRAIN RELIEF',
+          'EXCEDRIN\nM1GRA1NE RELIEF',
+          'EXCEDRIN\nFor migraines',
+          'EXCEDRIN\nMGRAINE RELIEF\nTENSION HEADACHE',
+          'EXCEDRIN\nMIGRA1NE RELIEF\nASPIRIN FREE',
+          'Do not take with EXCEDRIN MGRAINE RELIEF',
+        ]) {
+          expect(detectMedicationName(text), isNull, reason: text);
+        }
+      },
+    );
+
+    test('recognizes readable formulations across wrapped and skewed text', () {
+      for (final text in [
+        'EXCEDRIN\nMIGRAINE RELIEF',
+        'EXCEDR1N\nMIGRAINE RELIEF\nAcetaminophen 250 mg',
+        'Ex cedrin\nMigraine\nAspirin 250 mg\nCaffeine 65 mg',
+        'XCEDRIN\nMIGRAINE RELIEF\nAcetaminophen 250 mg\n'
+            'Aspirin 250 mg\nCaffeine 65 mg',
+      ]) {
+        expect(detectMedicationName(text), 'Excedrin Migraine', reason: text);
+      }
+      expect(
+        detectMedicationName('EXCEDRIN\nEXTRA STRENGTH'),
+        'Excedrin Extra Strength',
+      );
+      expect(
+        detectMedicationName(
+          'EXCEDRIN\nTENSION HEADACHE\nAcetaminophen 500 mg\nCaffeine 65 mg',
+        ),
+        'Excedrin Tension Headache',
+      );
+    });
+
+    test('keeps every ingredient when the brand is unreadable', () {
+      expect(
+        detectMedicationName(
+          'Acetaminophen 250 mg\nAspirin 250 mg\nCaffeine 65 mg',
+        ),
+        'Acetaminophen / Aspirin / Caffeine',
+      );
+      expect(
+        detectMedicationName('Acetaminophen 500 mg\nCaffe1ne 65 mg'),
+        'Acetaminophen / Caffeine',
+      );
+      expect(
+        detectMedicationName(
+          'EXCEDRIN\nAcetaminophen 250 mg\nAspirin 250 mg\nCaffeine 65 mg',
+        ),
+        'Excedrin',
+      );
+    });
+
+    test(
+      'an incomplete brand or conflicting formula requires manual review',
+      () {
+        for (final text in [
+          'EXCEDRIN',
+          'EXCEDRIN\nPain reliever\n24 caplets',
+          'EXCEDRIN\nAcetaminophen 500 mg\nCaffeine 65 mg',
+          'EXCEDRIN\nMIGRAINE\nTENSION HEADACHE',
+          'EXCEDRIN\nTENSION HEADACHE\nAspirin 250 mg',
+          'EXCEDRIN\nMIGRAINE\nPhenylephrine 10 mg',
+          'EXCEDRIN MIGRAINE\nADVIL 200 mg',
+          'Do not take with Excedrin Migraine',
+          'Compare to Excedrin Migraine',
+          'Inactive ingredients: caffeine',
+        ]) {
+          expect(detectMedicationName(text), isNull, reason: text);
+        }
+      },
+    );
+  });
+
+  group('Excedrin catalog formulation safety', () {
+    const migraine = MedicationCatalogRecord(
+      rxcui: '209468',
+      name:
+          'Acetaminophen 250 MG / Aspirin 250 MG / Caffeine 65 MG '
+          'Oral Tablet [Excedrin]',
+    );
+    const tension = MedicationCatalogRecord(
+      rxcui: '404172',
+      name:
+          'Acetaminophen 500 MG / Caffeine 65 MG '
+          'Oral Tablet [Excedrin Tension Headache]',
+    );
+
+    test('known variants match their complete generic formula', () {
+      for (final query in [
+        'Excedrin Migraine',
+        'Excedrin Extra Strength',
+        'Acetaminophen / Aspirin / Caffeine',
+      ]) {
+        expect(
+          matchMedicationCatalogRecord(query, [tension, migraine])?.rxcui,
+          '209468',
+          reason: query,
+        );
+        expect(
+          matchMedicationCatalogRecord(query, [tension]),
+          isNull,
+          reason: query,
+        );
+      }
+      expect(
+        matchMedicationCatalogRecord('Excedrin Tension Headache', [
+          migraine,
+          tension,
+        ])?.rxcui,
+        '404172',
+      );
+      expect(
+        matchMedicationCatalogRecord('Acetaminophen / Caffeine', [
+          migraine,
+          tension,
+        ])?.rxcui,
+        '404172',
+      );
+    });
+
+    test('a plain brand needs complete ingredient evidence before selection', () {
+      expect(matchMedicationCatalogRecord('Excedrin', [migraine]), isNull);
+      expect(matchMedicationCatalogRecord('Excedrin', [tension]), isNull);
+      expect(
+        matchMedicationCatalogRecord(
+          'Excedrin',
+          [tension, migraine],
+          extractedText:
+              'EXCEDRIN\nAcetaminophen 250 mg\nAspirin 250 mg\nCaffeine 65 mg',
+        )?.rxcui,
+        '209468',
+      );
+      expect(
+        matchMedicationCatalogRecord(
+          'Excedrin',
+          [migraine],
+          extractedText: 'Do not take with acetaminophen, aspirin, or caffeine',
+        ),
+        isNull,
+      );
+    });
+
+    test('repeated strengths stay attached to the correct ingredient', () {
+      const wrongDose = MedicationCatalogRecord(
+        rxcui: 'wrong-dose',
+        name:
+            'Acetaminophen 250 MG / Aspirin 500 MG / Caffeine 65 MG '
+            'Oral Tablet [Excedrin]',
+      );
+      const reassignedDose = MedicationCatalogRecord(
+        rxcui: 'reassigned-dose',
+        name:
+            'Acetaminophen 65 MG / Aspirin 250 MG / Caffeine 250 MG '
+            'Oral Tablet [Excedrin]',
+      );
+      const label =
+          'Excedrin Migraine\nAcetaminophen 250 mg\nAspirin 250 mg\nCaffeine 65 mg';
+      for (final record in [wrongDose, reassignedDose]) {
+        expect(
+          matchMedicationCatalogRecord('Excedrin Migraine', [
+            record,
+          ], extractedText: label),
+          isNull,
+        );
+      }
+      expect(
+        matchMedicationCatalogRecord('Excedrin Migraine', [
+          wrongDose,
+          reassignedDose,
+          migraine,
+        ], extractedText: label)?.rxcui,
+        '209468',
+      );
+      expect(
+        matchMedicationCatalogRecord('Excedrin Migraine', [
+          migraine,
+        ], extractedText: '$label\nAcetaminophen 500 mg'),
+        isNull,
+      );
+    });
+
+    test('a shortened brand synonym cannot conceal another ingredient', () {
+      expect(
+        matchMedicationCatalogRecord('Excedrin Migraine', const [
+          MedicationCatalogRecord(
+            rxcui: 'different-formula',
+            name: 'Acetaminophen / Aspirin / Caffeine / Phenylephrine',
+            synonym: 'Excedrin Migraine',
+          ),
+        ]),
+        isNull,
+      );
+    });
+
+    test('unknown active ingredients cannot disappear from a formula', () {
+      expect(
+        matchMedicationCatalogRecord('Excedrin Tension Headache', const [
+          MedicationCatalogRecord(
+            rxcui: 'midol',
+            name:
+                'Acetaminophen 500 MG / Caffeine 60 MG / '
+                'Pyrilamine Maleate 15 MG Oral Tablet [Midol Complete]',
+          ),
+        ]),
+        isNull,
+      );
+      expect(
+        matchMedicationCatalogRecord('Benadryl', const [
+          MedicationCatalogRecord(
+            rxcui: 'extra-ingredient',
+            name: 'Diphenhydramine / Pyrilamine Oral Tablet [Benadryl]',
+          ),
+        ]),
+        isNull,
+      );
+    });
+
+    test('a brand synonym cannot conceal missing aspirin in the formula', () {
+      for (final record in const [
+        MedicationCatalogRecord(
+          rxcui: 'wrong-name',
+          name: 'Acetaminophen 500 MG / Caffeine 65 MG Oral Tablet',
+          synonym: 'Excedrin Migraine',
+        ),
+        MedicationCatalogRecord(
+          rxcui: 'wrong-generic',
+          name: 'Excedrin Migraine',
+          genericName: 'acetaminophen / caffeine',
+        ),
+      ]) {
+        expect(
+          matchMedicationCatalogRecord('Excedrin Migraine', [record]),
+          isNull,
+        );
+      }
+    });
+
+    test(
+      'brand-only records and concentration denominators stay supported',
+      () {
+        expect(
+          matchMedicationCatalogRecord('Excedrin Migraine', const [
+            MedicationCatalogRecord(rxcui: 'brand', name: 'Excedrin Migraine'),
+          ])?.rxcui,
+          'brand',
+        );
+        expect(
+          matchMedicationCatalogRecord('Benadryl', const [
+            MedicationCatalogRecord(
+              rxcui: 'liquid',
+              name: 'Diphenhydramine 12.5 MG / 5 ML Oral Solution [Benadryl]',
+            ),
+          ])?.rxcui,
+          'liquid',
+        );
+      },
+    );
+  });
+
   group('formulation-safe catalog matching', () {
     const plain = MedicationCatalogRecord(
       rxcui: 'plain',
@@ -273,8 +556,8 @@ void main() {
         isNull,
       );
       expect(
-        matchMedicationCatalogRecord('Claritin-D', [misleadingSynonym])?.rxcui,
-        'combination',
+        matchMedicationCatalogRecord('Claritin-D', [misleadingSynonym]),
+        isNull,
       );
     });
 
@@ -465,6 +748,20 @@ void main() {
       expect(result.detectedMedicationName, 'Claritin-D');
       expect(result.confidence, .94);
       expect(result.hasError, isFalse);
+    });
+
+    test('a corrected Excedrin formulation retains uncertainty', () async {
+      final exact = await scan('EXCEDRIN\nMIGRAINE RELIEF');
+      for (final text in [
+        'EXCEDRIN\nMGRAINE RELIEF',
+        'EXCEDRIN\nMIGRA1NE RELIEF',
+      ]) {
+        final fuzzy = await scan(text);
+        expect(fuzzy.detectedMedicationName, 'Excedrin Migraine');
+        expect(fuzzy.confidence, lessThan(exact.confidence));
+        expect(fuzzy.confidence, lessThan(.9));
+        expect(fuzzy.hasError, isFalse);
+      }
     });
 
     test(

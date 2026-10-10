@@ -92,7 +92,7 @@
       });
     };
     window.MediaryOcr.recognize = async function (imageDataUrl) {
-      if (!window.Tesseract) return '';
+      if (!window.Tesseract) return { text: '', recoveredUncertainText: false };
       try {
         if (!window.MediaryOcr._worker) {
           // This page pins Tesseract.js 4: createWorker accepts options, and
@@ -154,7 +154,7 @@
             preserve_interword_spaces: '1'
           });
           var fallback = await window.MediaryOcr._worker.recognize(imageDataUrl);
-          return window.MediaryOcr._readableLines(fallback && fallback.data).join('\n');
+          return { text: window.MediaryOcr._readableLines(fallback && fallback.data).join('\n'), recoveredUncertainText: false };
         }
 
         // Create a high-contrast grayscale pass as well as a binary pass. The
@@ -183,7 +183,7 @@
           var contextFallback = await window.MediaryOcr._worker.recognize(
             sourceCanvas.toDataURL('image/png')
           );
-          return window.MediaryOcr._readableLines(contextFallback && contextFallback.data).join('\n');
+          return { text: window.MediaryOcr._readableLines(contextFallback && contextFallback.data).join('\n'), recoveredUncertainText: false };
         }
 
         var histogram = new Uint32Array(256);
@@ -339,6 +339,33 @@
         // Preserve readable evidence from every pass.
         // Do not dump low-confidence fragments into the review or name parser.
         var recognizedLines = new Map();
+        var uncertainLines = new Map();
+        function evidenceKey(text) {
+          return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        }
+        function rememberUncertain(data, pass) {
+          var seenInPass = new Set();
+          for (var line of (data && data.lines) || []) {
+            var text = (line.text || '').trim().replace(/\s+/g, ' ');
+            var key = evidenceKey(text);
+            // Never recover a lone uncertain read, punctuation, isolated
+            // letters, multiword noise, or a whole low-confidence paragraph.
+            // Only a repeated standalone word is eligible; never strip a
+            // direction/negation off its drug to manufacture that word.
+            if (line.confidence < 20 || line.confidence >= 45 ||
+                !/^[a-z]{5,}$/.test(key) || seenInPass.has(key) ||
+                !window.MediaryOcr._readableLines({ text: text }).length) continue;
+            seenInPass.add(key);
+            var evidence = uncertainLines.get(key) || { text: text, confidence: 0, passes: new Set() };
+            evidence.passes.add(pass);
+            if (line.confidence > evidence.confidence) {
+              evidence.text = text;
+              evidence.confidence = line.confidence;
+            }
+            uncertainLines.set(key, evidence);
+          }
+        }
+        var passNumber = 0;
         for (var variant of variants) {
           await window.MediaryOcr._worker.setParameters({
             tessedit_pageseg_mode: variant.pageSegMode,
@@ -347,6 +374,7 @@
           var attempt = await window.MediaryOcr._worker.recognize(
             variant.canvas.toDataURL('image/png')
           );
+          rememberUncertain(attempt && attempt.data, passNumber++);
           for (var line of window.MediaryOcr._readableLines(attempt && attempt.data)) {
             var trimmed = line;
             if (trimmed && !recognizedLines.has(trimmed.toLowerCase())) {
@@ -354,26 +382,40 @@
             }
           }
         }
-        return Array.from(recognizedLines.values()).join('\n');
+        var recoveredUncertainText = false;
+        var strongKeys = new Set(Array.from(recognizedLines.values()).map(evidenceKey));
+        for (var entry of uncertainLines) {
+          if (entry[1].passes.size >= 2 && !strongKeys.has(entry[0])) {
+            recognizedLines.set(entry[0], entry[1].text);
+            recoveredUncertainText = true;
+          }
+        }
+        return { text: Array.from(recognizedLines.values()).join('\n'), recoveredUncertainText: recoveredUncertainText };
       } catch (error) {
         if (window.MediaryOcr._worker) {
           try { await window.MediaryOcr._worker.terminate(); } catch (_) {}
           window.MediaryOcr._worker = null;
         }
         console.warn('Mediary browser OCR failed', error);
-        return '';
+        return { text: '', recoveredUncertainText: false };
       }
     };
     // A single worker cannot safely process overlapping parameter/recognition
     // jobs. Queue scans and recover after failures without poisoning retries.
     window.MediaryOcr._recognizeImage = window.MediaryOcr.recognize;
     window.MediaryOcr._queue = Promise.resolve();
-    window.MediaryOcr.recognize = function (imageDataUrl) {
+    window.MediaryOcr._scanWithEvidence = function (imageDataUrl) {
       var scan = window.MediaryOcr._queue.then(function () {
         return window.MediaryOcr._recognizeImage(imageDataUrl);
       });
       window.MediaryOcr._queue = scan.catch(function () {});
       return scan;
+    };
+    window.MediaryOcr.recognize = function (imageDataUrl) {
+      return window.MediaryOcr._scanWithEvidence(imageDataUrl).then(function (result) { return result.text; });
+    };
+    window.MediaryOcr.recognizeWithEvidence = function (imageDataUrl) {
+      return window.MediaryOcr._scanWithEvidence(imageDataUrl).then(function (result) { return JSON.stringify(result); });
     };
   </script>
   <!--
