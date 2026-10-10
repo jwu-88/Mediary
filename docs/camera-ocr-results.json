@@ -1,0 +1,289 @@
+{
+  "date": "2026-10-10",
+  "cameraType": "synthetic canvas video stream",
+  "interpretation": "Recorded label identity; this does not verify exact RxNorm product, strength, schedule, physical autofocus, or native OCR. Six official-source images contain documented synthetic adverse conditions. Baseline comparison holds the updated Dart parser constant and compares browser OCR bridges only.",
+  "publicCases": [
+    {
+      "id": "excedrin_cylindrical_dim_tilt",
+      "expectedName": "Excedrin Migraine",
+      "acceptedNames": [
+        "Excedrin Migraine",
+        "Acetaminophen/Aspirin/Caffeine",
+        "Acetaminophen / Aspirin / Caffeine"
+      ],
+      "sourceUrl": "https://www.excedrin.com/products/head-pain-relief/migraine/",
+      "sourceImageUrl": "https://i-cf65.ch-static.com/content/dam/cf-consumer-healthcare/bp-excedrin-v2/en_US/products/migraine/excredrin-migraine-bottle.png",
+      "sourceSha256": "face1460b2fb2a6d5129786062ffbb2654337696adde429ad19ab818e2eb0940",
+      "condition": "Actual curved bottle packshot with simulated dim exposure, 11 degree tilt, and mild blur",
+      "inputSha256": "f5fd3477e19c92e66cd054cc0ed23766b4e1c933f23e36dcf7b3a35742a7e91b",
+      "capturedFrame": {
+        "width": 1024,
+        "height": 768,
+        "pngSignature": [
+          137,
+          80,
+          78,
+          71,
+          13,
+          10,
+          26,
+          10
+        ],
+        "meanRgbError": 4.492838541666667
+      },
+      "baseline": {
+        "name": null,
+        "outcome": "manual-review"
+      },
+      "observed": {
+        "name": "Excedrin Migraine",
+        "outcome": "identified",
+        "identificationScore": 0.65,
+        "recoveredUncertainText": true,
+        "ocrMilliseconds": 3785,
+        "enginePasses": 14
+      }
+    },
+    {
+      "id": "advil_curved_low_light",
+      "expectedName": "Advil",
+      "acceptedNames": [
+        "Advil",
+        "Ibuprofen"
+      ],
+      "sourceUrl": "https://www.advil.com/our-products/advil-pain/advil-tablets/",
+      "sourceImageUrl": "https://i-cf65.ch-static.com/content/dam/cf-consumer-healthcare/bp-advil-v2/en_US/products/product-01/avl204-packshots/products-advil-pain/adviltablets.jpg",
+      "sourceSha256": "661e71df3c26db5ccc08ee6d34b6d6f99dc8877cd3a7ab3275e682cda7e77d3a",
+      "condition": "Flat manufacturer label projected around a cylinder, simulated dim side lighting and 8 degree tilt",
+      "inputSha256": "7b2f306374bac86e1c4e19db8e858e423417f33b36c513647f676c7b28ffc69e",
+      "capturedFrame": {
+        "width": 1024,
+        "height": 768,
+        "pngSignature": [
+          137,
+          80,
+          78,
+          71,
+          13,
+          10,
+          26,
+          10
+        ],
+        "meanRgbError": 6.162760416666667
+      },
+      "baseline": {
+        "name": "Ibuprofen",
+        "outcome": "identified"
+      },
+      "observed": {
+        "name": "Ibuprofen",
+        "outcome": "identified",
+        "identificationScore": 0.7,
+        "recoveredUncertainText": false,
+        "ocrMilliseconds": 2983,
+        "enginePasses": 14
+      }
+    },
+    {
+      "id": "tylenol_dim_blur_tilt",
+      "expectedName": "Tylenol",
+      "acceptedNames": [
+        "Tylenol",
+        "Acetaminophen"
+      ],
+      "sourceUrl": "https://www.tylenol.com/products/headache-pain-relief/tylenol-extra-strength-caplets",
+      "sourceImageUrl": "https://images.ctfassets.net/g574hlexgjps/Pw9NPMsex8BV3YV94CPOq/7732fdecf47f82b65e6ba145f94bca6d/4e0ef5c9c7babce9f089625072c3df6aa927a42a.webp?fm=png&q=100&w=1920",
+      "sourceSha256": "0540a119d48e1001c0ea7e05ebffa2025b08511b3e3edcbf9bb511e5c82e13b1",
+      "condition": "Carton packshot with simulated dim exposure, 13 degree tilt, and defocus blur",
+      "inputSha256": "871507c92fedde4f6f05397a00e26bc657ac6411707f10c09c73f84a8f8232cf",
+      "capturedFrame": {
+        "width": 1024,
+        "height": 768,
+        "pngSignature": [
+          137,
+          80,
+          78,
+          71,
+          13,
+          10,
+          26,
+          10
+        ],
+        "meanRgbError": 5.838541666666667
+      },
+      "baseline": {
+        "name": "Acetaminophen",
+        "outcome": "identified"
+      },
+      "observed": {
+        "name": "Acetaminophen",
+        "outcome": "identified",
+        "identificationScore": 0.94,
+        "recoveredUncertainText": false,
+        "ocrMilliseconds": 2984,
+        "enginePasses": 14
+      }
+    },
+    {
+      "id": "aleve_curved_dim_tilt",
+      "expectedName": "Aleve",
+      "acceptedNames": [
+        "Aleve",
+        "Naproxen",
+        "Naproxen Sodium"
+      ],
+      "sourceUrl": "https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=00ef5b30-71d0-4cb4-84a3-48c67d1cea2a",
+      "sourceImageUrl": "https://dailymed.nlm.nih.gov/dailymed/image.cfm?name=Aleve+Tablets+-+24+Count+Carton.jpg&setid=00ef5b30-71d0-4cb4-84a3-48c67d1cea2a",
+      "sourceSha256": "7ffe8197eb3dff08366732452a714a66da31ab7dec7f120aa4a33f49b2364b74",
+      "condition": "NIH DailyMed front panel projected around a cylinder with dim side lighting, 14 degree tilt, and mild blur",
+      "inputSha256": "82e9384083458d1821139d4ec3ba6714b6fab57a15e5ab1bd34262f59f5b42d5",
+      "capturedFrame": {
+        "width": 1024,
+        "height": 768,
+        "pngSignature": [
+          137,
+          80,
+          78,
+          71,
+          13,
+          10,
+          26,
+          10
+        ],
+        "meanRgbError": 3.1158854166666665
+      },
+      "baseline": {
+        "name": "Aleve",
+        "outcome": "identified"
+      },
+      "observed": {
+        "name": "Aleve",
+        "outcome": "identified",
+        "identificationScore": 0.94,
+        "recoveredUncertainText": false,
+        "ocrMilliseconds": 2709,
+        "enginePasses": 14
+      }
+    },
+    {
+      "id": "claritin_curved_glare",
+      "expectedName": "Claritin",
+      "acceptedNames": [
+        "Claritin",
+        "Loratadine"
+      ],
+      "sourceUrl": "https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=677bf76d-e75d-4212-b1f2-eaaf25b27cb7",
+      "sourceImageUrl": "https://dailymed.nlm.nih.gov/dailymed/image.cfm?name=claritin-01.jpg&setid=677bf76d-e75d-4212-b1f2-eaaf25b27cb7",
+      "sourceSha256": "082a24a228ce77a47e1980775988cacc5a2b81d8166957b87aaabea63473ff0e",
+      "condition": "NIH DailyMed front panel projected around a cylinder with mild glare, dim exposure, 7 degree tilt, and blur",
+      "inputSha256": "e5ad909d8dfde35960f0f2b5ac1229d3ff1c38b012734749421ef347fc98bc27",
+      "capturedFrame": {
+        "width": 1024,
+        "height": 768,
+        "pngSignature": [
+          137,
+          80,
+          78,
+          71,
+          13,
+          10,
+          26,
+          10
+        ],
+        "meanRgbError": 2.7330729166666665
+      },
+      "baseline": {
+        "name": "Claritin",
+        "outcome": "identified"
+      },
+      "observed": {
+        "name": "Claritin",
+        "outcome": "identified",
+        "identificationScore": 0.7,
+        "recoveredUncertainText": false,
+        "ocrMilliseconds": 2475,
+        "enginePasses": 14
+      }
+    },
+    {
+      "id": "benadryl_dim_blur_tilt",
+      "expectedName": "Benadryl",
+      "acceptedNames": [
+        "Benadryl",
+        "Diphenhydramine"
+      ],
+      "sourceUrl": "https://www.benadryl.com/products/benadryl-allergy-ultratabs-tablets",
+      "sourceImageUrl": "https://images.ctfassets.net/00ko9qtwe33b/2Gju2xoNzxsIb2v9F8O4Wg/e1e93f6832dfba43acd2aaed7aa998ff/BEN_Front-of-Pack-for-300450170088_Allergy_ULTRATAB_Go_Packs_8ct.webp?fm=png&q=100&w=1920",
+      "sourceSha256": "dde2651d6e0a018bfe65ca626829d569caae486145c1964cc84f58207fb2dbe7",
+      "condition": "Carton packshot with simulated dim exposure, 10 degree tilt, and blur",
+      "inputSha256": "e283bb85fecc8157d00599aba89e1a551e55e3718a6ed539c7d7ea0ebf3ed363",
+      "capturedFrame": {
+        "width": 1024,
+        "height": 768,
+        "pngSignature": [
+          137,
+          80,
+          78,
+          71,
+          13,
+          10,
+          26,
+          10
+        ],
+        "meanRgbError": 4.971028645833333
+      },
+      "baseline": {
+        "name": "Benadryl",
+        "outcome": "identified"
+      },
+      "observed": {
+        "name": "Benadryl",
+        "outcome": "identified",
+        "identificationScore": 0.65,
+        "recoveredUncertainText": true,
+        "ocrMilliseconds": 3629,
+        "enginePasses": 14
+      }
+    }
+  ],
+  "privateCasesSummary": [
+    {
+      "case": "Prior user Benadryl camera-preview screenshot",
+      "observedName": "Benadryl",
+      "outcome": "identified",
+      "identificationScore": 0.7
+    },
+    {
+      "case": "User Excedrin review thumbnail (83 x 82)",
+      "observedName": null,
+      "outcome": "manual-review"
+    }
+  ],
+  "controls": [
+    {
+      "id": "denied",
+      "passed": true
+    },
+    {
+      "id": "empty-stream",
+      "passed": true
+    },
+    {
+      "id": "missing-fixture",
+      "passed": true
+    },
+    {
+      "id": "worker-initialization-failure-and-recovery",
+      "passed": true
+    }
+  ],
+  "summary": {
+    "count": 8,
+    "identifiedCorrectly": 7,
+    "manualReview": 1,
+    "differentName": 0,
+    "harnessFailures": 0,
+    "controlsPassed": 4,
+    "expectedManualReviewsPassed": 1
+  }
+}
