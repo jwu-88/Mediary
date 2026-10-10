@@ -6,6 +6,8 @@ import 'package:mediary/liquid_glass_back_button.dart';
 import 'package:mediary/main.dart';
 import 'package:mediary/medication_scan.dart';
 
+import 'support/medication_scan_fixture.dart';
+
 class _Detector implements MedicationScanDetector {
   _Detector(this.name);
   final String name;
@@ -65,7 +67,7 @@ void main() {
         MaterialApp(
           home: AuthenticatedHome(
             email: 'test@example.com',
-            cameraCapture: () async => const MedicationScanRequest.sample(),
+            cameraCapture: () async => medicationScanFixture,
             scanDetector: _Detector(''),
             catalogClient: catalog,
             useSidebarNavigation: size.width > 800,
@@ -117,7 +119,7 @@ void main() {
       MaterialApp(
         home: AuthenticatedHome(
           email: 'test@example.com',
-          cameraCapture: () async => const MedicationScanRequest.sample(),
+          cameraCapture: () async => medicationScanFixture,
           scanDetector: _Detector('Claritin-D'),
           catalogClient: catalog,
           cameraPermissionRequester: () async => CameraAccessState.granted,

@@ -50,17 +50,6 @@ void main() {
     );
   });
 
-  test(
-    'can send a test notification on hosts without native delivery',
-    () async {
-      final service = DefaultMedicationNotificationService();
-
-      await service.sendTestNotification();
-
-      await service.dispose();
-    },
-  );
-
   test('returns a recent due dose once and ignores duplicates', () async {
     final service = DefaultMedicationNotificationService();
     final now = DateTime(2026, 9, 13, 9, 1);

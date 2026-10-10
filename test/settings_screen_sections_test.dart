@@ -139,7 +139,7 @@ void main() {
     expect(find.byKey(const Key('settingsSignOutButton')), findsNothing);
   });
 
-  testWidgets('send test notification invokes the notification service', (
+  testWidgets('reminders show permission state without test controls', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(402, 1500);
@@ -147,7 +147,6 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    var sent = 0;
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
@@ -156,14 +155,20 @@ void main() {
           onAppearanceModeChanged: (_) {},
           accentColor: AppAccentColor.blue,
           onAccentColorChanged: (_) {},
-          onSendTestNotification: () async => sent += 1,
+          onReadNotificationPermission: () async => 'denied',
         ),
       ),
     );
 
-    await tester.tap(find.byKey(const Key('sendTestNotificationRow')));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    expect(sent, 1);
+    expect(find.text('Send Test Notification'), findsNothing);
+    expect(find.byKey(const Key('sendTestNotificationRow')), findsNothing);
+    expect(
+      find.text('Browser alerts blocked; in-app reminders stay on'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('doseNotificationsSwitch')), findsOneWidget);
+    expect(find.byKey(const Key('followUpAlertSwitch')), findsOneWidget);
   });
 }

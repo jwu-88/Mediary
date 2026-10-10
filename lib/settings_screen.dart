@@ -38,7 +38,6 @@ class SettingsScreen extends StatefulWidget {
     this.initialPreferences,
     this.timeDisplayFormat = TimeDisplayFormat.twelveHour,
     this.onTimeDisplayFormatChanged,
-    this.onSendTestNotification,
     this.onReadNotificationPermission,
   });
 
@@ -58,7 +57,6 @@ class SettingsScreen extends StatefulWidget {
   final MediaryPreferences? initialPreferences;
   final TimeDisplayFormat timeDisplayFormat;
   final ValueChanged<TimeDisplayFormat>? onTimeDisplayFormatChanged;
-  final Future<void> Function()? onSendTestNotification;
   final Future<String> Function()? onReadNotificationPermission;
 
   @override
@@ -73,7 +71,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late bool _followUpAlerts = widget.initialPreferences?.followUpAlerts ?? true;
   bool _isExportingData = false;
   String? _exportStatusMessage;
-  String? _notificationStatusMessage;
   String _notificationPermissionState = 'unknown';
   late String _reminderSound =
       widget.initialPreferences?.reminderSound ?? 'Gentle Chime';
@@ -211,23 +208,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         rollback: () => setState(() => _followUpAlerts = previous),
       ),
     );
-  }
-
-  Future<void> _sendTestNotification() async {
-    final callback = widget.onSendTestNotification;
-    if (callback == null) return;
-    try {
-      await callback();
-      if (mounted) {
-        setState(() => _notificationStatusMessage = 'Test notification sent');
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(
-          () => _notificationStatusMessage = 'Unable to send test notification',
-        );
-      }
-    }
   }
 
   Future<String?> _chooseOption({
@@ -476,15 +456,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       icon: CupertinoIcons.bell_fill,
                       iconColor: _accent,
                       title: 'Dose Notifications',
-                      subtitle:
-                          _notificationStatusMessage ??
-                          switch (_notificationPermissionState) {
-                            'granted' => 'Browser alerts enabled',
-                            'denied' => 'Browser alerts blocked; in-app reminders stay on',
-                            'default' => 'Permission needed for browser alerts',
-                            'available' => 'Device alerts available',
-                            _ => 'At scheduled times',
-                          },
+                      subtitle: switch (_notificationPermissionState) {
+                        'granted' => 'Browser alerts enabled',
+                        'denied' =>
+                          'Browser alerts blocked; in-app reminders stay on',
+                        'default' => 'Permission needed for browser alerts',
+                        'available' => 'Device alerts available',
+                        _ => 'At scheduled times',
+                      },
                       onTap: () => _setDoseNotifications(!_doseNotifications),
                       trailing: _themedSwitch(
                         key: const Key('doseNotificationsSwitch'),
@@ -512,16 +491,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       trailing: _chevron(),
                       onTap: _chooseReminderSound,
                     ),
-                    if (widget.onSendTestNotification != null)
-                      _SettingsRow(
-                        key: const Key('sendTestNotificationRow'),
-                        icon: CupertinoIcons.bell_circle_fill,
-                        iconColor: _accent,
-                        title: 'Send Test Notification',
-                        subtitle: 'Verify alerts on this device',
-                        trailing: _chevron(),
-                        onTap: _sendTestNotification,
-                      ),
                   ]),
                   _sectionTitle(
                     'App Preferences',

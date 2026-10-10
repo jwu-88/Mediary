@@ -57,8 +57,6 @@ class _NotificationSpy implements MedicationNotificationService {
   @override
   Future<String> permissionState() async => 'granted';
   @override
-  Future<void> sendTestNotification() async {}
-  @override
   Future<void> cancelDose(String doseId) async {}
   @override
   Future<void> clearDeliveredNotifications() async => cleared++;

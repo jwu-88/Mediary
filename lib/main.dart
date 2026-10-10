@@ -1408,10 +1408,6 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
     }());
   }
 
-  Future<void> _sendTestMedicationNotification() async {
-    await _notificationService.sendTestNotification();
-  }
-
   void _requestMedicationNotificationPermission() {
     if (!kIsWeb) return;
     unawaited(
@@ -1971,9 +1967,6 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       onAccentColorChanged: widget.onAccentColorChanged ?? (_) {},
       timeDisplayFormat: widget.timeDisplayFormat,
       onTimeDisplayFormatChanged: widget.onTimeDisplayFormatChanged,
-      onSendTestNotification: widget.dataStore == null
-          ? null
-          : _sendTestMedicationNotification,
       onReadNotificationPermission: widget.dataStore == null
           ? null
           : _notificationService.permissionState,
