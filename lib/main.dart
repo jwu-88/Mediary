@@ -1248,6 +1248,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
   DateTime? _calendarFocusDate;
   final List<CalendarDoseData> _pendingCalendarDoses = [];
   final Map<String, String> _pendingCalendarDoseMedicationIds = {};
+  final Set<String> _awaitingMedicationSnapshotIds = {};
   final Set<String> _cancelledDoseIds = <String>{};
   final Map<String, String> _pendingScheduleKeys = <String, String>{};
   CameraAccessState _cameraAccess = CameraAccessState.notRequested;
@@ -1276,6 +1277,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       widget.dataStore?.addListener(_onStoreChanged);
       _appliedPreferenceSignature = null;
       _cancelledDoseIds.clear();
+      _awaitingMedicationSnapshotIds.clear();
       if (oldWidget.dataStore == null && widget.dataStore != null) {
         _startNotificationMonitoring();
       }
@@ -1450,11 +1452,17 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
         for (final medication in store.medications)
           if (medication.active) medication.id,
       };
+      _awaitingMedicationSnapshotIds.removeAll(
+        store.medications.map((medication) => medication.id),
+      );
+      bool removedMedication(String id) =>
+          !activeMedicationIds.contains(id) &&
+          !_awaitingMedicationSnapshotIds.contains(id);
       _pendingScheduleKeys.removeWhere(
-        (_, medicationId) => !activeMedicationIds.contains(medicationId),
+        (_, medicationId) => removedMedication(medicationId),
       );
       final persistedOccurrenceIds = {
-        for (final dose in store.doseLogs)
+        for (final dose in _calendarReconciledDoseLogs(store))
           ScheduleOccurrenceGenerator.deterministicOccurrenceId(
             dose.scheduleId,
             localDate: dose.localDate,
@@ -1464,7 +1472,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       final stalePendingDoseIds = _pendingCalendarDoseMedicationIds.entries
           .where(
             (entry) =>
-                !activeMedicationIds.contains(entry.value) ||
+                removedMedication(entry.value) ||
                 persistedOccurrenceIds.contains(entry.key),
           )
           .map((entry) => entry.key)
@@ -1600,6 +1608,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       (doseId, _) => relatedIds.contains(doseId),
     );
     _pendingScheduleKeys.removeWhere((_, id) => id == medicationId);
+    _awaitingMedicationSnapshotIds.remove(medicationId);
     for (final id in relatedIds) {
       try {
         await _notificationService.cancelDose(id);
@@ -2328,6 +2337,11 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
         _pendingCalendarDoses.removeWhere((dose) => dose.id == doseId);
         _pendingCalendarDoses.add(calendarDose);
         _pendingCalendarDoseMedicationIds[doseId] = medicationId;
+        if (!store.medications.any(
+          (medication) => medication.id == medicationId,
+        )) {
+          _awaitingMedicationSnapshotIds.add(medicationId);
+        }
         _pendingScheduleKeys[_scanScheduleKey(
               catalogId: catalog.rxcui,
               doseAmount: doseAmount,
@@ -2593,6 +2607,11 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       added = true;
       _cancelledDoseIds.remove(doseId);
       _pendingCalendarDoseMedicationIds[doseId] = medicationId;
+      if (!store.medications.any(
+        (medication) => medication.id == medicationId,
+      )) {
+        _awaitingMedicationSnapshotIds.add(medicationId);
+      }
       _pendingScheduleKeys[_scanScheduleKey(
             catalogId: catalog.rxcui,
             doseAmount: scheduleDraft.doseAmount,
@@ -2726,7 +2745,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
     ];
     final persistedIds = {for (final dose in persisted) dose.id};
     final persistedOccurrenceIds = {
-      for (final dose in store?.doseLogs ?? const <DoseLogRecord>[])
+      for (final dose in _calendarReconciledDoseLogs(store))
         ScheduleOccurrenceGenerator.deterministicOccurrenceId(
           dose.scheduleId,
           localDate: dose.localDate,
@@ -2742,6 +2761,16 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
           dose,
     ];
   }
+
+  // A dose snapshot can arrive before its medication and schedule. Keep the
+  // newly saved row until it can be displayed, or is explicitly cancelled.
+  Iterable<DoseLogRecord> _calendarReconciledDoseLogs(
+    MediaryDataStore? store,
+  ) => [
+    ..._visibleDoseLogs(store),
+    for (final dose in store?.doseLogs ?? const <DoseLogRecord>[])
+      if (dose.status == 'cancelled') dose,
+  ];
 
   List<DoseLogRecord> _visibleDoseLogs(MediaryDataStore? store) {
     if (store == null) return const [];

@@ -46,54 +46,64 @@ class _Store extends MediaryDataStore {
     this.dose = dose;
   }
 
-  void publishSavedRecords() {
+  void publishSavedRecords({
+    bool medicationReady = true,
+    bool scheduleReady = true,
+    bool doseReady = true,
+  }) {
     final med = medication!;
     final sched = schedule!;
     final occurrence = dose!;
-    medications = [
-      MedicationRecord(
-        id: med.id!,
-        name: med.name,
-        genericName: med.genericName,
-        strength: med.strength,
-        form: med.form,
-        route: med.route,
-        instructions: med.instructions,
-        prescriber: med.prescriber,
-        pharmacy: med.pharmacy,
-        notes: med.notes,
-        active: med.active,
-        source: med.source,
-        catalogId: med.catalogId,
-      ),
-    ];
-    schedules = [
-      ScheduleRecord(
-        id: sched.id!,
-        medicationId: sched.medicationId,
-        doseAmount: sched.doseAmount,
-        doseUnit: sched.doseUnit,
-        times: sched.times,
-        frequency: sched.frequency,
-        daysOfWeek: sched.daysOfWeek,
-        startDate: sched.startDate,
-        endDate: sched.endDate,
-        timezone: sched.timezone,
-        instructions: sched.instructions,
-        active: sched.active,
-      ),
-    ];
-    doseLogs = [
-      DoseLogRecord(
-        id: occurrence.id!,
-        medicationId: occurrence.medicationId,
-        scheduleId: occurrence.scheduleId,
-        scheduledFor: occurrence.scheduledFor,
-        localDate: occurrence.localDate,
-        localTime: occurrence.localTime,
-        status: occurrence.status,
-      ),
-    ];
+    if (medicationReady) {
+      medications = [
+        MedicationRecord(
+          id: med.id!,
+          name: med.name,
+          genericName: med.genericName,
+          strength: med.strength,
+          form: med.form,
+          route: med.route,
+          instructions: med.instructions,
+          prescriber: med.prescriber,
+          pharmacy: med.pharmacy,
+          notes: med.notes,
+          active: med.active,
+          source: med.source,
+          catalogId: med.catalogId,
+        ),
+      ];
+    }
+    if (scheduleReady) {
+      schedules = [
+        ScheduleRecord(
+          id: sched.id!,
+          medicationId: sched.medicationId,
+          doseAmount: sched.doseAmount,
+          doseUnit: sched.doseUnit,
+          times: sched.times,
+          frequency: sched.frequency,
+          daysOfWeek: sched.daysOfWeek,
+          startDate: sched.startDate,
+          endDate: sched.endDate,
+          timezone: sched.timezone,
+          instructions: sched.instructions,
+          active: sched.active,
+        ),
+      ];
+    }
+    if (doseReady) {
+      doseLogs = [
+        DoseLogRecord(
+          id: occurrence.id!,
+          medicationId: occurrence.medicationId,
+          scheduleId: occurrence.scheduleId,
+          scheduledFor: occurrence.scheduledFor,
+          localDate: occurrence.localDate,
+          localTime: occurrence.localTime,
+          status: occurrence.status,
+        ),
+      ];
+    }
     notifyListeners();
   }
 }
@@ -269,6 +279,20 @@ void main() {
         tester.widget<CalendarScreen>(find.byType(CalendarScreen)).initialDate,
         DateTime.parse(store.dose!.localDate),
       );
+      // An unrelated update and out-of-order streams must not hide the row.
+      store.publishSavedRecords(
+        medicationReady: false,
+        scheduleReady: false,
+        doseReady: false,
+      );
+      await tester.pumpAndSettle();
+      await _expectCalendarMedication(tester);
+      store.publishSavedRecords(medicationReady: false, scheduleReady: false);
+      await tester.pumpAndSettle();
+      await _expectCalendarMedication(tester);
+      store.publishSavedRecords(scheduleReady: false);
+      await tester.pumpAndSettle();
+      await _expectCalendarMedication(tester);
       store.publishSavedRecords();
       await tester.pumpAndSettle();
       await _expectCalendarMedication(tester);
