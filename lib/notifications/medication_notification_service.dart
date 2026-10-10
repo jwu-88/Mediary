@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../data/mediary_models.dart';
+import '../data/dose_occurrence_identity.dart';
 import '../text_formatting.dart';
 import '../time_formatting.dart';
 import 'web_notification_stub.dart'
@@ -73,6 +76,9 @@ class DefaultMedicationNotificationService
   }) : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
 
   static const _payloadPrefix = 'mediary:dose:';
+  static const _summaryPayloadPrefix = 'mediary:due:';
+  static const _scheduledPayloadPrefix = 'mediary:scheduled:';
+  static final _summaryId = notificationIdForDose('mediary:due-summary');
   static const _recentDoseWindow = Duration(minutes: 2);
   static bool _timeZonesInitialized = false;
 
@@ -80,6 +86,10 @@ class DefaultMedicationNotificationService
   final Set<String> _notifiedDoseIds = <String>{};
   final Set<String> _scheduledDoseIds = <String>{};
   final Map<String, DateTime> _reminderTimes = <String, DateTime>{};
+  final Map<String, String> _scheduledNames = <String, String>{};
+  final Set<int> _legacyDeliveredIds = <int>{};
+  final Map<String, String> _doseNotificationKeys = <String, String>{};
+  final Set<String> _notifiedOccurrenceKeys = <String>{};
   Future<void> _operationQueue = Future<void>.value();
   bool _initialized = false;
   bool _nativeAvailable = true;
@@ -201,9 +211,38 @@ class DefaultMedicationNotificationService
     _notifiedDoseIds.remove(doseId);
     _scheduledDoseIds.remove(doseId);
     _reminderTimes.remove(doseId);
+    _scheduledNames.remove(doseId);
+    _notifiedOccurrenceKeys.remove(_doseNotificationKeys.remove(doseId));
     if (kIsWeb) cancelWebDoseNotification(doseId);
     if (_supportsNativeNotifications) {
-      await _plugin.cancel(id: notificationIdForDose(doseId));
+      await _cancelNativeRequest(notificationIdForDose(doseId));
+      // Simultaneous doses share one pending request. Preserve the other
+      // reminders even when cancellation happens after a service restart.
+      for (final request in await _plugin.pendingNotificationRequests()) {
+        final reminder = _ScheduledReminder.fromPayload(request.payload);
+        if (reminder == null || !reminder.doseIds.contains(doseId)) continue;
+        await _cancelNativeRequest(request.id, payload: request.payload);
+        final remaining = reminder.doses
+            .where((dose) => dose.doseId != doseId)
+            .toList();
+        if (remaining.isNotEmpty) {
+          if (reminder.scheduledFor.isAfter(DateTime.now())) {
+            await _scheduleReminder(_ScheduledReminder(remaining));
+          } else {
+            // A delayed request may already be due. Let the next snapshot
+            // deliver the remaining doses instead of scheduling in the past.
+            _scheduledDoseIds.removeAll(remaining.map((dose) => dose.doseId));
+          }
+        }
+      }
+      // A foreground alert can represent several doses. Clear it if one of
+      // those doses was taken, snoozed, or removed; the UI retains every dose.
+      for (final notification in await _activeNativeNotifications()) {
+        if (_doseIdsForPayload(_activePayload(notification)).contains(doseId) &&
+            notification.id != null) {
+          await _cancelDelivered(notification);
+        }
+      }
     }
   });
 
@@ -216,12 +255,15 @@ class DefaultMedicationNotificationService
     if (!_supportsNativeNotifications) return;
     try {
       for (final notification in await _plugin.getActiveNotifications()) {
-        final payload = notification.payload;
-        if (payload == null || !payload.startsWith(_payloadPrefix)) continue;
-        final doseId = payload.substring(_payloadPrefix.length);
-        _notifiedDoseIds.add(doseId);
+        final doseIds = _doseIdsForPayload(_activePayload(notification));
+        if (doseIds.isEmpty &&
+            notification.channelId != 'medication_reminders') {
+          continue;
+        }
+        _notifiedDoseIds.addAll(doseIds);
         if (notification.id != null) {
-          await _plugin.cancel(id: notification.id!);
+          if (doseIds.isEmpty) _legacyDeliveredIds.add(notification.id!);
+          await _cancelDelivered(notification);
         }
       }
     } catch (_) {
@@ -260,20 +302,66 @@ class DefaultMedicationNotificationService
             dose.snoozedUntil ??
             _scheduledDateFor(dose, scheduleTimezones[dose.scheduleId]),
     };
-    final activeDoses = doses
+    // Resolve legacy duplicates and terminal states exactly as the UI does,
+    // before filtering active doses. A taken duplicate must suppress its due
+    // counterpart, including HH:mm versus HH:mm:ss records.
+    final activeDoses = uniqueDoseOccurrences(doses)
         .where((dose) => dose.status == 'due' || dose.status == 'snoozed')
         .toList(growable: false);
-    final uniqueActiveDoses = _deduplicateActiveDoses(activeDoses);
+    final uniqueActiveDoses = activeDoses;
     final activeIds = uniqueActiveDoses.map((dose) => dose.id).toSet();
+    for (final dose in doses) {
+      _doseNotificationKeys[dose.id] = jsonEncode([
+        dose.medicationId,
+        dose.scheduleId.isEmpty ? dose.id : dose.scheduleId,
+        dose.localDate,
+        MedicationTime.fromLocalTime(dose.localTime).localTime,
+        scheduledTimes[dose.id]!.microsecondsSinceEpoch,
+      ]);
+    }
+    final activeOccurrenceKeys = activeIds
+        .map((id) => _doseNotificationKeys[id]!)
+        .toSet();
     final previouslyScheduledIds = _scheduledDoseIds.toSet();
+    final delivered = _supportsNativeNotifications
+        ? await _activeNativeNotifications()
+        : const <ActiveNotification>[];
+    // OS alerts survive service recreation. Restore receipts before deciding
+    // which doses are new, so opening a second session cannot alert again.
+    for (final notification in delivered) {
+      final ids = _doseIdsForPayload(_activePayload(notification));
+      _notifiedDoseIds.addAll(ids);
+      for (final id in ids) {
+        final key = _doseNotificationKeys[id];
+        if (key != null &&
+            !(scheduledTimes[id]?.isAfter(currentTime) ?? false)) {
+          _notifiedOccurrenceKeys.add(key);
+        }
+      }
+      if (notification.channelId == 'medication_reminders' &&
+          notification.id != null) {
+        _legacyDeliveredIds.add(notification.id!);
+      }
+    }
+    final changedReminderIds = <String>{};
     final newlyDue = <MedicationDueNotification>[];
     for (final dose in uniqueActiveDoses) {
       final scheduledFor = scheduledTimes[dose.id] ?? dose.scheduledFor;
+      if (_legacyDeliveredIds.contains(notificationIdForDose(dose.id)) &&
+          !scheduledFor.isAfter(currentTime)) {
+        _notifiedDoseIds.add(dose.id);
+      }
+      if (scheduledFor.isAfter(currentTime)) {
+        // A delivered receipt for the original time must not suppress a
+        // later snoozed reminder after recreating the service.
+        _notifiedDoseIds.remove(dose.id);
+      }
       final previousTime = _reminderTimes[dose.id];
       if (previousTime != null && previousTime != scheduledFor) {
+        changedReminderIds.add(dose.id);
         _notifiedDoseIds.remove(dose.id);
         if (_supportsNativeNotifications) {
-          await _plugin.cancel(id: notificationIdForDose(dose.id));
+          await _cancelNativeRequest(notificationIdForDose(dose.id));
         }
         if (kIsWeb) cancelWebDoseNotification(dose.id);
       }
@@ -284,15 +372,24 @@ class DefaultMedicationNotificationService
         scheduledFor: scheduledFor,
       );
       final isDue = !scheduledFor.isAfter(currentTime);
+      final occurrenceKey = _doseNotificationKeys[dose.id]!;
+      if (isDue &&
+          (_notifiedDoseIds.contains(dose.id) ||
+              _notifiedOccurrenceKeys.contains(occurrenceKey))) {
+        _notifiedDoseIds.add(dose.id);
+        _notifiedOccurrenceKeys.add(occurrenceKey);
+      }
       final isRecent =
           currentTime.difference(scheduledFor) <= _recentDoseWindow;
       // Suppression must survive subsequent timer ticks, not just the first
       // snapshot. Otherwise yesterday's reminders flood the next refresh.
       if (isDue && !isRecent) {
         _notifiedDoseIds.add(dose.id);
+        _notifiedOccurrenceKeys.add(occurrenceKey);
       }
       if (isDue && !_notifiedDoseIds.contains(dose.id) && isRecent) {
         _notifiedDoseIds.add(dose.id);
+        _notifiedOccurrenceKeys.add(occurrenceKey);
         newlyDue.add(notification);
       }
     }
@@ -300,11 +397,18 @@ class DefaultMedicationNotificationService
     final noLongerActiveNotifiedIds = _notifiedDoseIds.difference(activeIds);
     if (_supportsNativeNotifications) {
       for (final doseId in noLongerActiveNotifiedIds) {
-        await _plugin.cancel(id: notificationIdForDose(doseId));
+        await _cancelNativeRequest(notificationIdForDose(doseId));
       }
     }
     _notifiedDoseIds.removeWhere((id) => !activeIds.contains(id));
     _reminderTimes.removeWhere((id, _) => !activeIds.contains(id));
+    _legacyDeliveredIds.clear();
+    _notifiedOccurrenceKeys.removeWhere(
+      (key) => !activeOccurrenceKeys.contains(key),
+    );
+    _doseNotificationKeys.removeWhere(
+      (id, key) => !activeOccurrenceKeys.contains(key),
+    );
     if (kIsWeb) reconcileWebDoseNotifications(activeIds);
 
     if (!_supportsNativeNotifications) {
@@ -339,6 +443,19 @@ class DefaultMedicationNotificationService
 
     if (await permissionState() != 'granted') return newlyDue;
 
+    // Clear stale delivered alerts before scheduling replacements, since
+    // cancellation also removes pending requests with the same native ID.
+    for (final notification in delivered) {
+      final doseIds = _doseIdsForPayload(_activePayload(notification));
+      if (doseIds.isEmpty) continue;
+      if (!activeIds.containsAll(doseIds) ||
+          doseIds.any(
+            (id) => scheduledTimes[id]?.isAfter(currentTime) ?? false,
+          )) {
+        await _cancelDelivered(notification);
+      }
+    }
+
     final allFutureDoses = uniqueActiveDoses
         .where(
           (dose) => (scheduledTimes[dose.id] ?? dose.scheduledFor).isAfter(
@@ -350,67 +467,72 @@ class DefaultMedicationNotificationService
       (first, second) =>
           scheduledTimes[first.id]!.compareTo(scheduledTimes[second.id]!),
     );
-    // iOS retains only 64 pending requests. Keep the nearest reminders so a
-    // large regimen cannot replace today's alerts with distant future doses.
-    final futureDoses = defaultTargetPlatform == TargetPlatform.iOS
-        ? allFutureDoses.take(64).toList(growable: false)
-        : allFutureDoses;
-    final futureIds = futureDoses.map((dose) => dose.id).toSet();
+    final byTime = <int, List<MedicationDueNotification>>{};
+    for (final dose in allFutureDoses) {
+      final time = scheduledTimes[dose.id]!;
+      byTime
+          .putIfAbsent(time.millisecondsSinceEpoch, () => [])
+          .add(
+            MedicationDueNotification(
+              doseId: dose.id,
+              medicationName:
+                  medicationNames[dose.medicationId] ?? 'your medication',
+              scheduledFor: time,
+            ),
+          );
+    }
+    final allReminders = byTime.values.map(_ScheduledReminder.new);
+    // A single request represents each reminder instant, including multiple
+    // medications. Keep iOS's nearest 64 requests without a burst of alerts.
+    final futureReminders =
+        (defaultTargetPlatform == TargetPlatform.iOS
+                ? allReminders.take(64)
+                : allReminders)
+            .toList();
+    final futureIds = futureReminders
+        .expand((reminder) => reminder.doseIds)
+        .toSet();
+    final futureNotificationIds = futureReminders
+        .map((reminder) => reminder.id)
+        .toSet();
     for (final doseId in _scheduledDoseIds.difference(futureIds).toList()) {
-      if (!activeIds.contains(doseId) ||
-          scheduledTimes[doseId]!.isAfter(currentTime)) {
-        await _plugin.cancel(id: notificationIdForDose(doseId));
-      }
       _scheduledDoseIds.remove(doseId);
     }
 
-    for (final dose in futureDoses) {
-      await _schedule(
-        dose,
-        medicationNames[dose.medicationId],
-        scheduledDate: scheduledTimes[dose.id] ?? dose.scheduledFor,
-      );
-    }
-    for (final doseId in _scheduledDoseIds.difference(futureIds).toList()) {
-      if (!activeIds.contains(doseId)) {
-        await _plugin.cancel(id: notificationIdForDose(doseId));
-      }
-      _scheduledDoseIds.remove(doseId);
-    }
     // Native pending requests survive an app restart. Reconcile those that
     // were created by an older in-memory service instance as well.
     final pending = await _plugin.pendingNotificationRequests();
     final pendingDoseIds = <String>{};
+    final pendingNotificationIds = <int>{};
+    final pendingPayloads = <int, String?>{};
     for (final request in pending) {
-      final payload = request.payload;
-      if (payload == null || !payload.startsWith(_payloadPrefix)) continue;
-      final doseId = payload.substring(_payloadPrefix.length);
-      pendingDoseIds.add(doseId);
-      if (!futureIds.contains(doseId)) {
-        await _plugin.cancel(id: request.id);
+      final doseIds = _doseIdsForPayload(request.payload);
+      if (doseIds.isEmpty) continue;
+      pendingDoseIds.addAll(doseIds);
+      pendingNotificationIds.add(request.id);
+      pendingPayloads[request.id] = request.payload;
+      if (!futureNotificationIds.contains(request.id)) {
+        await _cancelNativeRequest(request.id, payload: request.payload);
       }
     }
-
-    // Delivered notifications no longer appear in the pending request list.
-    // Remove stale medication alerts from the OS tray as well, including
-    // alerts left behind by a medication deleted while the app was closed.
-    try {
-      final activeNotifications = await _plugin.getActiveNotifications();
-      for (final notification in activeNotifications) {
-        final payload = notification.payload;
-        if (payload == null || !payload.startsWith(_payloadPrefix)) continue;
-        final doseId = payload.substring(_payloadPrefix.length);
-        final notificationId = notification.id;
-        if (notificationId != null && !activeIds.contains(doseId)) {
-          await _plugin.cancel(id: notificationId);
-        }
+    for (final reminder in futureReminders) {
+      if (pendingNotificationIds.contains(reminder.id) &&
+          pendingPayloads[reminder.id] == reminder.payload &&
+          reminder.doses.every(
+            (dose) =>
+                previouslyScheduledIds.contains(dose.doseId) &&
+                !changedReminderIds.contains(dose.doseId) &&
+                _scheduledNames[dose.doseId] == dose.medicationName,
+          )) {
+        continue;
       }
-    } catch (_) {
-      // Active notification lookup is not available on every host version.
+      await _scheduleReminder(reminder);
     }
+    _scheduledNames.removeWhere((id, _) => !futureIds.contains(id));
 
     // If the app was open when the due time passed, show the native reminder
     // immediately. Background delivery is handled by the scheduled request.
+    final immediate = <MedicationDueNotification>[];
     for (final notification in newlyDue) {
       // The OS already owns delivery for a reminder scheduled while the app
       // was active. Showing it again here would play a second sound/banner.
@@ -418,11 +540,25 @@ class DefaultMedicationNotificationService
           !pendingDoseIds.contains(notification.doseId)) {
         continue;
       }
+      immediate.add(notification);
+    }
+    if (immediate.isNotEmpty) {
+      // Use one foreground alert for a burst, replacing the previous alert
+      // instead of adding one tray entry and sound per due medication.
+      for (final notification in delivered) {
+        if (_doseIdsForPayload(_activePayload(notification)).isNotEmpty &&
+            notification.id != null) {
+          await _cancelDelivered(notification);
+        }
+      }
       await _showImmediateNotification(
-        id: notificationIdForDose(notification.doseId),
-        title: notification.title,
-        body: notification.body,
-        payload: '$_payloadPrefix${notification.doseId}',
+        id: _summaryId,
+        title: immediate.first.title,
+        body: immediate.length == 1
+            ? immediate.first.body
+            : '${immediate.length} medication reminders are due. Open Mediary to review them.',
+        payload:
+            '$_summaryPayloadPrefix${jsonEncode(immediate.map((dose) => dose.doseId).toList())}',
       );
     }
     return newlyDue;
@@ -438,64 +574,94 @@ class DefaultMedicationNotificationService
       id: id,
       title: title,
       body: body,
-      notificationDetails: _notificationDetails,
+      notificationDetails: _notificationDetails(payload),
       payload: payload,
     );
   }
 
-  Future<void> _schedule(
-    DoseLogRecord dose,
-    String? medicationName, {
-    required DateTime scheduledDate,
-  }) async {
-    final notificationId = notificationIdForDose(dose.id);
-    final title = 'Medication reminder';
-    final body =
-        'Time to take ${titleCaseDisplay(medicationName ?? 'your medication')}';
-    final scheduled = tz.TZDateTime.from(scheduledDate, tz.local);
+  Future<void> _scheduleReminder(_ScheduledReminder reminder) async {
+    final scheduled = tz.TZDateTime.from(reminder.scheduledFor, tz.local);
     try {
       await _plugin.zonedSchedule(
-        id: notificationId,
-        title: title,
-        body: body,
+        id: reminder.id,
+        title: reminder.title,
+        body: reminder.body,
         scheduledDate: scheduled,
-        notificationDetails: _notificationDetails,
+        notificationDetails: _notificationDetails(reminder.payload),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        payload: '$_payloadPrefix${dose.id}',
+        payload: reminder.payload,
       );
     } catch (_) {
       // If Android exact-alarm access was declined or revoked, retain a
       // deliverable reminder rather than dropping it altogether. The normal
       // path remains exact and the active-app sync still catches equality.
       await _plugin.zonedSchedule(
-        id: notificationId,
-        title: title,
-        body: body,
+        id: reminder.id,
+        title: reminder.title,
+        body: reminder.body,
         scheduledDate: scheduled,
-        notificationDetails: _notificationDetails,
+        notificationDetails: _notificationDetails(reminder.payload),
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        payload: '$_payloadPrefix${dose.id}',
+        payload: reminder.payload,
       );
     }
-    _scheduledDoseIds.add(dose.id);
+    _scheduledDoseIds.addAll(reminder.doseIds);
+    for (final dose in reminder.doses) {
+      _scheduledNames[dose.doseId] = dose.medicationName;
+    }
   }
 
-  List<DoseLogRecord> _deduplicateActiveDoses(Iterable<DoseLogRecord> doses) {
-    final byOccurrence = <String, DoseLogRecord>{};
-    for (final dose in doses) {
-      final key = _occurrenceKey(dose);
-      final existing = byOccurrence[key];
-      // Prefer the lexically smallest id so a Firestore snapshot reordering
-      // cannot make the notification identity change between syncs.
-      if (existing == null || dose.id.compareTo(existing.id) < 0) {
-        byOccurrence[key] = dose;
+  Future<List<ActiveNotification>> _activeNativeNotifications() async {
+    try {
+      return await _plugin.getActiveNotifications();
+    } catch (_) {
+      return const <ActiveNotification>[];
+    }
+  }
+
+  // Android exposes the tag, but not payload, for delivered notifications.
+  // Carry the receipt in its tag so cleanup/restart behavior matches iOS.
+  String? _activePayload(ActiveNotification notification) =>
+      notification.payload ?? notification.tag;
+
+  Future<void> _cancelDelivered(ActiveNotification notification) async {
+    if (notification.id == null) return;
+    await _plugin.cancel(id: notification.id!, tag: notification.tag);
+  }
+
+  Future<void> _cancelNativeRequest(int id, {String? payload}) async {
+    await _plugin.cancel(id: id);
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    if (payload != null) await _plugin.cancel(id: id, tag: payload);
+    // Also clear an earlier delivery if its receipt/tag changed with the
+    // medication name, batch membership, or snooze time.
+    for (final notification in await _activeNativeNotifications()) {
+      if (notification.id == id && notification.tag != null) {
+        await _cancelDelivered(notification);
       }
     }
-    return byOccurrence.values.toList(growable: false);
   }
 
-  String _occurrenceKey(DoseLogRecord dose) =>
-      '${dose.scheduleId}|${dose.localDate}|${dose.localTime}';
+  Set<String> _doseIdsForPayload(String? payload) {
+    if (payload == null) return const {};
+    if (payload.startsWith(_payloadPrefix)) {
+      return {payload.substring(_payloadPrefix.length)};
+    }
+    if (payload.startsWith(_summaryPayloadPrefix)) {
+      try {
+        final decoded = jsonDecode(
+          payload.substring(_summaryPayloadPrefix.length),
+        );
+        if (decoded is List) return decoded.whereType<String>().toSet();
+      } on FormatException {
+        // Ignore alerts created by an unknown or older payload format.
+      }
+    }
+    if (payload.startsWith(_scheduledPayloadPrefix)) {
+      return _ScheduledReminder.fromPayload(payload)?.doseIds ?? const {};
+    }
+    return const {};
+  }
 
   Future<void> _clearNativeNotifications() async {
     try {
@@ -508,6 +674,10 @@ class DefaultMedicationNotificationService
     }
     _notifiedDoseIds.clear();
     _scheduledDoseIds.clear();
+    _scheduledNames.clear();
+    _legacyDeliveredIds.clear();
+    _notifiedOccurrenceKeys.clear();
+    _doseNotificationKeys.clear();
   }
 
   DateTime _scheduledDateFor(DoseLogRecord dose, String? timezone) {
@@ -571,24 +741,28 @@ class DefaultMedicationNotificationService
     }
   }
 
-  NotificationDetails get _notificationDetails => const NotificationDetails(
-    android: AndroidNotificationDetails(
-      'medication_reminders',
-      'Medication reminders',
-      channelDescription: 'Reminders to take scheduled medications.',
-      importance: Importance.high,
-      priority: Priority.high,
-    ),
-    iOS: DarwinNotificationDetails(
-      // Keep reminders visible even when the app is currently in the
-      // foreground. The scheduled notification is still delivered by iOS in
-      // the background or after the app is closed.
-      presentAlert: true,
-      presentBanner: true,
-      presentList: true,
-      presentSound: true,
-    ),
-  );
+  NotificationDetails _notificationDetails(String payload) =>
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          'medication_reminders',
+          'Medication reminders',
+          channelDescription: 'Reminders to take scheduled medications.',
+          importance: Importance.high,
+          priority: Priority.high,
+          onlyAlertOnce: true,
+          tag: payload,
+        ),
+        iOS: const DarwinNotificationDetails(
+          // Keep reminders visible even when the app is currently in the
+          // foreground. The scheduled notification is still delivered by iOS in
+          // the background or after the app is closed.
+          presentAlert: true,
+          presentBanner: true,
+          presentList: true,
+          presentSound: true,
+          threadIdentifier: 'mediary_medication_reminders',
+        ),
+      );
 
   /// Stable positive ID so a Firestore dose update replaces its old request.
   static int notificationIdForDose(String doseId) {
@@ -610,6 +784,67 @@ class DefaultMedicationNotificationService
     _notifiedDoseIds.clear();
     _scheduledDoseIds.clear();
     _reminderTimes.clear();
+    _scheduledNames.clear();
+    _legacyDeliveredIds.clear();
+    _notifiedOccurrenceKeys.clear();
+    _doseNotificationKeys.clear();
     if (kIsWeb) clearDeliveredWebNotifications();
   });
+}
+
+/// One OS request per instant; its payload retains all constituent dose IDs
+/// and enough data to cancel one without dropping the other reminders.
+class _ScheduledReminder {
+  _ScheduledReminder(List<MedicationDueNotification> values)
+    : doses = values.toList()..sort((a, b) => a.doseId.compareTo(b.doseId));
+
+  final List<MedicationDueNotification> doses;
+  Set<String> get doseIds => doses.map((dose) => dose.doseId).toSet();
+  DateTime get scheduledFor => doses.first.scheduledFor;
+  String get title => doses.first.title;
+  String get body => doses.length == 1
+      ? doses.first.body
+      : '${doses.length} medication reminders are due. Open Mediary to review them.';
+  int get id => DefaultMedicationNotificationService.notificationIdForDose(
+    doses.length == 1
+        ? doses.first.doseId
+        : 'mediary:time:${scheduledFor.millisecondsSinceEpoch}',
+  );
+  String get payload => doses.length == 1
+      ? '${DefaultMedicationNotificationService._payloadPrefix}${doses.first.doseId}'
+      : '${DefaultMedicationNotificationService._scheduledPayloadPrefix}${jsonEncode({
+          'at': scheduledFor.toUtc().toIso8601String(),
+          'doses': [
+            for (final dose in doses) {'id': dose.doseId, 'name': dose.medicationName},
+          ],
+        })}';
+
+  static _ScheduledReminder? fromPayload(String? payload) {
+    const prefix = DefaultMedicationNotificationService._scheduledPayloadPrefix;
+    if (payload == null || !payload.startsWith(prefix)) return null;
+    try {
+      final data = jsonDecode(payload.substring(prefix.length));
+      if (data is! Map || data['at'] is! String || data['doses'] is! List) {
+        return null;
+      }
+      final time = DateTime.tryParse(data['at'] as String);
+      if (time == null) return null;
+      final doses = <MedicationDueNotification>[];
+      for (final item in data['doses'] as List) {
+        if (item is! Map || item['id'] is! String || item['name'] is! String) {
+          return null;
+        }
+        doses.add(
+          MedicationDueNotification(
+            doseId: item['id'] as String,
+            medicationName: item['name'] as String,
+            scheduledFor: time,
+          ),
+        );
+      }
+      return doses.isEmpty ? null : _ScheduledReminder(doses);
+    } on FormatException {
+      return null;
+    }
+  }
 }

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -21,6 +23,7 @@ void main() {
     String status = 'due',
     DateTime? snoozedUntil,
     String? scheduleId,
+    String localTime = '09:00',
   }) {
     return DoseLogRecord(
       id: id,
@@ -28,7 +31,7 @@ void main() {
       scheduleId: scheduleId ?? 'schedule-$id',
       scheduledFor: scheduledFor,
       localDate: '2026-09-13',
-      localTime: '09:00',
+      localTime: localTime,
       status: status,
       snoozedUntil: snoozedUntil,
     );
@@ -70,6 +73,43 @@ void main() {
     expect(second, isEmpty);
     await service.dispose();
   });
+
+  test(
+    'changing a legacy record ID does not alert twice for one occurrence',
+    () async {
+      final service = DefaultMedicationNotificationService();
+      final now = DateTime(2026, 9, 13, 9);
+      final legacy = dose(
+        id: 'legacy-slot',
+        scheduledFor: now,
+        scheduleId: 'same-slot',
+        localTime: '09:00',
+      );
+      final canonical = dose(
+        id: 'canonical-slot',
+        scheduledFor: now,
+        scheduleId: 'same-slot',
+        localTime: '09:00:00',
+      );
+      expect(
+        await service.syncDueDoses(
+          doses: [legacy],
+          medicationNames: const {},
+          now: now,
+        ),
+        hasLength(1),
+      );
+      expect(
+        await service.syncDueDoses(
+          doses: [canonical],
+          medicationNames: const {},
+          now: now.add(const Duration(seconds: 15)),
+        ),
+        isEmpty,
+      );
+      await service.dispose();
+    },
+  );
 
   test(
     'does not treat stale doses as new after an empty bootstrap sync',
@@ -190,83 +230,114 @@ void main() {
   });
 
   if (!kIsWeb) {
-    group('native tray reconciliation', () {
-      const channel = MethodChannel(
-        'dexterous.com/flutter/local_notifications',
-      );
-      late List<MethodCall> calls;
-      late List<Map<String, Object>> delivered;
-      late List<Map<String, Object>> pending;
-      late bool permissionEnabled;
-      late FlutterLocalNotificationsPlatform previousPlatform;
-      setUp(() {
-        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-        previousPlatform = FlutterLocalNotificationsPlatform.instance;
-        IOSFlutterLocalNotificationsPlugin.registerWith();
-        calls = [];
-        delivered = [];
-        pending = [];
-        permissionEnabled = true;
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(channel, (call) async {
-              calls.add(call);
-              switch (call.method) {
-                case 'initialize':
-                  return true;
-                case 'checkPermissions':
-                  return {
-                    'isEnabled': permissionEnabled,
-                    'isAlertEnabled': permissionEnabled,
-                  };
-                case 'getActiveNotifications':
-                  return delivered.toList();
-                case 'pendingNotificationRequests':
-                  return pending.toList();
-                case 'cancel':
-                  final id = call.arguments;
-                  delivered.removeWhere((item) => item['id'] == id);
-                  pending.removeWhere((item) => item['id'] == id);
-                  return null;
-                default:
-                  return null;
-              }
-            });
-      });
-      tearDown(() {
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(channel, null);
-        debugDefaultTargetPlatformOverride = null;
-        FlutterLocalNotificationsPlatform.instance = previousPlatform;
-      });
+    for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+      group('$platform native tray reconciliation', () {
+        const channel = MethodChannel(
+          'dexterous.com/flutter/local_notifications',
+        );
+        late List<MethodCall> calls;
+        late List<Map<String, Object>> delivered;
+        late List<Map<String, Object>> pending;
+        late bool permissionEnabled;
+        late FlutterLocalNotificationsPlatform previousPlatform;
+        setUp(() {
+          debugDefaultTargetPlatformOverride = platform;
+          previousPlatform = FlutterLocalNotificationsPlatform.instance;
+          if (platform == TargetPlatform.iOS) {
+            IOSFlutterLocalNotificationsPlugin.registerWith();
+          } else {
+            AndroidFlutterLocalNotificationsPlugin.registerWith();
+          }
+          calls = [];
+          delivered = [];
+          pending = [];
+          permissionEnabled = true;
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+              .setMockMethodCallHandler(channel, (call) async {
+                calls.add(call);
+                switch (call.method) {
+                  case 'initialize':
+                    return true;
+                  case 'checkPermissions':
+                    return {
+                      'isEnabled': permissionEnabled,
+                      'isAlertEnabled': permissionEnabled,
+                    };
+                  case 'areNotificationsEnabled':
+                    return permissionEnabled;
+                  case 'getActiveNotifications':
+                    return [
+                      for (final notification in delivered)
+                        {
+                          ...notification,
+                          if (platform == TargetPlatform.android &&
+                              notification['payload'] != null)
+                            'tag': notification['payload']!,
+                        }..remove(
+                          platform == TargetPlatform.android
+                              ? 'payload'
+                              : 'tag',
+                        ),
+                    ];
+                  case 'pendingNotificationRequests':
+                    return pending.toList();
+                  case 'cancel':
+                    final id = platform == TargetPlatform.iOS
+                        ? call.arguments
+                        : (call.arguments as Map)['id'];
+                    final tag = platform == TargetPlatform.android
+                        ? (call.arguments as Map)['tag']
+                        : null;
+                    delivered.removeWhere(
+                      (item) =>
+                          item['id'] == id &&
+                          (platform == TargetPlatform.iOS ||
+                              (item['tag'] ?? item['payload']) == tag),
+                    );
+                    pending.removeWhere((item) => item['id'] == id);
+                    return null;
+                  case 'cancelAll':
+                    delivered.clear();
+                    pending.clear();
+                    return null;
+                  default:
+                    return null;
+                }
+              });
+        });
+        tearDown(() {
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+              .setMockMethodCallHandler(channel, null);
+          debugDefaultTargetPlatformOverride = null;
+          FlutterLocalNotificationsPlatform.instance = previousPlatform;
+        });
 
-      test(
-        'denied iOS permission skips scheduling and reports denial',
-        () async {
-          permissionEnabled = false;
-          final service = DefaultMedicationNotificationService();
-          final now = DateTime(2026, 9, 13, 9);
-          expect(await service.permissionState(), 'denied');
-          await service.syncDueDoses(
-            doses: [
-              dose(
-                id: 'denied-future',
-                scheduledFor: now.add(const Duration(hours: 1)),
-              ),
-            ],
-            medicationNames: const {},
-            now: now,
-          );
-          expect(
-            calls.where((call) => call.method == 'zonedSchedule'),
-            isEmpty,
-          );
-          await service.dispose();
-        },
-      );
+        test(
+          'denied iOS permission skips scheduling and reports denial',
+          () async {
+            permissionEnabled = false;
+            final service = DefaultMedicationNotificationService();
+            final now = DateTime(2026, 9, 13, 9);
+            expect(await service.permissionState(), 'denied');
+            await service.syncDueDoses(
+              doses: [
+                dose(
+                  id: 'denied-future',
+                  scheduledFor: now.add(const Duration(hours: 1)),
+                ),
+              ],
+              medicationNames: const {},
+              now: now,
+            );
+            expect(
+              calls.where((call) => call.method == 'zonedSchedule'),
+              isEmpty,
+            );
+            await service.dispose();
+          },
+        );
 
-      test(
-        'iOS retains the nearest 64 future reminders from an unsorted regimen',
-        () async {
+        test('iOS retains the nearest 64 future reminders from an unsorted regimen', () async {
           final service = DefaultMedicationNotificationService();
           final now = DateTime.now().add(const Duration(days: 1));
           await service.syncDueDoses(
@@ -283,149 +354,445 @@ void main() {
           final scheduled = calls
               .where((call) => call.method == 'zonedSchedule')
               .toList();
-          expect(scheduled, hasLength(64));
+          expect(
+            scheduled,
+            hasLength(platform == TargetPlatform.iOS ? 64 : 100),
+          );
           final payloads = scheduled.map(
             (call) => (call.arguments as Map)['payload'],
           );
           expect(payloads, contains('mediary:dose:future-1'));
           expect(payloads, contains('mediary:dose:future-64'));
-          expect(payloads, isNot(contains('mediary:dose:future-65')));
+          if (platform == TargetPlatform.iOS) {
+            expect(payloads, isNot(contains('mediary:dose:future-65')));
+          }
           await service.dispose();
-        },
-      );
+        });
 
-      test(
-        'opening clears delivered alerts but keeps future requests',
-        () async {
+        test(
+          'opening clears delivered alerts but keeps future requests',
+          () async {
+            final service = DefaultMedicationNotificationService();
+            final now = DateTime.now();
+            final due = dose(id: 'opened', scheduledFor: now);
+            final future = dose(
+              id: 'future-preserved',
+              scheduledFor: now.add(const Duration(hours: 1)),
+            );
+            delivered.add({
+              'id': DefaultMedicationNotificationService.notificationIdForDose(
+                due.id,
+              ),
+              'payload': 'mediary:dose:${due.id}',
+            });
+            pending.add({
+              'id': DefaultMedicationNotificationService.notificationIdForDose(
+                future.id,
+              ),
+              'payload': 'mediary:dose:${future.id}',
+            });
+            await service.clearDeliveredNotifications();
+            expect(delivered, isEmpty);
+            expect(pending, hasLength(1));
+            expect(
+              await service.syncDueDoses(
+                doses: [due, future],
+                medicationNames: const {},
+                now: now,
+              ),
+              isEmpty,
+            );
+            expect(calls.where((call) => call.method == 'show'), isEmpty);
+            expect(pending, hasLength(1));
+            await service.dispose();
+          },
+        );
+
+        test(
+          'deleting a dose clears its alert without cancelling its neighbor',
+          () async {
+            final service = DefaultMedicationNotificationService();
+            final removedId =
+                DefaultMedicationNotificationService.notificationIdForDose(
+                  'removed',
+                );
+            final neighborId =
+                DefaultMedicationNotificationService.notificationIdForDose(
+                  'neighbor',
+                );
+            delivered.addAll([
+              {'id': removedId, 'payload': 'mediary:dose:removed'},
+              {'id': neighborId, 'payload': 'mediary:dose:neighbor'},
+            ]);
+            pending.addAll([
+              {'id': removedId, 'payload': 'mediary:dose:removed'},
+              {'id': neighborId, 'payload': 'mediary:dose:neighbor'},
+            ]);
+            await service.cancelDose('removed');
+            expect(delivered.single['id'], neighborId);
+            expect(pending.single['id'], neighborId);
+            await service.dispose();
+          },
+        );
+
+        test(
+          'a delayed native request is replaced by one foreground reminder',
+          () async {
+            final service = DefaultMedicationNotificationService();
+            final now = DateTime.now();
+            final future = dose(
+              id: 'delayed-native',
+              scheduledFor: now.add(const Duration(minutes: 1)),
+            );
+            await service.syncDueDoses(
+              doses: [future],
+              medicationNames: const {},
+              now: now,
+            );
+            pending.add({
+              'id': DefaultMedicationNotificationService.notificationIdForDose(
+                future.id,
+              ),
+              'payload': 'mediary:dose:${future.id}',
+            });
+            await service.syncDueDoses(
+              doses: [future],
+              medicationNames: const {},
+              now: future.scheduledFor,
+            );
+            expect(pending, isEmpty);
+            expect(calls.where((call) => call.method == 'show'), hasLength(1));
+            await service.syncDueDoses(
+              doses: [future],
+              medicationNames: const {},
+              now: future.scheduledFor.add(const Duration(seconds: 15)),
+            );
+            expect(calls.where((call) => call.method == 'show'), hasLength(1));
+            await service.dispose();
+          },
+        );
+
+        test(
+          'a scheduled reminder is not shown again at its due time',
+          () async {
+            final service = DefaultMedicationNotificationService();
+            final now = DateTime.now();
+            final future = dose(
+              id: 'native-once',
+              scheduledFor: now.add(const Duration(minutes: 1)),
+            );
+            await service.syncDueDoses(
+              doses: [future],
+              medicationNames: const {},
+              now: now,
+            );
+            expect(
+              calls.where((call) => call.method == 'zonedSchedule'),
+              hasLength(1),
+            );
+            expect(
+              await service.syncDueDoses(
+                doses: [future],
+                medicationNames: const {},
+                now: future.scheduledFor,
+              ),
+              hasLength(1),
+            );
+            expect(calls.where((call) => call.method == 'show'), isEmpty);
+            await service.dispose();
+          },
+        );
+
+        test(
+          'simultaneous foreground doses produce one alert and sound',
+          () async {
+            final service = DefaultMedicationNotificationService();
+            final now = DateTime.now();
+            final doses = [
+              for (var i = 0; i < 8; i++)
+                dose(id: 'burst-$i', scheduledFor: now),
+            ];
+            final first = await service.syncDueDoses(
+              doses: doses,
+              medicationNames: const {},
+              now: now,
+            );
+            expect(first, hasLength(8));
+            final shown =
+                calls.where((call) => call.method == 'show').single.arguments
+                    as Map;
+            expect(
+              shown['body'],
+              '8 medication reminders are due. Open Mediary to review them.',
+            );
+            expect(shown['payload'], startsWith('mediary:due:'));
+            expect(
+              jsonDecode(
+                (shown['payload'] as String).substring('mediary:due:'.length),
+              ),
+              hasLength(8),
+            );
+            await service.syncDueDoses(
+              doses: doses.reversed.toList(),
+              medicationNames: const {},
+              now: now.add(const Duration(seconds: 15)),
+            );
+            expect(calls.where((call) => call.method == 'show'), hasLength(1));
+            await service.dispose();
+          },
+        );
+
+        test(
+          'simultaneous background doses share one pending request',
+          () async {
+            final service = DefaultMedicationNotificationService();
+            final now = DateTime.now();
+            final time = now.add(const Duration(hours: 1));
+            final doses = [
+              for (var i = 0; i < 8; i++)
+                dose(id: 'batch-$i', scheduledFor: time),
+            ];
+            await service.syncDueDoses(
+              doses: doses,
+              medicationNames: const {},
+              now: now,
+            );
+            final first =
+                calls
+                        .where((call) => call.method == 'zonedSchedule')
+                        .single
+                        .arguments
+                    as Map;
+            final payload = first['payload'] as String;
+            expect(payload, startsWith('mediary:scheduled:'));
+            expect(
+              (jsonDecode(payload.substring('mediary:scheduled:'.length))
+                  as Map)['doses'],
+              hasLength(8),
+            );
+            pending.add({'id': first['id'] as int, 'payload': payload});
+            await service.syncDueDoses(
+              doses: doses.reversed.toList(),
+              medicationNames: const {},
+              now: now.add(const Duration(seconds: 15)),
+            );
+            expect(
+              calls.where((call) => call.method == 'zonedSchedule'),
+              hasLength(1),
+            );
+            // Removing a dose from a batch must refresh its payload even though
+            // the request's time and stable ID remain unchanged.
+            await service.syncDueDoses(
+              doses: doses.skip(1).toList(),
+              medicationNames: const {},
+              now: now,
+            );
+            expect(
+              calls.where((call) => call.method == 'zonedSchedule'),
+              hasLength(2),
+            );
+            await service.dispose();
+          },
+        );
+
+        test('cancelling a batch dose after restart preserves its neighbors', () async {
+          final service = DefaultMedicationNotificationService();
+          final time = DateTime.now().add(const Duration(hours: 1));
+          pending.add({
+            'id': 12345,
+            'payload':
+                'mediary:scheduled:${jsonEncode({
+                  'at': time.toUtc().toIso8601String(),
+                  'doses': [
+                    for (final id in ['removed', 'kept-a', 'kept-b']) {'id': id, 'name': 'Medication'},
+                  ],
+                })}',
+          });
+          await service.cancelDose('removed');
+          expect(pending, isEmpty);
+          final replacement =
+              calls
+                      .where((call) => call.method == 'zonedSchedule')
+                      .single
+                      .arguments
+                  as Map;
+          final data = jsonDecode(
+            (replacement['payload'] as String).substring(
+              'mediary:scheduled:'.length,
+            ),
+          ) as Map;
+          expect((data['doses'] as List).map((item) => (item as Map)['id']), [
+            'kept-a',
+            'kept-b',
+          ]);
+          expect(DateTime.parse(data['at'] as String), time.toUtc());
+          await service.dispose();
+        });
+
+        test(
+          'delivered alerts restore receipts before the first sync',
+          () async {
+            final service = DefaultMedicationNotificationService();
+            final now = DateTime.now();
+            delivered.add({
+              'id': 12345,
+              'payload': 'mediary:due:["already-a","already-b"]',
+            });
+            expect(
+              await service.syncDueDoses(
+                doses: [
+                  dose(id: 'already-a', scheduledFor: now),
+                  dose(id: 'already-b', scheduledFor: now),
+                ],
+                medicationNames: const {},
+                now: now,
+              ),
+              isEmpty,
+            );
+            expect(calls.where((call) => call.method == 'show'), isEmpty);
+            await service.dispose();
+          },
+        );
+        test('cancelling a delayed batch never reschedules in the past', () async {
           final service = DefaultMedicationNotificationService();
           final now = DateTime.now();
-          final due = dose(id: 'opened', scheduledFor: now);
-          final future = dose(
-            id: 'future-preserved',
-            scheduledFor: now.add(const Duration(hours: 1)),
+          final time = now.subtract(const Duration(minutes: 1));
+          pending.add({
+            'id': 12345,
+            'payload':
+                'mediary:scheduled:${jsonEncode({
+                  'at': time.toUtc().toIso8601String(),
+                  'doses': [
+                    for (final id in ['removed', 'remaining']) {'id': id, 'name': 'Medication'},
+                  ],
+                })}',
+          });
+          await service.cancelDose('removed');
+          expect(
+            calls.where((call) => call.method == 'zonedSchedule'),
+            isEmpty,
+          );
+          expect(pending, isEmpty);
+          final result = await service.syncDueDoses(
+            doses: [dose(id: 'remaining', scheduledFor: time)],
+            medicationNames: const {},
+            now: now,
+          );
+          expect(result.single.doseId, 'remaining');
+          expect(calls.where((call) => call.method == 'show'), hasLength(1));
+          await service.dispose();
+        });
+
+        test('an old delivered receipt never suppresses a snoozed time after restart', () async {
+          final service = DefaultMedicationNotificationService();
+          final now = DateTime.now();
+          final until = now.add(const Duration(minutes: 15));
+          final snoozed = dose(
+            id: 'snoozed-restart',
+            scheduledFor: now,
+            status: 'snoozed',
+            snoozedUntil: until,
           );
           delivered.add({
             'id': DefaultMedicationNotificationService.notificationIdForDose(
-              due.id,
+              snoozed.id,
             ),
-            'payload': 'mediary:dose:${due.id}',
+            'payload': 'mediary:dose:${snoozed.id}',
           });
-          pending.add({
-            'id': DefaultMedicationNotificationService.notificationIdForDose(
-              future.id,
-            ),
-            'payload': 'mediary:dose:${future.id}',
-          });
-          await service.clearDeliveredNotifications();
-          expect(delivered, isEmpty);
-          expect(pending, hasLength(1));
           expect(
             await service.syncDueDoses(
-              doses: [due, future],
+              doses: [snoozed],
               medicationNames: const {},
               now: now,
             ),
             isEmpty,
           );
-          expect(calls.where((call) => call.method == 'show'), isEmpty);
-          expect(pending, hasLength(1));
-          await service.dispose();
-        },
-      );
-
-      test(
-        'deleting a dose clears its alert without cancelling its neighbor',
-        () async {
-          final service = DefaultMedicationNotificationService();
-          final removedId =
-              DefaultMedicationNotificationService.notificationIdForDose(
-                'removed',
-              );
-          final neighborId =
-              DefaultMedicationNotificationService.notificationIdForDose(
-                'neighbor',
-              );
-          delivered.addAll([
-            {'id': removedId, 'payload': 'mediary:dose:removed'},
-            {'id': neighborId, 'payload': 'mediary:dose:neighbor'},
-          ]);
-          pending.addAll([
-            {'id': removedId, 'payload': 'mediary:dose:removed'},
-            {'id': neighborId, 'payload': 'mediary:dose:neighbor'},
-          ]);
-          await service.cancelDose('removed');
-          expect(delivered.single['id'], neighborId);
-          expect(pending.single['id'], neighborId);
-          await service.dispose();
-        },
-      );
-
-      test(
-        'a delayed native request is replaced by one foreground reminder',
-        () async {
-          final service = DefaultMedicationNotificationService();
-          final now = DateTime.now();
-          final future = dose(
-            id: 'delayed-native',
-            scheduledFor: now.add(const Duration(minutes: 1)),
+          expect(delivered, isEmpty);
+          expect(
+            calls.where((call) => call.method == 'zonedSchedule'),
+            hasLength(1),
           );
-          await service.syncDueDoses(
-            doses: [future],
-            medicationNames: const {},
-            now: now,
-          );
-          pending.add({
-            'id': DefaultMedicationNotificationService.notificationIdForDose(
-              future.id,
+          expect(
+            await service.syncDueDoses(
+              doses: [snoozed],
+              medicationNames: const {},
+              now: until,
             ),
-            'payload': 'mediary:dose:${future.id}',
-          });
-          await service.syncDueDoses(
-            doses: [future],
-            medicationNames: const {},
-            now: future.scheduledFor,
+            hasLength(1),
           );
-          expect(pending, isEmpty);
-          expect(calls.where((call) => call.method == 'show'), hasLength(1));
-          await service.syncDueDoses(
-            doses: [future],
-            medicationNames: const {},
-            now: future.scheduledFor.add(const Duration(seconds: 15)),
-          );
-          expect(calls.where((call) => call.method == 'show'), hasLength(1));
           await service.dispose();
-        },
-      );
+        });
 
-      test('a scheduled reminder is not shown again at its due time', () async {
-        final service = DefaultMedicationNotificationService();
-        final now = DateTime.now();
-        final future = dose(
-          id: 'native-once',
-          scheduledFor: now.add(const Duration(minutes: 1)),
-        );
+        if (platform == TargetPlatform.android) {
+          test(
+            'opening removes legacy Android alerts without a payload',
+            () async {
+              final service = DefaultMedicationNotificationService();
+              final now = DateTime.now();
+              final due = dose(id: 'legacy-android', scheduledFor: now);
+              delivered.add({
+                'id':
+                    DefaultMedicationNotificationService.notificationIdForDose(
+                      due.id,
+                    ),
+                'channelId': 'medication_reminders',
+              });
+              await service.clearDeliveredNotifications();
+              expect(delivered, isEmpty);
+              expect(
+                await service.syncDueDoses(
+                  doses: [due],
+                  medicationNames: const {},
+                  now: now,
+                ),
+                isEmpty,
+              );
+              expect(calls.where((call) => call.method == 'show'), isEmpty);
+              await service.dispose();
+            },
+          );
+        }
+      });
+    }
+  }
+
+  test(
+    'terminal duplicates and legacy time formats agree with UI identity',
+    () async {
+      final service = DefaultMedicationNotificationService();
+      final now = DateTime(2026, 9, 13, 9);
+      final due = dose(
+        id: 'legacy-due',
+        scheduledFor: now,
+        scheduleId: 'shared',
+        localTime: '09:00',
+      );
+      final taken = dose(
+        id: 'canonical-taken',
+        scheduledFor: now,
+        scheduleId: 'shared',
+        localTime: '09:00:00',
+        status: 'taken',
+      );
+      expect(
         await service.syncDueDoses(
-          doses: [future],
+          doses: [due, taken],
           medicationNames: const {},
           now: now,
-        );
-        expect(
-          calls.where((call) => call.method == 'zonedSchedule'),
-          hasLength(1),
-        );
-        expect(
-          await service.syncDueDoses(
-            doses: [future],
-            medicationNames: const {},
-            now: future.scheduledFor,
-          ),
-          hasLength(1),
-        );
-        expect(calls.where((call) => call.method == 'show'), isEmpty);
-        await service.dispose();
-      });
-    });
-  }
+        ),
+        isEmpty,
+      );
+      expect(
+        await service.syncDueDoses(
+          doses: [taken, due],
+          medicationNames: const {},
+          now: now,
+        ),
+        isEmpty,
+      );
+      await service.dispose();
+    },
+  );
 
   test(
     'does not notify stale initial doses, snoozed doses, or non-due doses',
