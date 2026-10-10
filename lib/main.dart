@@ -1872,6 +1872,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
     final store = widget.dataStore;
     return MedicationLibraryScreen(
       catalogClient: _catalogClient,
+      onAddToSchedule: _addCatalogMedication,
       bottomPadding: _usesSidebarNavigation ? 32 : 128,
       initialSavedMedicationIds: {
         if (store != null) ...store.savedMedications.map((item) => item.id),
@@ -1997,6 +1998,8 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
         scanResult: _scanResult,
         medication: _scanMedication,
         onScheduleConfirmed: store == null ? null : _commitScanSchedule,
+        onAdded: _returnToCalendarAfterAdd,
+        now: widget.now,
         onSearchMedication: () => _openMedicationSearchFromScan(context),
         timeDisplayFormat: widget.timeDisplayFormat,
         scheduledTimezone: preferredScheduleTimezone(store?.profile?.timezone),
@@ -2203,6 +2206,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
         builder: (_) => MedicationLibraryScreen(
           catalogClient: _catalogClient,
           initialQuery: initialQuery,
+          onAddToSchedule: _addCatalogMedication,
           onBack: () => Navigator.of(context).maybePop(),
           bottomPadding: 32,
         ),
@@ -2489,125 +2493,167 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
               if (scheduleDraft == null || !mounted) {
                 return const <CalendarDoseData>[];
               }
-              final time = scheduleDraft.time;
-              final selectedDate = scheduleDraft.date;
-              final scheduledFor = medicationScheduledDate(
-                selectedDate,
-                time,
-                scheduleDraft.timezone,
-              );
-              final localDate = _dateKey(selectedDate);
-              final localTime = time.localTime;
-              final addedDoses = <CalendarDoseData>[];
-              for (final medication in selections) {
-                final catalog = await _catalogDetailsFor(medication);
-                final existingMedication = _existingMedicationFor(
-                  store,
-                  catalog.rxcui,
-                );
-                final medicationId =
-                    existingMedication?.id ??
-                    _catalogMedicationId(catalog.rxcui);
-                final doseUnit = catalog.form.isNotEmpty
-                    ? catalog.form.toLowerCase()
-                    : medication.form.toLowerCase();
-                if (_isDuplicateSchedule(
-                  store,
-                  catalogId: catalog.rxcui,
-                  medicationId: medicationId,
-                  doseAmount: scheduleDraft.doseAmount,
-                  doseUnit: doseUnit,
-                  localTime: localTime,
-                )) {
-                  await _showDuplicateScheduleDialog();
-                  continue;
-                }
-                final scheduleId = _scheduleId(
-                  catalog.rxcui,
-                  localDate: localDate,
-                  localTime: localTime,
-                  frequency: scheduleDraft.frequency,
-                  doseAmount: scheduleDraft.doseAmount,
-                );
-                final doseId =
-                    ScheduleOccurrenceGenerator.deterministicOccurrenceId(
-                      scheduleId,
-                      localDate: localDate,
-                      localTime: localTime,
-                    );
-                await store.commitScheduleAndDose(
-                  medication: MedicationWrite(
-                    id: medicationId,
-                    name: existingMedication?.name ?? catalog.name,
-                    genericName:
-                        existingMedication?.genericName ?? catalog.genericName,
-                    strength: existingMedication?.strength ?? catalog.strength,
-                    form: existingMedication?.form ?? catalog.form,
-                    route: existingMedication?.route ?? catalog.route,
-                    instructions: existingMedication?.instructions ?? '',
-                    prescriber: existingMedication?.prescriber ?? '',
-                    pharmacy: existingMedication?.pharmacy ?? '',
-                    notes: existingMedication?.notes ?? '',
-                    active: existingMedication?.active ?? true,
-                    catalogId: catalog.rxcui,
-                    catalogSource: 'rxnorm',
-                    catalogVersion: catalog.sourceVersion,
-                    source: existingMedication?.source ?? 'library',
-                  ),
-                  schedule: ScheduleWrite(
-                    id: scheduleId,
-                    medicationId: medicationId,
-                    doseAmount: scheduleDraft.doseAmount,
-                    doseUnit: doseUnit,
-                    times: [localTime],
-                    frequency: scheduleDraft.frequency,
-                    daysOfWeek: scheduleDraft.daysOfWeek,
-                    startDate: localDate,
-                    endDate: scheduleDraft.frequency == 'once'
-                        ? localDate
-                        : null,
-                    timezone: scheduleDraft.timezone,
-                  ),
-                  dose: scheduleDraft.frequency == 'asNeeded'
-                      ? null
-                      : DoseWrite(
-                          id: doseId,
-                          medicationId: medicationId,
-                          scheduleId: scheduleId,
-                          scheduledFor: scheduledFor,
-                          localDate: localDate,
-                          localTime: localTime,
-                        ),
-                );
-                _cancelledDoseIds.remove(doseId);
-                _pendingScheduleKeys[_scanScheduleKey(
-                      catalogId: catalog.rxcui,
-                      doseAmount: scheduleDraft.doseAmount,
-                      doseUnit: doseUnit,
-                      localTime: localTime,
-                    )] =
-                    medicationId;
-                if (scheduleDraft.frequency != 'asNeeded') {
-                  addedDoses.add(
-                    CalendarDoseData(
-                      id: doseId,
-                      localDate: localDate,
-                      name: catalog.name,
-                      details: [
-                        '${_formatDoseAmount(scheduleDraft.doseAmount)} $doseUnit',
-                        formatLocalTime(localTime, widget.timeDisplayFormat),
-                      ].join(' · '),
-                      status: 'due',
-                    ),
-                  );
-                }
-              }
-              if (addedDoses.isNotEmpty) {
-                _requestMedicationNotificationPermission();
-              }
-              return addedDoses;
+              final result = await _commitCatalogSchedules([
+                for (final medication in selections)
+                  await _catalogDetailsFor(medication),
+              ], scheduleDraft);
+              return result.doses;
             },
     );
+  }
+
+  Future<({List<CalendarDoseData> doses, bool added})> _commitCatalogSchedules(
+    List<MedicationCatalogRecord> catalogs,
+    _ScheduleDraft scheduleDraft,
+  ) async {
+    final store = widget.dataStore;
+    if (store == null) throw StateError('Scheduling is unavailable.');
+    final time = scheduleDraft.time;
+    final selectedDate = scheduleDraft.date;
+    final scheduledFor = medicationScheduledDate(
+      selectedDate,
+      time,
+      scheduleDraft.timezone,
+    );
+    final localDate = _dateKey(selectedDate);
+    final localTime = time.localTime;
+    final addedDoses = <CalendarDoseData>[];
+    var added = false;
+    for (final catalog in catalogs) {
+      final existingMedication = _existingMedicationFor(store, catalog.rxcui);
+      final medicationId =
+          existingMedication?.id ?? _catalogMedicationId(catalog.rxcui);
+      final doseUnit = catalog.form.isNotEmpty
+          ? catalog.form.toLowerCase()
+          : 'dose';
+      if (_isDuplicateSchedule(
+        store,
+        catalogId: catalog.rxcui,
+        medicationId: medicationId,
+        doseAmount: scheduleDraft.doseAmount,
+        doseUnit: doseUnit,
+        localTime: localTime,
+      )) {
+        await _showDuplicateScheduleDialog();
+        continue;
+      }
+      final scheduleId = _scheduleId(
+        catalog.rxcui,
+        localDate: localDate,
+        localTime: localTime,
+        frequency: scheduleDraft.frequency,
+        doseAmount: scheduleDraft.doseAmount,
+      );
+      final doseId = ScheduleOccurrenceGenerator.deterministicOccurrenceId(
+        scheduleId,
+        localDate: localDate,
+        localTime: localTime,
+      );
+      await store.commitScheduleAndDose(
+        medication: MedicationWrite(
+          id: medicationId,
+          name: existingMedication?.name ?? catalog.name,
+          genericName: existingMedication?.genericName ?? catalog.genericName,
+          strength: existingMedication?.strength ?? catalog.strength,
+          form: existingMedication?.form ?? catalog.form,
+          route: existingMedication?.route ?? catalog.route,
+          instructions: existingMedication?.instructions ?? '',
+          prescriber: existingMedication?.prescriber ?? '',
+          pharmacy: existingMedication?.pharmacy ?? '',
+          notes: existingMedication?.notes ?? '',
+          active: existingMedication?.active ?? true,
+          catalogId: catalog.rxcui,
+          catalogSource: 'rxnorm',
+          catalogVersion: catalog.sourceVersion,
+          source: existingMedication?.source ?? 'library',
+        ),
+        schedule: ScheduleWrite(
+          id: scheduleId,
+          medicationId: medicationId,
+          doseAmount: scheduleDraft.doseAmount,
+          doseUnit: doseUnit,
+          times: [localTime],
+          frequency: scheduleDraft.frequency,
+          daysOfWeek: scheduleDraft.daysOfWeek,
+          startDate: localDate,
+          endDate: scheduleDraft.frequency == 'once' ? localDate : null,
+          timezone: scheduleDraft.timezone,
+        ),
+        dose: scheduleDraft.frequency == 'asNeeded'
+            ? null
+            : DoseWrite(
+                id: doseId,
+                medicationId: medicationId,
+                scheduleId: scheduleId,
+                scheduledFor: scheduledFor,
+                localDate: localDate,
+                localTime: localTime,
+              ),
+      );
+      added = true;
+      _cancelledDoseIds.remove(doseId);
+      _pendingCalendarDoseMedicationIds[doseId] = medicationId;
+      _pendingScheduleKeys[_scanScheduleKey(
+            catalogId: catalog.rxcui,
+            doseAmount: scheduleDraft.doseAmount,
+            doseUnit: doseUnit,
+            localTime: localTime,
+          )] =
+          medicationId;
+      if (scheduleDraft.frequency != 'asNeeded') {
+        addedDoses.add(
+          CalendarDoseData(
+            id: doseId,
+            localDate: localDate,
+            name: catalog.name,
+            details: [
+              '${_formatDoseAmount(scheduleDraft.doseAmount)} $doseUnit',
+              formatLocalTime(localTime, widget.timeDisplayFormat),
+            ].join(' · '),
+            status: 'due',
+          ),
+        );
+      }
+    }
+    if (addedDoses.isNotEmpty) {
+      _requestMedicationNotificationPermission();
+    }
+    if (mounted && addedDoses.isNotEmpty) {
+      setState(() {
+        final ids = addedDoses.map((dose) => dose.id).toSet();
+        _pendingCalendarDoses.removeWhere((dose) => ids.contains(dose.id));
+        _pendingCalendarDoses.addAll(addedDoses);
+      });
+    }
+    return (doses: addedDoses, added: added);
+  }
+
+  Future<bool> _addCatalogMedication(
+    BuildContext detailContext,
+    MedicationCatalogRecord catalog,
+  ) async {
+    final store = widget.dataStore;
+    if (store == null) throw StateError('Scheduling is unavailable.');
+    final draft = await _showScheduleDetails(
+      detailContext,
+      initialTimezone: preferredScheduleTimezone(store.profile?.timezone),
+      scheduleDate: DateUtils.dateOnly(widget.now ?? DateTime.now()),
+    );
+    if (draft == null || !mounted || !detailContext.mounted) return false;
+    final result = await _commitCatalogSchedules([catalog], draft);
+    if (!result.added) return false;
+    if (!mounted || !detailContext.mounted) return false;
+    setState(() => _calendarFocusDate = draft.date);
+    _returnToCalendarAfterAdd();
+    return true;
+  }
+
+  void _returnToCalendarAfterAdd() {
+    if (!mounted) return;
+    final homeRoute = ModalRoute.of(context);
+    Navigator.of(context).popUntil((route) => route == homeRoute);
+    _resetScan();
+    _selectDestination(1);
   }
 
   Future<_ScheduleDraft?> _showScheduleDetails(

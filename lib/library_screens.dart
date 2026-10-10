@@ -22,6 +22,7 @@ class MedicationLibraryScreen extends StatefulWidget {
     this.initialQuery = '',
     this.onBack,
     this.onSavedChanged,
+    this.onAddToSchedule,
     this.initialSavedMedicationIds = const {},
     this.bottomPadding = 128,
   });
@@ -35,6 +36,11 @@ class MedicationLibraryScreen extends StatefulWidget {
     String? catalogVersion,
   })?
   onSavedChanged;
+  final Future<bool> Function(
+    BuildContext context,
+    MedicationCatalogRecord medication,
+  )?
+  onAddToSchedule;
   final Set<String> initialSavedMedicationIds;
   final double bottomPadding;
 
@@ -239,6 +245,7 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
       builder: (context) => MedicationDetailScreen(
         medication: resolvedRecord,
         initialBookmarked: saved,
+        onAddToSchedule: widget.onAddToSchedule,
         onBookmarkChanged: (next) async {
           await widget.onSavedChanged?.call(
             medication.id,
@@ -827,6 +834,7 @@ class MedicationDetailScreen extends StatefulWidget {
     this.catalogClient,
     this.onBack,
     this.onAdded,
+    this.onAddToSchedule,
     this.initialBookmarked = false,
     this.onBookmarkChanged,
   });
@@ -835,6 +843,11 @@ class MedicationDetailScreen extends StatefulWidget {
   final MedicationCatalogClient? catalogClient;
   final VoidCallback? onBack;
   final VoidCallback? onAdded;
+  final Future<bool> Function(
+    BuildContext context,
+    MedicationCatalogRecord medication,
+  )?
+  onAddToSchedule;
   final bool initialBookmarked;
   final Future<void> Function(bool saved)? onBookmarkChanged;
 
@@ -845,6 +858,8 @@ class MedicationDetailScreen extends StatefulWidget {
 class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
   late bool _isBookmarked = widget.initialBookmarked;
   bool _isAdded = false;
+  bool _isAdding = false;
+  String? _addError;
   bool _isSavingBookmark = false;
   String? _bookmarkError;
   late MedicationCatalogRecord _medication = widget.medication;
@@ -867,9 +882,28 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
     }
   }
 
-  void _toggleAdded() {
-    setState(() => _isAdded = !_isAdded);
-    if (_isAdded) widget.onAdded?.call();
+  Future<void> _addToSchedule() async {
+    if (_isAdding || _isAdded) return;
+    setState(() {
+      _isAdding = true;
+      _addError = null;
+    });
+    try {
+      final add = widget.onAddToSchedule;
+      if (add == null) {
+        throw StateError('Scheduling is unavailable.');
+      }
+      final added = await add(context, _medication);
+      if (!mounted || !added) return;
+      setState(() => _isAdded = true);
+      widget.onAdded?.call();
+    } catch (_) {
+      if (mounted) {
+        setState(() => _addError = 'Could not add to Calendar. Try again.');
+      }
+    } finally {
+      if (mounted) setState(() => _isAdding = false);
+    }
   }
 
   @override
@@ -1003,7 +1037,9 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
               added: _isAdded,
               bottomPadding: media.padding.bottom,
               dark: _isDark,
-              onPressed: _toggleAdded,
+              busy: _isAdding,
+              error: _addError,
+              onPressed: _isAdded ? null : _addToSchedule,
             ),
           ),
         ],
@@ -1496,12 +1532,16 @@ class _StickyAddAction extends StatelessWidget {
     required this.bottomPadding,
     required this.dark,
     required this.onPressed,
+    required this.busy,
+    this.error,
   });
 
   final bool added;
   final double bottomPadding;
   final bool dark;
-  final VoidCallback onPressed;
+  final Future<void> Function()? onPressed;
+  final bool busy;
+  final String? error;
 
   @override
   Widget build(BuildContext context) {
@@ -1526,16 +1566,35 @@ class _StickyAddAction extends StatelessWidget {
           child: SafeArea(
             top: false,
             bottom: false,
-            child: SizedBox(
-              child: AppButton(
-                key: const Key('addMedicationButton'),
-                label: added ? 'Added to My Schedule' : 'Add to My Schedule',
-                icon: added
-                    ? CupertinoIcons.check_mark_circled_solid
-                    : CupertinoIcons.calendar_badge_plus,
-                onPressed: onPressed,
-                expand: true,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (error != null) ...[
+                  Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      error!,
+                      key: const Key('medicationDetailAddError'),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                ],
+                AppButton(
+                  key: const Key('addMedicationButton'),
+                  label: added ? 'Added to My Schedule' : 'Add to My Schedule',
+                  loadingLabel: 'Adding to Calendar',
+                  busy: busy,
+                  icon: added
+                      ? CupertinoIcons.check_mark_circled_solid
+                      : CupertinoIcons.calendar_badge_plus,
+                  onPressed: onPressed,
+                  expand: true,
+                ),
+              ],
             ),
           ),
         ),
