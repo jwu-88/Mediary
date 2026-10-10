@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:crypto/crypto.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pasteboard/pasteboard.dart';
 
@@ -10,9 +9,8 @@ import 'ocr/medication_ocr.dart' as medication_ocr;
 /// Data contracts for the medication scan pipeline.
 ///
 /// The detector is intentionally separate from the camera widget so the
-/// prototype fixture can be replaced by a native OCR implementation without
-/// changing the review or calendar flow.
-enum MedicationScanSource { camera, samplePhoto }
+/// OCR implementation can change without affecting the review or calendar flow.
+enum MedicationScanSource { camera, selectedPhoto }
 
 class MedicationScanRequest {
   const MedicationScanRequest({
@@ -20,31 +18,18 @@ class MedicationScanRequest {
     required this.imageUrl,
     this.imageBytes,
     this.fileName = '',
-    this.isSampleRequest = false,
   });
-
-  const MedicationScanRequest.sample()
-    : source = MedicationScanSource.samplePhoto,
-      imageUrl = sampleImageUrl,
-      imageBytes = null,
-      fileName = '',
-      isSampleRequest = true;
 
   const MedicationScanRequest.fromImage({
     required this.imageBytes,
     required this.fileName,
-  }) : source = MedicationScanSource.samplePhoto,
-       imageUrl = '',
-       isSampleRequest = false;
-
-  static const sampleImageUrl =
-      'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=900&q=90';
+  }) : source = MedicationScanSource.selectedPhoto,
+       imageUrl = '';
 
   final MedicationScanSource source;
   final String imageUrl;
   final Uint8List? imageBytes;
   final String fileName;
-  final bool isSampleRequest;
 }
 
 class MedicationScanResult {
@@ -283,17 +268,12 @@ Future<MedicationPickedImage?> pasteMedicationPhoto() async {
 /// OCR-backed detector for user-selected and pasted images.
 ///
 /// The platform adapter uses ML Kit on Android/iOS and Tesseract.js in the
-/// browser. The sample detector below is deliberately kept separate so the
-/// camera demo can remain deterministic without making uploaded photos look
-/// like the demo medication.
+/// browser. Every image goes through OCR before catalog verification.
 class MedicationOcrDetector implements MedicationScanDetector {
   const MedicationOcrDetector();
 
   @override
   Future<MedicationScanResult> detect(MedicationScanRequest request) async {
-    if (request.isSampleRequest) {
-      return const SampleMedicationScanDetector().detect(request);
-    }
     if (request.imageBytes == null || request.imageBytes!.isEmpty) {
       return MedicationScanResult(
         imageUrl: request.imageUrl,
@@ -306,14 +286,6 @@ class MedicationOcrDetector implements MedicationScanDetector {
             'for the medication manually.',
       );
     }
-
-    // These are the exact OTC label fixtures supplied for the MVP. Keeping
-    // these narrowly scoped to known byte hashes makes the demo reliable when
-    // a browser cannot initialize its remote OCR worker or a native decoder
-    // does not support AVIF, without turning arbitrary unreadable uploads into
-    // a medication.
-    final knownSampleResult = _knownMedicationSampleResult(request);
-    if (knownSampleResult != null) return knownSampleResult;
 
     String extractedText;
     try {
@@ -355,39 +327,6 @@ class MedicationOcrDetector implements MedicationScanDetector {
       confidence: detection.confidence,
     );
   }
-}
-
-const _knownAdvilSampleSha256 =
-    '9e6a5a9c6ea2d2f9dfb3750dadf54ac53d3e047cff2c5311e412c9816a9d4962';
-const _knownClaritinSampleSha256 =
-    '086f2f78a83d986b60556a2e3cbb10718f270ba418d6b952dc47d9d7d139abeb';
-
-MedicationScanResult? _knownMedicationSampleResult(
-  MedicationScanRequest request,
-) {
-  final bytes = request.imageBytes;
-  if (bytes == null || bytes.isEmpty) return null;
-  final digest = sha256.convert(bytes).toString();
-  final (extractedText, medicationName) = switch (digest) {
-    _knownAdvilSampleSha256 => (
-      'Advil (ibuprofen) 200 mg tablet. Pain reliever/fever reducer.',
-      'Advil',
-    ),
-    _knownClaritinSampleSha256 => (
-      'Claritin (loratadine) 10 mg tablet. 24-hour indoor/outdoor non-drowsy '
-          'allergy relief.',
-      'Claritin',
-    ),
-    _ => (null, null),
-  };
-  if (extractedText == null || medicationName == null) return null;
-  return MedicationScanResult(
-    imageUrl: request.imageUrl,
-    imageBytes: bytes,
-    extractedText: extractedText,
-    detectedMedicationName: medicationName,
-    confidence: .99,
-  );
 }
 
 /// Extracts a medication name conservatively from OCR output.
@@ -587,28 +526,4 @@ bool _looksLikeInstruction(String line) {
       normalized.startsWith('directions ') ||
       normalized.startsWith('active ingredient ') ||
       normalized.startsWith('uses ');
-}
-
-/// Deterministic detector used by the MVP while the real OCR integration is
-/// still being evaluated for native and web platforms.
-class SampleMedicationScanDetector implements MedicationScanDetector {
-  const SampleMedicationScanDetector();
-
-  static const extractedText =
-      'Amoxicillin 500 mg capsule. Take 1 capsule every 8 hours for 7 days.';
-
-  @override
-  Future<MedicationScanResult> detect(MedicationScanRequest request) async {
-    return MedicationScanResult(
-      imageUrl: request.imageUrl.isEmpty
-          ? (request.imageBytes == null
-                ? MedicationScanRequest.sampleImageUrl
-                : '')
-          : request.imageUrl,
-      extractedText: extractedText,
-      detectedMedicationName: 'Amoxicillin',
-      confidence: .98,
-      imageBytes: request.imageBytes,
-    );
-  }
 }

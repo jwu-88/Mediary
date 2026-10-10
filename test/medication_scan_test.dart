@@ -5,43 +5,6 @@ import 'package:mediary/medication_scan.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  test(
-    'sample detector returns the deterministic medication label fixture',
-    () async {
-      const detector = SampleMedicationScanDetector();
-
-      final result = await detector.detect(
-        const MedicationScanRequest.sample(),
-      );
-
-      expect(result.imageUrl, MedicationScanRequest.sampleImageUrl);
-      expect(result.detectedMedicationName, 'Amoxicillin');
-      expect(result.extractedText, contains('500 mg capsule'));
-      expect(result.extractedText, contains('every 8 hours'));
-      expect(result.confidence, .98);
-      expect(result.hasError, isFalse);
-    },
-  );
-
-  test(
-    'selected photo bytes are carried to the scan result for preview',
-    () async {
-      const detector = SampleMedicationScanDetector();
-      final bytes = Uint8List.fromList([1, 2, 3]);
-
-      final result = await detector.detect(
-        MedicationScanRequest.fromImage(
-          imageBytes: bytes,
-          fileName: 'label.jpg',
-        ),
-      );
-
-      expect(result.imageUrl, isEmpty);
-      expect(result.imageBytes, same(bytes));
-      expect(result.detectedMedicationName, 'Amoxicillin');
-    },
-  );
-
   test('matches a detected generic name to an RxNorm product variant', () {
     final match = matchMedicationCatalogRecord('Amoxicillin', const [
       MedicationCatalogRecord(
@@ -383,6 +346,34 @@ void main() {
       );
     }
 
+    test(
+      'selected photo uses OCR evidence and keeps its original preview',
+      () async {
+        final bytes = Uint8List.fromList([1, 2, 3]);
+        MethodCall? ocrCall;
+        messenger.setMockMethodCallHandler(channel, (call) async {
+          ocrCall = call;
+          return 'Metformin 500 mg tablet';
+        });
+
+        final result = await const MedicationOcrDetector().detect(
+          MedicationScanRequest.fromImage(
+            imageBytes: bytes,
+            fileName: 'advil.jpg',
+          ),
+        );
+
+        expect(ocrCall?.method, 'recognize');
+        expect((ocrCall?.arguments as Map)['bytes'], orderedEquals(bytes));
+        expect((ocrCall?.arguments as Map)['fileName'], 'advil.jpg');
+        expect(result.imageUrl, isEmpty);
+        expect(result.imageBytes, same(bytes));
+        expect(result.extractedText, 'Metformin 500 mg tablet');
+        expect(result.detectedMedicationName, 'Metformin');
+        expect(result.hasError, isFalse);
+      },
+    );
+
     test('complete variant outranks earlier fuzzy and generic OCR', () async {
       final result = await scan(
         'laritin-p\nloratidine\nPseudoephedrine\nClaritin-D\nClaritin-',
@@ -436,18 +427,21 @@ void main() {
     expect(detectMedicationName('Take two tablets with water'), isNull);
   });
 
-  test('does not apply the known Advil fixture to unrelated bytes', () async {
-    const detector = MedicationOcrDetector();
+  test(
+    'unreadable image returns an error instead of a fixed medication result',
+    () async {
+      const detector = MedicationOcrDetector();
 
-    final result = await detector.detect(
-      MedicationScanRequest.fromImage(
-        imageBytes: Uint8List.fromList([1, 2, 3, 4]),
-        fileName: 'unrelated.png',
-      ),
-    );
+      final result = await detector.detect(
+        MedicationScanRequest.fromImage(
+          imageBytes: Uint8List.fromList([1, 2, 3, 4]),
+          fileName: 'unrelated.png',
+        ),
+      );
 
-    expect(result.detectedMedicationName, isEmpty);
-    expect(result.confidence, 0);
-    expect(result.hasError, isTrue);
-  });
+      expect(result.detectedMedicationName, isEmpty);
+      expect(result.confidence, 0);
+      expect(result.hasError, isTrue);
+    },
+  );
 }

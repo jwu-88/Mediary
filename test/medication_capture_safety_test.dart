@@ -59,7 +59,7 @@ void main() {
 
   for (final bytes in [null, Uint8List(0)]) {
     test(
-      'missing photo data does not identify a sample medication ($bytes)',
+      'missing photo data does not identify a medication ($bytes)',
       () async {
         final result = await const MedicationOcrDetector().detect(
           MedicationScanRequest(
@@ -86,14 +86,6 @@ void main() {
     expect(result.hasError, isTrue);
     expect(result.detectedMedicationName, isEmpty);
     expect(result.confidence, 0);
-  });
-
-  test('only an explicit sample request can use the demo fixture', () async {
-    final result = await const MedicationOcrDetector().detect(
-      const MedicationScanRequest.sample(),
-    );
-    expect(result.hasError, isFalse);
-    expect(result.detectedMedicationName, 'Amoxicillin');
   });
 
   test('native browser capture stub has no camera frame', () async {

@@ -41,10 +41,6 @@ abstract interface class MedicationNotificationService {
   /// unavailable. Web reads this without requesting permission.
   Future<String> permissionState();
 
-  /// Sends an immediate notification so the user can verify notification
-  /// permissions and platform delivery before scheduling a dose.
-  Future<void> sendTestNotification();
-
   /// Cancels one dose reminder without requiring a full data synchronization.
   Future<void> cancelDose(String doseId);
 
@@ -193,25 +189,6 @@ class DefaultMedicationNotificationService
     }
   }
 
-  @override
-  Future<void> sendTestNotification() async {
-    await requestPermission();
-    if (_disposed) return;
-
-    const title = 'Mediary notifications are working';
-    const body = 'Test notification from Mediary';
-    if (!_supportsNativeNotifications) {
-      if (kIsWeb) showWebNotification(title: title, body: body);
-      return;
-    }
-    await _showImmediateNotification(
-      id: _testNotificationId,
-      title: title,
-      body: body,
-      payload: '$_payloadPrefix:test',
-    );
-  }
-
   Future<T> _enqueue<T>(Future<T> Function() action) {
     final result = _operationQueue.then((_) => action());
     _operationQueue = result.then<void>((_) {}, onError: (Object _) {});
@@ -242,7 +219,7 @@ class DefaultMedicationNotificationService
         final payload = notification.payload;
         if (payload == null || !payload.startsWith(_payloadPrefix)) continue;
         final doseId = payload.substring(_payloadPrefix.length);
-        if (doseId != 'test') _notifiedDoseIds.add(doseId);
+        _notifiedDoseIds.add(doseId);
         if (notification.id != null) {
           await _plugin.cancel(id: notification.id!);
         }
@@ -409,7 +386,7 @@ class DefaultMedicationNotificationService
       if (payload == null || !payload.startsWith(_payloadPrefix)) continue;
       final doseId = payload.substring(_payloadPrefix.length);
       pendingDoseIds.add(doseId);
-      if (doseId != 'test' && !futureIds.contains(doseId)) {
+      if (!futureIds.contains(doseId)) {
         await _plugin.cancel(id: request.id);
       }
     }
@@ -424,9 +401,7 @@ class DefaultMedicationNotificationService
         if (payload == null || !payload.startsWith(_payloadPrefix)) continue;
         final doseId = payload.substring(_payloadPrefix.length);
         final notificationId = notification.id;
-        if (notificationId != null &&
-            doseId != 'test' &&
-            !activeIds.contains(doseId)) {
+        if (notificationId != null && !activeIds.contains(doseId)) {
           await _plugin.cancel(id: notificationId);
         }
       }
@@ -624,8 +599,6 @@ class DefaultMedicationNotificationService
     }
     return hash == 0 ? 1 : hash;
   }
-
-  static const _testNotificationId = 0x4d454449;
 
   @override
   Future<void> dispose() => _enqueue(() async {

@@ -44,7 +44,6 @@ dependencies:
   file_picker: ^13.1.0
   image_picker: ^1.2.3
   pasteboard: ^0.5.0
-  crypto: ^3.0.6
   web: ^1.1.1
   # 13.x requires Android API 37, which is newer than this Flutter/AGP
   # toolchain supports. Keep the latest compatible 12.x release for now.
