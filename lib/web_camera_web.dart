@@ -20,7 +20,16 @@ Future<bool> requestWebCameraAccess() async {
   try {
     _cameraStream = await mediaDevices
         .getUserMedia(
-          web.MediaStreamConstraints(video: true.toJS, audio: false.toJS),
+          web.MediaStreamConstraints(
+            video: web.MediaTrackConstraints(
+              width: web.ConstrainULongRange(ideal: 1920),
+              height: web.ConstrainULongRange(ideal: 1080),
+              facingMode: web.ConstrainDOMStringParameters(
+                ideal: 'environment'.toJS,
+              ),
+            ),
+            audio: false.toJS,
+          ),
         )
         .toDart;
     return true;
