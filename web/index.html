@@ -65,12 +65,32 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
-  <!-- Browser OCR is used only for user-selected/pasted images. The native
-       apps use ML Kit through the platform adapter instead. -->
+  <!-- Browser OCR handles camera frames and selected/pasted photos. Native
+       apps use Vision or ML Kit through the platform adapter instead. -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
   <script>
     window.MediaryOcr = window.MediaryOcr || {};
     window.MediaryOcr._worker = null;
+    // Keep whole lines so filtering cannot remove a warning/negation while
+    // leaving its ingredient behind. Engine confidence measures readability,
+    // not whether a medication has been identified.
+    window.MediaryOcr._readableLines = function (data) {
+      if (!data) return [];
+      var lines = Array.isArray(data.lines) && data.lines.length
+        ? data.lines
+        : (data.text || '').split(/[\r\n]+/).map(function (text) {
+            return { text: text, confidence: data.confidence };
+          });
+      return lines.filter(function (line) {
+        var text = (line.text || '').trim();
+        var letters = (text.match(/[a-z]/gi) || []).length;
+        var characters = text.replace(/\s/g, '').length;
+        return /[a-z]{3}/i.test(text) && letters / Math.max(1, characters) >= 0.5 &&
+          (typeof line.confidence !== 'number' || line.confidence >= 45);
+      }).map(function (line) {
+        return line.text.trim().replace(/\s+/g, ' ');
+      });
+    };
     window.MediaryOcr.recognize = async function (imageDataUrl) {
       if (!window.Tesseract) return '';
       try {
@@ -134,7 +154,7 @@
             preserve_interword_spaces: '1'
           });
           var fallback = await window.MediaryOcr._worker.recognize(imageDataUrl);
-          return fallback && fallback.data ? (fallback.data.text || '') : '';
+          return window.MediaryOcr._readableLines(fallback && fallback.data).join('\n');
         }
 
         // Create a high-contrast grayscale pass as well as a binary pass. The
@@ -163,9 +183,7 @@
           var contextFallback = await window.MediaryOcr._worker.recognize(
             sourceCanvas.toDataURL('image/png')
           );
-          return contextFallback && contextFallback.data
-            ? (contextFallback.data.text || '')
-            : '';
+          return window.MediaryOcr._readableLines(contextFallback && contextFallback.data).join('\n');
         }
 
         var histogram = new Uint32Array(256);
@@ -264,6 +282,24 @@
           channelContext.putImageData(channelPixels, 0, 0);
         }
 
+        // White/yellow text on a dark label needs its own polarity. Global
+        // thresholding often erases it, especially in dim camera frames.
+        var invertedCanvas = document.createElement('canvas');
+        invertedCanvas.width = sourceCanvas.width;
+        invertedCanvas.height = sourceCanvas.height;
+        var invertedContext = invertedCanvas.getContext('2d');
+        if (invertedContext) {
+          var invertedPixels = invertedContext.createImageData(sourceCanvas.width, sourceCanvas.height);
+          for (var invertedIndex = 0; invertedIndex < imageData.data.length; invertedIndex += 4) {
+            var invertedGray = 255 - enhancedPixels.data[invertedIndex];
+            invertedPixels.data[invertedIndex] = invertedGray;
+            invertedPixels.data[invertedIndex + 1] = invertedGray;
+            invertedPixels.data[invertedIndex + 2] = invertedGray;
+            invertedPixels.data[invertedIndex + 3] = 255;
+          }
+          invertedContext.putImageData(invertedPixels, 0, 0);
+        }
+
         var variants = [
           { canvas: enhancedCanvas, pageSegMode: '6' },
           { canvas: enhancedCanvas, pageSegMode: '11' },
@@ -271,35 +307,37 @@
           { canvas: sourceCanvas, pageSegMode: '11' }
         ];
         if (channelContext) variants.push({ canvas: channelCanvas, pageSegMode: '11' });
-        // Packaging in a photo is rarely a perfectly upright document. Keep
-        // full-image passes above, then focus on the central label and retry
-        // modest skew in both directions. This reduces background interference
-        // without making a central crop the only way to recognize a label.
-        for (var angle of [0, -8, 8]) {
-          var focusedCanvas = document.createElement('canvas');
-          focusedCanvas.width = Math.round(sourceCanvas.width * 0.84);
-          focusedCanvas.height = Math.round(sourceCanvas.height * 0.75);
-          var focusedContext = focusedCanvas.getContext('2d');
-          if (!focusedContext) continue;
-          focusedContext.fillStyle = '#ffffff';
-          focusedContext.fillRect(0, 0, focusedCanvas.width, focusedCanvas.height);
-          focusedContext.translate(focusedCanvas.width / 2, focusedCanvas.height / 2);
-          focusedContext.rotate(angle * Math.PI / 180);
-          focusedContext.drawImage(
-            channelContext ? channelCanvas : enhancedCanvas,
-            sourceCanvas.width * 0.08,
-            sourceCanvas.height * 0.15,
-            focusedCanvas.width,
-            focusedCanvas.height,
-            -focusedCanvas.width / 2,
-            -focusedCanvas.height / 2,
-            focusedCanvas.width,
-            focusedCanvas.height
-          );
-          variants.push({ canvas: focusedCanvas, pageSegMode: '11' });
+        if (invertedContext) variants.push({ canvas: invertedCanvas, pageSegMode: '11' });
+        // Overlapping tiles keep names near any edge in view. A central crop
+        // alone cuts off the brand near the top of a real camera frame. Use
+        // block segmentation and both skew directions for tilted packaging.
+        for (var tileOrigin of [[0, 0], [0.25, 0], [0, 0.4], [0.25, 0.4]]) {
+          for (var angle of [-6, 6]) {
+            var focusedCanvas = document.createElement('canvas');
+            focusedCanvas.width = Math.round(sourceCanvas.width * 0.75);
+            focusedCanvas.height = Math.round(sourceCanvas.height * 0.6);
+            var focusedContext = focusedCanvas.getContext('2d');
+            if (!focusedContext) continue;
+            focusedContext.fillStyle = '#ffffff';
+            focusedContext.fillRect(0, 0, focusedCanvas.width, focusedCanvas.height);
+            focusedContext.translate(focusedCanvas.width / 2, focusedCanvas.height / 2);
+            focusedContext.rotate(angle * Math.PI / 180);
+            focusedContext.drawImage(
+              invertedContext ? invertedCanvas : enhancedCanvas,
+              sourceCanvas.width * tileOrigin[0],
+              sourceCanvas.height * tileOrigin[1],
+              focusedCanvas.width,
+              focusedCanvas.height,
+              -focusedCanvas.width / 2,
+              -focusedCanvas.height / 2,
+              focusedCanvas.width,
+              focusedCanvas.height
+            );
+            variants.push({ canvas: focusedCanvas, pageSegMode: '6' });
+          }
         }
-        // Preserve useful lines from every pass. Picking only the longest
-        // output can discard the readable brand in favor of background text.
+        // Preserve readable evidence from every pass.
+        // Do not dump low-confidence fragments into the review or name parser.
         var recognizedLines = new Map();
         for (var variant of variants) {
           await window.MediaryOcr._worker.setParameters({
@@ -309,9 +347,8 @@
           var attempt = await window.MediaryOcr._worker.recognize(
             variant.canvas.toDataURL('image/png')
           );
-          var text = attempt && attempt.data ? (attempt.data.text || '') : '';
-          for (var line of text.split(/[\r\n]+/)) {
-            var trimmed = line.trim();
+          for (var line of window.MediaryOcr._readableLines(attempt && attempt.data)) {
+            var trimmed = line;
             if (trimmed && !recognizedLines.has(trimmed.toLowerCase())) {
               recognizedLines.set(trimmed.toLowerCase(), trimmed);
             }

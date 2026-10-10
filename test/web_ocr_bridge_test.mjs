@@ -8,7 +8,7 @@ import vm from 'node:vm';
 const html = readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
 const bridge = html.match(/<script>\s*(window\.MediaryOcr[\s\S]*?)<\/script>/)[1];
 
-function harness({ failFirst = false, decode = false, width = 800, height = 715 } = {}) {
+function harness({ failFirst = false, decode = false, width = 800, height = 715, results } = {}) {
   const calls = [];
   const canvases = [];
   let workers = 0;
@@ -32,7 +32,8 @@ function harness({ failFirst = false, decode = false, width = 800, height = 715 
           if (failFirst && id === 1) throw new Error('temporary worker failure');
           calls.push('recognize');
           const texts = ['loratadine 10 mg', 'Claritin-D', 'CLARITIN-D', 'pseudoephedrine 240 mg'];
-          return { data: { text: texts[(calls.filter(x => x === 'recognize').length - 1) % 4] } };
+          const index = calls.filter(x => x === 'recognize').length - 1;
+          return { data: results ? results[index % results.length] : { text: texts[index % 4] } };
         },
         async terminate() { calls.push('terminate'); },
       };
@@ -44,7 +45,9 @@ function harness({ failFirst = false, decode = false, width = 800, height = 715 
       toDataURL() { return 'data:image/png;base64,test'; },
       getContext() {
         return {
-          fillRect() {}, drawImage() {}, putImageData() {}, translate() {}, rotate() {},
+          fillRect() {}, drawImage() {},
+          putImageData(pixels) { result.pixels = Array.from(pixels.data); },
+          translate() {}, rotate() {},
           getImageData() { return { data: new Uint8ClampedArray([128, 128, 128, 255]) }; },
           createImageData() { return { data: new Uint8ClampedArray([128, 128, 128, 255]) }; },
         };
@@ -93,4 +96,29 @@ test('large uploads are downscaled to the OCR memory bound', async () => {
   await h.ocr.recognize('large');
   assert.equal(h.canvases[0].width, 2400);
   assert.equal(h.canvases[0].height, 1600);
+});
+
+test('camera noise is discarded while whole readable label lines survive', async () => {
+  const h = harness({ decode: true, results: [{
+    lines: [
+      { text: '_— M——', confidence: 80 },
+      { text: 'anhcnhydmmme HCl 25 mg', confidence: 22 },
+      { text: 'Benadryl', confidence: 92 },
+      { text: 'Diphenhydramine  HCl 25 mg', confidence: 87 },
+      { text: 'Do not take with loratadine', confidence: 88 },
+    ],
+  }] });
+  assert.equal(await h.ocr.recognize('camera'),
+    'Benadryl\nDiphenhydramine HCl 25 mg\nDo not take with loratadine');
+});
+
+test('unreadable camera output returns empty text for retake guidance', async () => {
+  const h = harness({ decode: true, results: [{ text: 'M---\n&\nQzxv random', confidence: 20 }] });
+  assert.equal(await h.ocr.recognize('camera'), '');
+});
+
+test('light-on-dark text gets an inverted grayscale recognition pass', async () => {
+  const h = harness({ decode: true });
+  await h.ocr.recognize('camera');
+  assert.ok(h.canvases.some(canvas => canvas.pixels?.[0] === 127 && canvas.pixels?.[3] === 255));
 });

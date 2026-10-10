@@ -1291,15 +1291,24 @@ class ScanScheduleData {
   final MedicationTime time;
 }
 
-class _ExtractedTextCard extends StatelessWidget {
+class _ExtractedTextCard extends StatefulWidget {
   const _ExtractedTextCard({required this.result});
 
   final MedicationScanResult result;
 
   @override
+  State<_ExtractedTextCard> createState() => _ExtractedTextCardState();
+}
+
+class _ExtractedTextCardState extends State<_ExtractedTextCard> {
+  bool _showLabelText = false;
+
+  @override
   Widget build(BuildContext context) {
+    final result = widget.result;
     final palette = _ScannerPalette.of(context);
     final confidence = '${(result.confidence * 100).round()}% CONFIDENCE';
+    final uncertain = !result.hasError && result.confidence < .9;
     return Container(
       key: const Key('scanExtractedTextCard'),
       padding: const EdgeInsets.all(16),
@@ -1335,14 +1344,30 @@ class _ExtractedTextCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Text(
-            result.hasError ? result.errorMessage : result.extractedText,
-            style: AppTextStyles.body.copyWith(
-              color: result.hasError
-                  ? palette.warningText
-                  : palette.primaryText,
+          if (uncertain) ...[
+            Text(
+              'Some label text is unclear. Check the medication name, '
+              'strength, and form against the package before continuing.',
+              style: AppTextStyles.body.copyWith(color: palette.warningText),
             ),
-          ),
+            CupertinoButton(
+              key: const Key('scanLabelTextToggle'),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              onPressed: () => setState(() => _showLabelText = !_showLabelText),
+              child: Text(
+                _showLabelText ? 'Hide label text' : 'View label text',
+              ),
+            ),
+          ],
+          if (!uncertain || _showLabelText)
+            Text(
+              result.hasError ? result.errorMessage : result.extractedText,
+              style: AppTextStyles.body.copyWith(
+                color: result.hasError
+                    ? palette.warningText
+                    : palette.primaryText,
+              ),
+            ),
         ],
       ),
     );
