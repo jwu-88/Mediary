@@ -6,6 +6,111 @@ import 'package:mediary/medication_time_picker.dart';
 import 'package:mediary/time_formatting.dart';
 
 void main() {
+  testWidgets('a daylight-saving gap cannot be confirmed', (tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MedicationTimeSelectionPage(
+          initialTime: const TimeOfDay(hour: 2, minute: 30),
+          scheduledDate: DateTime(2027, 3, 14),
+          scheduledTimezone: 'America/New_York',
+        ),
+      ),
+    );
+    expect(
+      find.byKey(const Key('unavailableScheduleTimeError')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<AppButton>(find.byKey(const Key('confirmScheduleTimeButton')))
+          .onPressed,
+      isNull,
+    );
+    await tester.enterText(find.byKey(const Key('scheduleHourInput')), '3');
+    await tester.pump();
+    expect(find.byKey(const Key('unavailableScheduleTimeError')), findsNothing);
+    expect(
+      tester
+          .widget<AppButton>(find.byKey(const Key('confirmScheduleTimeButton')))
+          .onPressed,
+      isNotNull,
+    );
+  });
+  for (final size in const [Size(1280, 800), Size(390, 844)]) {
+    for (final use24HourFormat in [false, true]) {
+      testWidgets(
+        'typing through invalid and past times keeps focus at $size in ${use24HourFormat ? 24 : 12}-hour format',
+        (tester) async {
+          if (!kIsWeb && size.width < 900) return;
+          tester.view.physicalSize = size;
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          await tester.pumpWidget(
+            MaterialApp(
+              home: MedicationTimeSelectionPage(
+                initialTime: const TimeOfDay(hour: 11, minute: 38),
+                scheduledDate: DateTime(2026, 10, 10),
+                minimumDateTime: DateTime(2026, 10, 10, 9),
+                use24HourFormat: use24HourFormat,
+              ),
+            ),
+          );
+          final hour = find.byKey(const Key('scheduleHourInput'));
+          final minute = find.byKey(const Key('scheduleMinuteInput'));
+          for (final entry in [
+            (hour, ['', '0', '09', '1', '11']),
+            (minute, ['', '6', '60', '4', '45']),
+          ]) {
+            await tester.showKeyboard(entry.$1);
+            final original = tester.state<EditableTextState>(
+              find.descendant(
+                of: entry.$1,
+                matching: find.byType(EditableText),
+              ),
+            );
+            for (final value in entry.$2) {
+              tester.testTextInput.updateEditingValue(
+                TextEditingValue(
+                  text: value,
+                  selection: TextSelection.collapsed(offset: value.length),
+                ),
+              );
+              await tester.pump();
+              final current = tester.state<EditableTextState>(
+                find.descendant(
+                  of: entry.$1,
+                  matching: find.byType(EditableText),
+                ),
+              );
+              expect(
+                current,
+                same(original),
+                reason: 'field recreated for "$value"',
+              );
+              expect(
+                current.widget.focusNode.hasFocus,
+                isTrue,
+                reason: 'focus lost for "$value"',
+              );
+              expect(current.widget.controller.text, value);
+              expect(tester.testTextInput.hasAnyClients, isTrue);
+            }
+          }
+          expect(
+            find.text(use24HourFormat ? '11:45' : '11:45 AM'),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   for (final size in const [
     Size(1024, 768),
     Size(1440, 900),

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
+bool _scheduleTimeZonesInitialized = false;
+
 enum TimeDisplayFormat {
   twelveHour,
   twentyFourHour;
@@ -192,7 +194,10 @@ DateTime medicationScheduledDate(
   MedicationTime time,
   String timezone,
 ) {
-  tz_data.initializeTimeZones();
+  if (!_scheduleTimeZonesInitialized) {
+    tz_data.initializeTimeZones();
+    _scheduleTimeZonesInitialized = true;
+  }
   final location = switch (timezone.trim()) {
     '' => tz.local,
     final value => _timeZoneLocation(value),
@@ -206,6 +211,22 @@ DateTime medicationScheduledDate(
     time.minute,
     time.second,
   );
+}
+
+/// A clock time skipped by daylight saving must not silently become another
+/// time when the user confirms it.
+bool isMedicationTimeAvailableOnDate(
+  DateTime date,
+  MedicationTime time,
+  String timezone,
+) {
+  final scheduled = medicationScheduledDate(date, time, timezone);
+  return scheduled.year == date.year &&
+      scheduled.month == date.month &&
+      scheduled.day == date.day &&
+      scheduled.hour == time.hour &&
+      scheduled.minute == time.minute &&
+      scheduled.second == time.second;
 }
 
 tz.Location _timeZoneLocation(String timezone) {

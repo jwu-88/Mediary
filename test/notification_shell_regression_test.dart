@@ -1,13 +1,26 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mediary/data/mediary_data_store.dart';
 import 'package:mediary/data/mediary_models.dart';
 import 'package:mediary/data/mediary_repository.dart';
+import 'package:mediary/data/medication_catalog_client.dart';
 import 'package:mediary/dashboard_screen.dart';
 import 'package:mediary/main.dart';
 import 'package:mediary/notifications/medication_notification_service.dart';
+
+import 'support/continuous_text_entry.dart';
+
+class _EmptyCatalog implements MedicationCatalogClient {
+  @override
+  Future<CatalogSearchPage> search(String query) async =>
+      const CatalogSearchPage(items: [], sourceVersion: 'test');
+  @override
+  Future<MedicationCatalogRecord> getDetails(String rxcui) async =>
+      throw StateError('No selection');
+}
 
 class _UnusedRepository extends Fake implements MediaryRepository {}
 
@@ -50,6 +63,7 @@ class _NotificationSpy implements MedicationNotificationService {
   int cleared = 0;
   final snapshots = <List<DoseLogRecord>>[];
   Completer<void>? hold;
+  List<MedicationDueNotification> nextDue = [];
   @override
   Future<void> initialize() async {}
   @override
@@ -71,7 +85,9 @@ class _NotificationSpy implements MedicationNotificationService {
   }) async {
     snapshots.add(doses);
     await hold?.future;
-    return [];
+    final result = nextDue;
+    nextDue = [];
+    return result;
   }
 }
 
@@ -164,12 +180,67 @@ void main() {
           now: DateTime(2026, 10, 4, 9),
           dataStore: store,
           notificationService: notifications,
+          catalogClient: _EmptyCatalog(),
           useSidebarNavigation: true,
         ),
       ),
     );
     await tester.pump();
   }
+
+  testWidgets(
+    'web reminders appear and expire without interrupting text input',
+    (tester) async {
+      if (!kIsWeb) return;
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await open(tester);
+      await tester.tapAt(const Offset(38, 280));
+      await tester.pumpAndSettle();
+      final field = find.byKey(const Key('medicationSearchField'));
+      await typeWithoutRefocusing(tester, field, ['b', 'be']);
+      final editable = find.descendant(
+        of: field,
+        matching: find.byType(EditableText),
+      );
+      final original = tester.state<EditableTextState>(editable);
+      notifications.nextDue = [
+        MedicationDueNotification(
+          doseId: 'active-dose',
+          medicationName: 'Medication',
+          scheduledFor: DateTime.now(),
+        ),
+      ];
+      store.refresh();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(
+        find.byKey(const Key('webMedicationNotificationToast')),
+        findsOneWidget,
+      );
+      expect(tester.state<EditableTextState>(editable), same(original));
+      expect(original.widget.focusNode.hasFocus, isTrue);
+      tester.testTextInput.updateEditingValue(
+        const TextEditingValue(
+          text: 'ben',
+          selection: TextSelection.collapsed(offset: 3),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 6));
+      expect(
+        find.byKey(const Key('webMedicationNotificationToast')),
+        findsNothing,
+      );
+      expect(tester.state<EditableTextState>(editable), same(original));
+      expect(original.widget.focusNode.hasFocus, isTrue);
+      expect(original.widget.controller.text, 'ben');
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets(
     'opening and resuming clear delivered alerts and reject orphan reminders',

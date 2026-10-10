@@ -1857,6 +1857,9 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
             (first, second) =>
                 first.scheduledFor.compareTo(second.scheduledFor),
           );
+    final schedules = {
+      for (final schedule in store.schedules) schedule.id: schedule,
+    };
     return [
       for (final dose in doses)
         DashboardDoseData(
@@ -1866,6 +1869,8 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
           details: [
             if (medications[dose.medicationId]?.strength.isNotEmpty ?? false)
               medications[dose.medicationId]!.strength,
+            if (schedules[dose.scheduleId] case final schedule?)
+              '${_formatDoseAmount(schedule.doseAmount)} ${schedule.doseUnit}',
             if (dose.localDate.isNotEmpty || dose.localTime.isNotEmpty)
               [
                 if (dose.localDate.isNotEmpty) formatLocalDate(dose.localDate),
@@ -2349,6 +2354,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       details: [
         if ((existingMedication?.strength ?? catalog.strength).isNotEmpty)
           existingMedication?.strength ?? catalog.strength,
+        '${_formatDoseAmount(doseAmount)} $doseUnit',
         formatLocalTime(localTime, widget.timeDisplayFormat),
       ].join(' · '),
       status: 'due',
@@ -2647,8 +2653,10 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
           CalendarDoseData(
             id: doseId,
             localDate: localDate,
-            name: catalog.name,
+            name: existingMedication?.name ?? catalog.name,
             details: [
+              if ((existingMedication?.strength ?? catalog.strength).isNotEmpty)
+                existingMedication?.strength ?? catalog.strength,
               '${_formatDoseAmount(scheduleDraft.doseAmount)} $doseUnit',
               formatLocalTime(localTime, widget.timeDisplayFormat),
             ].join(' · '),
@@ -2751,6 +2759,10 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       for (final medication in store?.medications ?? const <MedicationRecord>[])
         if (medication.active) medication.id: medication,
     };
+    final schedules = {
+      for (final schedule in store?.schedules ?? const <ScheduleRecord>[])
+        schedule.id: schedule,
+    };
     final persisted = [
       for (final dose in _visibleDoseLogs(store))
         CalendarDoseData(
@@ -2760,6 +2772,8 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
           details: [
             if (medications[dose.medicationId]?.strength.isNotEmpty ?? false)
               medications[dose.medicationId]!.strength,
+            if (schedules[dose.scheduleId] case final schedule?)
+              '${_formatDoseAmount(schedule.doseAmount)} ${schedule.doseUnit}',
             if (dose.localTime.isNotEmpty)
               formatLocalTime(dose.localTime, widget.timeDisplayFormat),
           ].join(' · '),
@@ -2947,36 +2961,38 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
   }
 
   Widget _withWebMedicationNotifications(Widget child) {
-    if (!kIsWeb || _webMedicationToasts.isEmpty) return child;
+    if (!kIsWeb) return child;
     return Stack(
       fit: StackFit.expand,
       children: [
         child,
-        Positioned(
-          key: const Key('webMedicationNotificationToast'),
-          bottom: MediaQuery.paddingOf(context).bottom + webFloatingNoticeInset,
-          right: webFloatingNoticeInset,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth:
-                  MediaQuery.sizeOf(context).width <
-                      webFloatingNoticeMaxWidth + (webFloatingNoticeInset * 2)
-                  ? MediaQuery.sizeOf(context).width -
-                        (webFloatingNoticeInset * 2)
-                  : webFloatingNoticeMaxWidth,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                for (final toast in _webMedicationToasts)
-                  _MedicationToastCard(
-                    key: ValueKey(toast.key),
-                    notification: toast.notification,
-                  ),
-              ],
+        if (_webMedicationToasts.isNotEmpty)
+          Positioned(
+            key: const Key('webMedicationNotificationToast'),
+            bottom:
+                MediaQuery.paddingOf(context).bottom + webFloatingNoticeInset,
+            right: webFloatingNoticeInset,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth:
+                    MediaQuery.sizeOf(context).width <
+                        webFloatingNoticeMaxWidth + (webFloatingNoticeInset * 2)
+                    ? MediaQuery.sizeOf(context).width -
+                          (webFloatingNoticeInset * 2)
+                    : webFloatingNoticeMaxWidth,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  for (final toast in _webMedicationToasts)
+                    _MedicationToastCard(
+                      key: ValueKey(toast.key),
+                      notification: toast.notification,
+                    ),
+                ],
+              ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -3200,6 +3216,17 @@ class _ScheduleDetailsPageState extends State<_ScheduleDetailsPage> {
     final amount = double.tryParse(_doseController.text.trim());
     if (amount == null || !amount.isFinite || amount <= 0) {
       setState(() => _errorMessage = 'Enter a dose amount greater than zero.');
+      return;
+    }
+    if (!isMedicationTimeAvailableOnDate(
+      widget.scheduleDate,
+      _time,
+      _timezone,
+    )) {
+      setState(
+        () => _errorMessage =
+            'This time is skipped by daylight saving. Choose another time.',
+      );
       return;
     }
     if (isMedicationTimeInPast(

@@ -118,9 +118,9 @@ void main() {
     );
     expect(medicationText.maxLines, 2);
     expect(medicationText.overflow, TextOverflow.ellipsis);
-    expect(doseText.maxLines, 2);
+    expect(doseText.maxLines, isNull);
     expect(doseText.overflow, TextOverflow.ellipsis);
-    expect(find.text('200 MG\n09/27/2026 · 10:36 AM'), findsOneWidget);
+    expect(find.text('200 MG\n09/27/2026\n10:36 AM'), findsOneWidget);
   });
 
   testWidgets(

@@ -1497,7 +1497,7 @@ class _DoseRow extends StatelessWidget {
                 child: Text(
                   _detailsForTable(details),
                   key: Key('calendarDoseDetails_$artworkSeed'),
-                  maxLines: 2,
+                  maxLines: details.split(' · ').length > 2 ? null : 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: palette.muted,
@@ -1556,7 +1556,7 @@ class _DoseRow extends StatelessWidget {
   }
 
   String _detailsForTable(String value) =>
-      titleCaseDisplay(value.replaceFirst(' · ', '\n'));
+      titleCaseDisplay(value.replaceAll(' · ', '\n'));
 }
 
 enum _CalendarDoseAction { toggleTaken, remove }

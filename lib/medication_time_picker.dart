@@ -98,6 +98,14 @@ class _MedicationTimeSelectionPageState
     return !selectedDateTime.isAfter(minimum);
   }
 
+  bool get _isUnavailableSelection {
+    final date = widget.scheduledDate;
+    final timezone = widget.scheduledTimezone;
+    return date != null &&
+        timezone != null &&
+        !isMedicationTimeAvailableOnDate(date, _selectedTime, timezone);
+  }
+
   bool _isSelected(MedicationTime time) =>
       time.hour == _hour && time.minute == _minute;
 
@@ -213,7 +221,9 @@ class _MedicationTimeSelectionPageState
             ),
             onChanged: (_) => _readInput(),
             onFieldSubmitted: (_) {
-              if (_inputValid && !_isPastSelection) {
+              if (_inputValid &&
+                  !_isPastSelection &&
+                  !_isUnavailableSelection) {
                 Navigator.of(context).pop(_selectedTime);
               }
             },
@@ -254,13 +264,15 @@ class _MedicationTimeSelectionPageState
       for (var minute = 0; minute < 60; minute++)
         minute.toString().padLeft(2, '0'),
     ];
-    final selectedLabel = _selectedTime.format(
-      widget.use24HourFormat
-          ? TimeDisplayFormat.twentyFourHour
-          : TimeDisplayFormat.twelveHour,
-    );
     final desktopLayout = AppBreakpoints.isDesktop(context);
     final keyboardInput = kIsWeb || desktopLayout;
+    final selectedLabel = keyboardInput && !_inputValid
+        ? 'Enter a time'
+        : _selectedTime.format(
+            widget.use24HourFormat
+                ? TimeDisplayFormat.twentyFourHour
+                : TimeDisplayFormat.twelveHour,
+          );
     final wheelGroupWidth = desktopLayout ? 560.0 : double.infinity;
 
     return InAppPageScaffold(
@@ -271,7 +283,10 @@ class _MedicationTimeSelectionPageState
           label: 'Done',
           compact: true,
           variant: AppButtonVariant.tertiary,
-          onPressed: _isPastSelection || (keyboardInput && !_inputValid)
+          onPressed:
+              _isPastSelection ||
+                  _isUnavailableSelection ||
+                  (keyboardInput && !_inputValid)
               ? null
               : () => Navigator.of(context).pop(_selectedTime),
         ),
@@ -285,19 +300,32 @@ class _MedicationTimeSelectionPageState
                 : 'Scroll through the wheels to set the reminder time in hours and minutes.',
             style: TextStyle(color: colors.onSurfaceVariant, height: 1.45),
           ),
-          if (keyboardInput && !_inputValid)
-            Text(
-              'Enter a valid hour and a minute from 0 to 59.',
-              style: TextStyle(color: colors.error),
-            ),
-          if (_isPastSelection) ...[
-            const SizedBox(height: 8),
-            Text(
-              'Choose a future time for this medication.',
-              key: const Key('pastScheduleTimeError'),
-              style: TextStyle(color: colors.error, height: 1.35),
-            ),
-          ],
+          // Keep the list's input subtree at the same slot while validation
+          // changes, so editing never replaces its state or keyboard client.
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (keyboardInput && !_inputValid)
+                Text(
+                  'Enter a valid hour and a minute from 0 to 59.',
+                  style: TextStyle(color: colors.error),
+                ),
+              if (_isPastSelection && (!keyboardInput || _inputValid)) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Choose a future time for this medication.',
+                  key: const Key('pastScheduleTimeError'),
+                  style: TextStyle(color: colors.error, height: 1.35),
+                ),
+              ],
+              if (_isUnavailableSelection && (!keyboardInput || _inputValid))
+                Text(
+                  'This time is skipped by daylight saving. Choose another time.',
+                  key: const Key('unavailableScheduleTimeError'),
+                  style: TextStyle(color: colors.error, height: 1.35),
+                ),
+            ],
+          ),
           const SizedBox(height: 18),
           Align(
             alignment: Alignment.topCenter,

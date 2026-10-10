@@ -1838,8 +1838,8 @@ class _DoseRow extends StatelessWidget {
         semanticLabel:
             '${titleCaseDisplay(name)}, ${titleCaseDisplay(details)}, '
             '${titleCaseDisplay(status)}',
-        child: SizedBox(
-          height: 62,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 62),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2),
             child: LayoutBuilder(
@@ -1894,8 +1894,8 @@ class _DoseRow extends StatelessWidget {
                       child: Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          titleCaseDisplay(details.replaceFirst(' · ', '\n')),
-                          maxLines: 2,
+                          titleCaseDisplay(details.replaceAll(' · ', '\n')),
+                          maxLines: details.split(' · ').length > 2 ? null : 2,
                           overflow: TextOverflow.ellipsis,
                           softWrap: true,
                           style: TextStyle(

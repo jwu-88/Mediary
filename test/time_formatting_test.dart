@@ -3,6 +3,38 @@ import 'package:mediary/time_formatting.dart';
 
 void main() {
   test(
+    'a skipped daylight-saving time cannot silently change when confirmed',
+    () {
+      final date = DateTime(2027, 3, 14);
+      expect(
+        isMedicationTimeAvailableOnDate(
+          date,
+          const MedicationTime(hour: 2, minute: 30),
+          'America/New_York',
+        ),
+        isFalse,
+      );
+      for (final hour in [1, 3]) {
+        expect(
+          isMedicationTimeAvailableOnDate(
+            date,
+            MedicationTime(hour: hour, minute: 30),
+            'America/New_York',
+          ),
+          isTrue,
+        );
+      }
+      expect(
+        isMedicationTimeAvailableOnDate(
+          date,
+          const MedicationTime(hour: 2, minute: 30),
+          'UTC',
+        ),
+        isTrue,
+      );
+    },
+  );
+  test(
     'default medication time rounds strictly forward to ten-minute boundaries',
     () {
       for (final entry in [
