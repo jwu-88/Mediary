@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:pasteboard/pasteboard.dart';
 
 import 'data/medication_catalog_client.dart';
+import 'medication_label_details.dart';
 import 'ocr/medication_ocr.dart' as medication_ocr;
 
 /// Data contracts for the medication scan pipeline.
@@ -50,6 +51,9 @@ class MedicationScanResult {
   final String errorMessage;
 
   bool get hasError => errorMessage.trim().isNotEmpty;
+
+  double get normalizedConfidence =>
+      confidence.isFinite ? confidence.clamp(0.0, 1.0) : 0;
 }
 
 /// Selects the strongest RxNorm result for a name extracted from a label.
@@ -67,7 +71,8 @@ MedicationCatalogRecord? matchMedicationCatalogRecord(
   final queryTokens = normalizedQuery.split(' ');
   var queryIngredients = _catalogIngredients([normalizedQuery]);
   final queryClaritinD = _hasClaritinD(normalizedQuery);
-  final context = _productLabelText(extractedText);
+  final labelDetails = MedicationLabelDetails.fromText(extractedText);
+  final context = labelDetails.productText;
   // Excedrin also names an aspirin-free product. A brand-only query cannot
   // choose the first catalog formulation unless the label supplies all three
   // ingredients of the standard combination.
@@ -89,6 +94,7 @@ MedicationCatalogRecord? matchMedicationCatalogRecord(
   var bestScore = 0;
 
   for (final record in records) {
+    if (labelDetails.conflictsWith(record)) continue;
     final names = [record.name, record.genericName, record.synonym]
         .map(_normalizeCatalogMedicationName)
         .where((name) => name.isNotEmpty)
@@ -169,6 +175,7 @@ MedicationCatalogRecord? matchMedicationCatalogRecord(
     if (recordScore > 0) {
       if (duration != null && duration == recordDuration) recordScore += 200;
       recordScore += recordStrengths.where(strengths.contains).length * 150;
+      recordScore += labelDetails.supportingFieldCount(record) * 300;
     }
     if (recordScore > bestScore) {
       bestScore = recordScore;
@@ -309,22 +316,7 @@ Set<String> _excedrinFormulationIngredients(String name) =>
     ? _excedrinTensionIngredients
     : _excedrinMigraineIngredients;
 
-const _genericMedicationAliases = <String, String>{
-  'acetaminophen': 'Acetaminophen',
-  'amoxicillin': 'Amoxicillin',
-  'aspirin': 'Aspirin',
-  'caffeine': 'Caffeine',
-  'diphenhydramine': 'Diphenhydramine',
-  'ibuprofen': 'Ibuprofen',
-  'loratadine': 'Loratadine',
-  'melatonin': 'Melatonin',
-  'metformin': 'Metformin',
-  'naproxen': 'Naproxen',
-  'omeprazole': 'Omeprazole',
-  'phenylephrine': 'Phenylephrine',
-  'prednisone': 'Prednisone',
-  'pseudoephedrine': 'Pseudoephedrine',
-};
+const _genericMedicationAliases = medicationIngredientNames;
 
 const _brandMedicationAliases = <String, String>{
   'advil': 'Advil',

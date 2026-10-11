@@ -252,7 +252,7 @@ void main() {
           ),
           scanResult: const MedicationScanResult(
             imageUrl: '',
-            extractedText: 'Advil (ibuprofen) 200 mg tablet',
+            extractedText: 'Advil (ibuprofen) 200 mg capsule',
             detectedMedicationName: 'Advil',
             confidence: .99,
           ),
@@ -263,8 +263,20 @@ void main() {
 
     expect(find.text('CATALOG MATCH'), findsOneWidget);
     expect(find.text('200 MG · CAPSULE'), findsOneWidget);
-    expect(find.text('DETECTED LABEL TEXT'), findsOneWidget);
-    expect(find.text('99% CONFIDENCE'), findsOneWidget);
+    expect(find.text('LABEL DETAILS'), findsOneWidget);
+    expect(find.text('99% NAME CONFIDENCE'), findsOneWidget);
+    expect(find.text('723'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('scanMedicationDetailsCard')),
+      180,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('scanResultScrollView')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('MEDICATION INFORMATION'), findsOneWidget);
     expect(find.text('GENERIC NAME'), findsOneWidget);
     expect(find.text('COMMON USES'), findsOneWidget);
@@ -295,14 +307,17 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Benadryl'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('scanLabelName')),
+        matching: find.text('Benadryl'),
+      ),
+      findsOneWidget,
+    );
     expect(find.textContaining('Some label text is unclear'), findsOneWidget);
     expect(find.text(rawText), findsNothing);
     final toggle = find.byKey(const Key('scanLabelTextToggle'));
-    await Scrollable.ensureVisible(
-      tester.element(toggle),
-      alignment: .5,
-    );
+    await Scrollable.ensureVisible(tester.element(toggle), alignment: .5);
     await tester.pumpAndSettle();
     await tester.tap(toggle);
     await tester.pumpAndSettle();

@@ -13,6 +13,7 @@ import 'data/medication_catalog_client.dart';
 import 'in_app_page.dart';
 import 'liquid_glass_back_button.dart';
 import 'medication_artwork.dart';
+import 'medication_label_details.dart';
 import 'medication_scan.dart';
 import 'medication_time_picker.dart';
 import 'text_formatting.dart';
@@ -587,7 +588,11 @@ class ScanResultScreen extends StatefulWidget {
 }
 
 class _ScanResultScreenState extends State<ScanResultScreen> {
-  String _dose = '1 capsule';
+  String _dose = '1 dose';
+  late MedicationLabelDetails _labelDetails;
+  late bool _hasCatalogConflict;
+  int _scanVersion = 0;
+  String? _savedScanRecordId;
   String _frequency = 'No Repeat';
   String _duration = '1 day';
   late DateTime _startDate;
@@ -601,29 +606,87 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
 
   DateTime get _now => widget.now ?? DateTime.now();
 
+  void _readLabelDetails() {
+    _labelDetails = MedicationLabelDetails.fromText(
+      widget.scanResult?.extractedText ?? '',
+    );
+    _hasCatalogConflict =
+        widget.medication != null &&
+        _labelDetails.conflictsWith(widget.medication!);
+  }
+
+  MedicationCatalogRecord? get _reviewMedication =>
+      widget.scanResult?.hasError == true || _hasCatalogConflict
+      ? null
+      : widget.medication;
+
+  String get _doseUnit {
+    final form = _reviewMedication?.form.toLowerCase() ?? '';
+    if (RegExp(r'\b(?:capsules?|gelcaps?|softgels?)\b').hasMatch(form)) {
+      return 'capsule';
+    }
+    if (RegExp(r'\b(?:tablets?|caplets?)\b').hasMatch(form)) return 'tablet';
+    return 'dose';
+  }
+
+  List<String> get _doseOptions => [
+    '½ $_doseUnit',
+    '1 $_doseUnit',
+    '2 ${_doseUnit}s',
+  ];
+
   @override
   void initState() {
     super.initState();
+    _readLabelDetails();
+    _dose = '1 $_doseUnit';
     final target = nextMedicationScheduleTime(now: _now);
     _startDate = DateUtils.dateOnly(target);
     _time = MedicationTime(hour: target.hour, minute: target.minute);
     unawaited(_saveScanResult());
   }
 
+  @override
+  void didUpdateWidget(covariant ScanResultScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.scanResult, widget.scanResult) ||
+        oldWidget.medication?.rxcui != widget.medication?.rxcui ||
+        oldWidget.medication?.name != widget.medication?.name ||
+        oldWidget.medication?.genericName != widget.medication?.genericName ||
+        oldWidget.medication?.strength != widget.medication?.strength ||
+        oldWidget.medication?.form != widget.medication?.form ||
+        oldWidget.scanRecordId != widget.scanRecordId) {
+      if (!identical(oldWidget.scanResult, widget.scanResult) ||
+          oldWidget.scanRecordId != widget.scanRecordId) {
+        _savedScanRecordId = null;
+      }
+      _readLabelDetails();
+      _dose = '1 $_doseUnit';
+      _isAdded = false;
+      _scheduleError = null;
+      _scanSaved = false;
+      _scanSaveError = null;
+      _scanVersion++;
+      unawaited(_saveScanResult());
+    }
+  }
+
   Future<void> _saveScanResult() async {
     final save = widget.onScanReady;
     if (save == null || _isSavingScan || _scanSaved) return;
     setState(() => _isSavingScan = true);
+    final version = _scanVersion;
     final scan = widget.scanResult;
+    final recordId = widget.scanRecordId;
     final status = scan?.hasError == true
         ? 'failed'
-        : widget.medication == null
+        : _reviewMedication == null
         ? 'needsReview'
         : 'complete';
     try {
-      await save(
+      final savedId = await save(
         ScanWrite(
-          id: widget.scanRecordId,
+          id: recordId ?? _savedScanRecordId,
           status: status,
           detectedMedicationName:
               scan?.detectedMedicationName ?? widget.medication?.name ?? '',
@@ -632,24 +695,32 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
               (widget.medication == null
                   ? ''
                   : '${widget.medication!.name} ${widget.medication!.doseDescription}'),
-          confidence: scan?.confidence ?? (widget.medication == null ? 0 : 1),
+          confidence:
+              scan?.normalizedConfidence ?? (widget.medication == null ? 0 : 1),
           errorMessage: scan?.errorMessage ?? '',
         ),
       );
-      if (mounted) {
+      if (identical(scan, widget.scanResult) &&
+          recordId == widget.scanRecordId) {
+        _savedScanRecordId = savedId;
+      }
+      if (mounted && version == _scanVersion) {
         setState(() {
           _scanSaved = true;
           _scanSaveError = null;
         });
       }
     } catch (_) {
-      if (mounted) {
+      if (mounted && version == _scanVersion) {
         setState(
           () => _scanSaveError = 'Your scan could not be saved. Try again.',
         );
       }
     } finally {
-      if (mounted) setState(() => _isSavingScan = false);
+      if (mounted) {
+        setState(() => _isSavingScan = false);
+        if (version != _scanVersion) unawaited(_saveScanResult());
+      }
     }
   }
 
@@ -764,7 +835,19 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
   }
 
   Future<void> _addToCalendar() async {
-    if (_isAdded || _isSavingSchedule) return;
+    if (_isAdded || _isSavingSchedule || _reviewMedication == null) return;
+    if (widget.scheduledTimezone != null &&
+        !isMedicationTimeAvailableOnDate(
+          _startDate,
+          _time,
+          widget.scheduledTimezone!,
+        )) {
+      setState(
+        () => _scheduleError =
+            'This time is skipped by daylight saving. Choose another time.',
+      );
+      return;
+    }
     if (isMedicationTimeInPast(
       _startDate,
       _time,
@@ -781,6 +864,7 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
       _isSavingSchedule = true;
       _scheduleError = null;
     });
+    final version = _scanVersion;
     try {
       final added =
           await widget.onScheduleConfirmed?.call(
@@ -794,11 +878,11 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
           ) ??
           true;
       if (!added) return;
-      if (!mounted) return;
+      if (!mounted || version != _scanVersion) return;
       setState(() => _isAdded = true);
       widget.onAdded?.call();
     } catch (_) {
-      if (mounted) {
+      if (mounted && version == _scanVersion) {
         setState(
           () => _scheduleError = 'Could not add to Calendar. Try again.',
         );
@@ -811,7 +895,12 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
   @override
   Widget build(BuildContext context) {
     final palette = _ScannerPalette.of(context);
+    final medication = _reviewMedication;
     final viewportWidth = MediaQuery.sizeOf(context).width;
+    final inlineActions =
+        MediaQuery.sizeOf(context).height < 500 ||
+        (viewportWidth < 600 &&
+            MediaQuery.textScalerOf(context).scale(16) > 24);
     final contentWidth = viewportWidth >= 900
         ? responsiveContentWidth(context, nativeMaxWidth: 1120)
         : 520.0;
@@ -878,12 +967,16 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                           AppSpacing.pageGutterOf(context),
                           AppSpacing.xs,
                           AppSpacing.pageGutterOf(context),
-                          96 * MediaQuery.textScalerOf(context).scale(1) +
+                          (inlineActions
+                                  ? AppSpacing.xl
+                                  : 96 *
+                                        MediaQuery.textScalerOf(context)
+                                            .scale(1)) +
                               widget.bottomNavigationInset,
                         ),
                         children: [
                           _ResultHero(
-                            medication: widget.medication,
+                            medication: medication,
                             scanResult: widget.scanResult,
                           ),
                           if (_scanSaveError != null) ...[
@@ -920,19 +1013,23 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                             ),
                           ],
                           const SizedBox(height: 18),
-                          _InfoGrid(medication: widget.medication),
+                          _InfoGrid(medication: medication),
                           if (widget.scanResult != null) ...[
                             const SizedBox(height: 16),
-                            _ExtractedTextCard(result: widget.scanResult!),
+                            _ExtractedTextCard(
+                              result: widget.scanResult!,
+                              details: _labelDetails,
+                              hasCatalogConflict: _hasCatalogConflict,
+                            ),
                           ],
-                          if (widget.medication != null) ...[
+                          if (medication != null) ...[
                             const SizedBox(height: 16),
-                            _CatalogDetailsCard(medication: widget.medication!),
+                            _CatalogDetailsCard(medication: medication),
                           ],
                           const SizedBox(height: 16),
                           const _SafetyNotice(),
                           const SizedBox(height: 16),
-                          if (widget.medication != null)
+                          if (medication != null)
                             Container(
                               padding: const EdgeInsets.fromLTRB(
                                 16,
@@ -965,11 +1062,7 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                                           value: _dose,
                                           onTap: () => _chooseOption(
                                             title: 'Dose',
-                                            options: const [
-                                              '½ capsule',
-                                              '1 capsule',
-                                              '2 capsules',
-                                            ],
+                                            options: _doseOptions,
                                             onSelected: (value) =>
                                                 setState(() => _dose = value),
                                           ),
@@ -1046,85 +1139,94 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                                 ],
                               ),
                             ),
-                          if (widget.medication == null)
+                          if (medication == null)
                             _PendingReviewCard(
                               onSearch: widget.onSearchMedication,
+                            ),
+                          if (inlineActions)
+                            KeyedSubtree(
+                              key: const Key('scanReviewInlineActions'),
+                              child: _buildReviewActions(inline: true),
                             ),
                         ],
                       ),
                     ),
                   ],
                 ),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: ClipRect(
-                    child: WebAwareBlur(
-                      sigma: 20,
-                      child: Container(
-                        padding: EdgeInsets.fromLTRB(
-                          AppSpacing.pageGutterOf(context),
-                          AppSpacing.md,
-                          AppSpacing.pageGutterOf(context),
-                          MediaQuery.paddingOf(context).bottom +
-                              widget.bottomNavigationInset,
-                        ),
-                        decoration: BoxDecoration(
-                          color: palette.actionMaterial,
-                          border: Border(
-                            top: BorderSide(
-                              color: palette.separator,
-                              width: .5,
-                            ),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (_scheduleError != null) ...[
-                              Semantics(
-                                liveRegion: true,
-                                child: Text(
-                                  _scheduleError!,
-                                  key: const Key('scanScheduleError'),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: AppTextStyles.body.copyWith(
-                                    color: Theme.of(context).colorScheme.error,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: AppSpacing.sm),
-                            ],
-                            AppButton(
-                              key: const Key('addScanResultButton'),
-                              busy: _isSavingSchedule,
-                              onPressed: widget.medication == null
-                                  ? widget.onSearchMedication
-                                  : _addToCalendar,
-                              icon: widget.medication == null
-                                  ? CupertinoIcons.search
-                                  : _isAdded
-                                  ? CupertinoIcons.check_mark_circled_solid
-                                  : CupertinoIcons.calendar_badge_plus,
-                              label: widget.medication == null
-                                  ? 'Search RxNorm to confirm'
-                                  : _isAdded
-                                  ? 'Added to Calendar'
-                                  : 'Add to Calendar',
-                              loadingLabel: 'Adding to Calendar',
-                              expand: true,
-                            ),
-                          ],
-                        ),
-                      ),
+                if (!inlineActions)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: _buildReviewActions(),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReviewActions({bool inline = false}) {
+    final palette = _ScannerPalette.of(context);
+    final medication = _reviewMedication;
+    return ClipRect(
+      child: WebAwareBlur(
+        sigma: 20,
+        child: Container(
+          padding: inline
+              ? const EdgeInsets.symmetric(vertical: AppSpacing.md)
+              : EdgeInsets.fromLTRB(
+                  AppSpacing.pageGutterOf(context),
+                  AppSpacing.md,
+                  AppSpacing.pageGutterOf(context),
+                  MediaQuery.paddingOf(context).bottom +
+                      widget.bottomNavigationInset,
+                ),
+          decoration: BoxDecoration(
+            color: palette.actionMaterial,
+            border: Border(
+              top: BorderSide(color: palette.separator, width: .5),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_scheduleError != null) ...[
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    _scheduleError!,
+                    key: const Key('scanScheduleError'),
+                    style: AppTextStyles.body.copyWith(
+                      color: Theme.of(context).colorScheme.error,
                     ),
                   ),
                 ),
+                const SizedBox(height: AppSpacing.sm),
               ],
-            ),
+              AppButton(
+                key: const Key('addScanResultButton'),
+                busy: _isSavingSchedule,
+                onPressed: medication == null
+                    ? widget.onSearchMedication
+                    : _addToCalendar,
+                icon: medication == null
+                    ? CupertinoIcons.search
+                    : _isAdded
+                    ? CupertinoIcons.check_mark_circled_solid
+                    : CupertinoIcons.calendar_badge_plus,
+                label: medication == null
+                    ? 'Search RxNorm to confirm'
+                    : _isAdded
+                    ? 'Added to Calendar'
+                    : 'Add to Calendar',
+                loadingLabel: 'Adding to Calendar',
+                expand: true,
+              ),
+            ],
           ),
         ),
       ),
@@ -1219,9 +1321,13 @@ class _ResultHero extends StatelessWidget {
                 Row(
                   children: [
                     Icon(
-                      CupertinoIcons.check_mark_circled_solid,
+                      medication == null
+                          ? CupertinoIcons.exclamationmark_triangle_fill
+                          : CupertinoIcons.check_mark_circled_solid,
                       size: 13,
-                      color: palette.success,
+                      color: medication == null
+                          ? palette.warningText
+                          : palette.success,
                     ),
                     const SizedBox(width: 5),
                     Flexible(
@@ -1230,7 +1336,9 @@ class _ResultHero extends StatelessWidget {
                             ? 'MANUAL REVIEW REQUIRED'
                             : 'CATALOG MATCH',
                         style: TextStyle(
-                          color: palette.success,
+                          color: medication == null
+                              ? palette.warningText
+                              : palette.success,
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                         ),
@@ -1288,9 +1396,15 @@ class ScanScheduleData {
 }
 
 class _ExtractedTextCard extends StatefulWidget {
-  const _ExtractedTextCard({required this.result});
+  const _ExtractedTextCard({
+    required this.result,
+    required this.details,
+    required this.hasCatalogConflict,
+  });
 
   final MedicationScanResult result;
+  final MedicationLabelDetails details;
+  final bool hasCatalogConflict;
 
   @override
   State<_ExtractedTextCard> createState() => _ExtractedTextCardState();
@@ -1300,10 +1414,18 @@ class _ExtractedTextCardState extends State<_ExtractedTextCard> {
   bool _showLabelText = false;
 
   @override
+  void didUpdateWidget(covariant _ExtractedTextCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.result, widget.result)) _showLabelText = false;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final result = widget.result;
     final palette = _ScannerPalette.of(context);
-    final confidence = '${(result.confidence * 100).round()}% CONFIDENCE';
+    final confidence = result.confidence.isFinite
+        ? '${(result.normalizedConfidence * 100).round()}% NAME CONFIDENCE'
+        : 'NAME CONFIDENCE UNAVAILABLE';
     final uncertain = !result.hasError && result.confidence < .9;
     return Container(
       key: const Key('scanExtractedTextCard'),
@@ -1316,12 +1438,13 @@ class _ExtractedTextCardState extends State<_ExtractedTextCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(CupertinoIcons.doc_text, color: palette.primary, size: 18),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'DETECTED LABEL TEXT',
+                  'LABEL DETAILS',
                   style: TextStyle(
                     color: palette.primaryText,
                     fontSize: 16,
@@ -1329,41 +1452,137 @@ class _ExtractedTextCardState extends State<_ExtractedTextCard> {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  confidence,
-                  textAlign: TextAlign.end,
-                  style: TextStyle(color: palette.secondaryText, fontSize: 12),
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 10),
+          if (result.detectedMedicationName.trim().isNotEmpty &&
+              !result.hasError) ...[
+            Text(
+              confidence,
+              key: const Key('scanNameConfidence'),
+              style: TextStyle(color: palette.secondaryText, fontSize: 12),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'This score applies to the name, not every word in the photo.',
+              style: AppTextStyles.caption.copyWith(
+                color: palette.secondaryText,
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final twoColumns =
+                  constraints.maxWidth >= 280 &&
+                  MediaQuery.textScalerOf(context).scale(13) <= 19.5;
+              final width = twoColumns
+                  ? (constraints.maxWidth - 20) / 2
+                  : constraints.maxWidth;
+              final fields = <(String, String, String)>[
+                (
+                  'Detected name',
+                  result.detectedMedicationName.trim().isEmpty
+                      ? 'Not identified'
+                      : result.detectedMedicationName.trim(),
+                  'Name',
+                ),
+                (
+                  'Ingredients read',
+                  widget.details.ingredients.isEmpty
+                      ? 'Not clearly read'
+                      : widget.details.ingredients.join(', '),
+                  'Ingredients',
+                ),
+                (
+                  'Strength read',
+                  widget.details.strengths.isEmpty
+                      ? 'Not clearly read'
+                      : widget.details.strengths.join(' · '),
+                  'Strength',
+                ),
+                (
+                  'Form read',
+                  widget.details.forms.isEmpty
+                      ? 'Not clearly read'
+                      : widget.details.forms.join(' · '),
+                  'Form',
+                ),
+              ];
+              return Wrap(
+                spacing: 20,
+                runSpacing: 16,
+                children: [
+                  for (final field in fields)
+                    SizedBox(
+                      width: width,
+                      key: Key('scanLabel${field.$3}'),
+                      child: _DetailRow(label: field.$1, value: field.$2),
+                    ),
+                ],
+              );
+            },
+          ),
+          if (result.hasError || widget.hasCatalogConflict) ...[
+            const SizedBox(height: 16),
+            Text(
+              widget.hasCatalogConflict
+                  ? 'The photo details differ from the catalog result. Search for the exact medication before adding it.'
+                  : result.errorMessage,
+              key: const Key('scanLabelReviewMessage'),
+              style: AppTextStyles.body.copyWith(color: palette.warningText),
+            ),
+          ],
           if (uncertain) ...[
+            const SizedBox(height: 16),
             Text(
               'Some label text is unclear. Check the medication name, '
               'strength, and form against the package before continuing.',
               style: AppTextStyles.body.copyWith(color: palette.warningText),
             ),
-            CupertinoButton(
-              key: const Key('scanLabelTextToggle'),
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              onPressed: () => setState(() => _showLabelText = !_showLabelText),
-              child: Text(
-                _showLabelText ? 'Hide label text' : 'View label text',
-              ),
-            ),
           ],
-          if (!uncertain || _showLabelText)
-            Text(
-              result.hasError ? result.errorMessage : result.extractedText,
-              style: AppTextStyles.body.copyWith(
-                color: result.hasError
-                    ? palette.warningText
-                    : palette.primaryText,
-              ),
+          if (result.extractedText.trim().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            AppButton(
+              key: const Key('scanLabelTextToggle'),
+              onPressed: () => setState(() => _showLabelText = !_showLabelText),
+              variant: AppButtonVariant.tertiary,
+              compact: true,
+              label: _showLabelText
+                  ? 'Hide original photo text'
+                  : 'View original photo text',
+              icon: _showLabelText
+                  ? CupertinoIcons.chevron_up
+                  : CupertinoIcons.chevron_down,
             ),
+            if (_showLabelText) ...[
+              Text(
+                'This automatic reading may contain duplicated or misread words.',
+                style: AppTextStyles.caption.copyWith(
+                  color: palette.secondaryText,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                key: const Key('scanOriginalTextPanel'),
+                constraints: const BoxConstraints(maxHeight: 240),
+                decoration: BoxDecoration(
+                  color: palette.background,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: palette.separator),
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(12),
+                  child: SelectableText(
+                    result.extractedText,
+                    style: AppTextStyles.body.copyWith(
+                      color: palette.secondaryText,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
         ],
       ),
     );
@@ -1493,7 +1712,9 @@ class _InfoGrid extends StatelessWidget {
                 Expanded(
                   child: _InfoTile(
                     label: 'IDENTIFIER',
-                    value: 'Pending',
+                    value: medication?.rxcui.isNotEmpty == true
+                        ? medication!.rxcui
+                        : 'Pending',
                     rightBorder: true,
                     bottomBorder: true,
                   ),
@@ -1501,7 +1722,7 @@ class _InfoGrid extends StatelessWidget {
                 Expanded(
                   child: _InfoTile(
                     label: 'SOURCE',
-                    value: 'RxNorm',
+                    value: medication == null ? 'Not confirmed' : 'RxNorm',
                     bottomBorder: true,
                   ),
                 ),

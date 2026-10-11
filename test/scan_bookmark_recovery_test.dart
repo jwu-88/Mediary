@@ -218,6 +218,17 @@ void main() {
         textScale: 3,
       ),
     );
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('addScanResultButton')),
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('scanResultScrollView')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.ensureVisible(find.byKey(const Key('addScanResultButton')));
     await tester.tap(find.byKey(const Key('addScanResultButton')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('scanScheduleError')), findsOneWidget);
