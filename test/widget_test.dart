@@ -12,7 +12,6 @@ import 'package:mediary/in_app_page.dart';
 import 'package:mediary/liquid_glass_tab_bar.dart';
 import 'package:mediary/main.dart';
 import 'package:mediary/profile_screen.dart';
-import 'package:mediary/settings_screen.dart';
 import 'package:mediary/web_navigation_sidebar.dart';
 
 import 'support/medication_scan_fixture.dart';
@@ -725,7 +724,9 @@ void main() {
     expect(find.text('Search the medication catalog'), findsOneWidget);
   });
 
-  testWidgets('opens settings and selects dark appearance', (tester) async {
+  testWidgets('signed-in user opens settings and selects dark appearance', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(402, 874);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -742,40 +743,24 @@ void main() {
             theme: AppTheme.light,
             darkTheme: AppTheme.dark,
             themeMode: mode,
-            home: Builder(
-              builder: (context) => AuthForm(
-                onSubmit: ({
-                  required email,
-                  required password,
-                  required createAccount,
-                }) async {},
-                onOpenSettings: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (context) => SettingsScreen(
-                        appearanceMode: appearanceMode.value,
-                        onAppearanceModeChanged: (value) =>
-                            appearanceMode.value = value,
-                        accentColor: AppAccentColor.blue,
-                        onAccentColorChanged: (_) {},
-                      ),
-                    ),
-                  );
-                },
-              ),
+            home: AuthenticatedHome(
+              email: 'person@example.com',
+              useSidebarNavigation: false,
+              appearanceMode: mode,
+              onAppearanceModeChanged: (value) => appearanceMode.value = value,
             ),
           );
         },
       ),
     );
 
-    await tester.tap(find.byTooltip('Settings'));
+    await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
-    expect(find.text('Settings'), findsOneWidget);
+    expect(find.byKey(const Key('settingsPageTitle')), findsOneWidget);
     expect(find.text('Appearance'), findsOneWidget);
     expect(find.text('Dark Appearance'), findsNothing);
     expect(find.text('App Preferences'), findsOneWidget);
-    expect(find.text('Account'), findsNothing);
+    expect(find.text('Account'), findsOneWidget);
     await tester.tap(find.byKey(const Key('appearanceSettingRow')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('inAppOption-Dark')));
@@ -791,10 +776,9 @@ void main() {
     await tester.tap(find.byTooltip('Back from Appearance'));
     await tester.pumpAndSettle();
     expect(
-      tester
-          .widget<Scaffold>(find.byKey(const Key('settingsScreen')))
-          .backgroundColor,
-      AppColors.darkBackground,
+      Theme.of(tester.element(find.byKey(const Key('settingsPageTitle'))))
+          .brightness,
+      Brightness.dark,
     );
   });
 

@@ -364,21 +364,6 @@ class _AuthGateState extends State<AuthGate> {
     );
   }
 
-  void _openSettings(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => SettingsScreen(
-          appearanceMode: widget.appearanceMode,
-          onAppearanceModeChanged: widget.onAppearanceModeChanged,
-          accentColor: widget.accentColor,
-          onAccentColorChanged: widget.onAccentColorChanged,
-          timeDisplayFormat: widget.timeDisplayFormat,
-          onTimeDisplayFormatChanged: widget.onTimeDisplayFormatChanged,
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
@@ -448,7 +433,6 @@ class _AuthGateState extends State<AuthGate> {
               : 'Create a Mediary account to organize and track medications.',
           child: AuthForm(
             initialCreateAccount: !_returningUser,
-            onOpenSettings: () => _openSettings(context),
             onGoogleSignIn: () => signInWithGoogle(widget.auth),
             onSubmit:
                 ({
@@ -705,13 +689,11 @@ class AuthForm extends StatefulWidget {
   const AuthForm({
     super.key,
     required this.onSubmit,
-    this.onOpenSettings,
     this.onGoogleSignIn,
     this.initialCreateAccount = true,
   });
 
   final AuthSubmitter onSubmit;
-  final VoidCallback? onOpenSettings;
   final GoogleAuthSubmitter? onGoogleSignIn;
   final bool initialCreateAccount;
 
@@ -909,32 +891,6 @@ class _AuthFormState extends State<AuthForm> {
     final compactWeb = kIsWeb && viewport.width >= 900 && viewport.height < 800;
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        foregroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        actions: [
-          AppIconButton(
-            key: const Key('settingsButton'),
-            // Web tooltips render in an OverlayPortal. Removing this
-            // transient overlay before pushing Settings avoids a Flutter
-            // web overlay-size assertion while keeping the icon semantic
-            // label below available to assistive technology.
-            tooltip: 'Settings',
-            showTooltip: !kIsWeb,
-            overImage: true,
-            haptic: AppHapticKind.none,
-            onPressed: widget.onOpenSettings == null
-                ? null
-                : () {
-                    unawaited(AppHaptics.selection());
-                    widget.onOpenSettings!();
-                  },
-            icon: Icons.settings_outlined,
-          ),
-        ],
-      ),
       body: Stack(
         fit: StackFit.expand,
         children: [

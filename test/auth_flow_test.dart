@@ -79,6 +79,8 @@ void main() {
       expect(find.text('Create an Account'), findsOneWidget);
       expect(find.byKey(const Key('confirmPasswordField')), findsOneWidget);
       expect(find.byKey(const Key('authMedicationBackground')), findsOneWidget);
+      expect(find.byKey(const Key('settingsButton')), findsNothing);
+      expect(find.byIcon(Icons.settings_outlined), findsNothing);
 
       await tester.ensureVisible(find.text('Already have an account? Sign In'));
       await tester.tap(find.text('Already have an account? Sign In'));
@@ -87,6 +89,8 @@ void main() {
       expect(find.text('Welcome Back'), findsOneWidget);
       expect(find.text('Need an account? Create One'), findsOneWidget);
       expect(find.byKey(const Key('confirmPasswordField')), findsNothing);
+      expect(find.byKey(const Key('settingsButton')), findsNothing);
+      expect(find.byIcon(Icons.settings_outlined), findsNothing);
     },
   );
 
