@@ -6,6 +6,9 @@ Mediary is a Flutter medication companion for organizing daily medications,
 reviewing schedules, and exploring common medication information across mobile
 and web.
 
+Mediary is open-source software licensed under the MIT License. See
+[LICENSE](LICENSE) for the full license text.
+
 ## Description
 
 The app includes Firebase email/password and Google sign-in, a dose dashboard,
