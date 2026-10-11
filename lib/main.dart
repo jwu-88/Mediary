@@ -30,6 +30,7 @@ import 'liquid_glass_tab_bar.dart';
 import 'medication_time_picker.dart';
 import 'medication_scan.dart';
 import 'notifications/medication_notification_service.dart';
+import 'notifications/medication_reminder_timing.dart';
 import 'profile_screen.dart';
 import 'scanner_screens.dart';
 import 'settings_screen.dart';
@@ -1151,6 +1152,7 @@ class AuthenticatedHome extends StatefulWidget {
     this.scanDetector,
     this.cameraCapture,
     this.notificationService,
+    this.notificationClock,
     this.now,
     this.cameraPermissionRequester,
     this.onOpenCameraSettings,
@@ -1174,6 +1176,9 @@ class AuthenticatedHome extends StatefulWidget {
   final MedicationScanDetector? scanDetector;
   final Future<MedicationScanRequest?> Function()? cameraCapture;
   final MedicationNotificationService? notificationService;
+
+  /// overrides the reminder clock for deterministic timing tests.
+  final DateTime Function()? notificationClock;
   final DateTime? now;
   final CameraPermissionRequester? cameraPermissionRequester;
   final Future<bool> Function()? onOpenCameraSettings;
@@ -1238,7 +1243,12 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       _awaitingMedicationSnapshotIds.clear();
       if (oldWidget.dataStore == null && widget.dataStore != null) {
         _startNotificationMonitoring();
+      } else {
+        unawaited(_syncMedicationNotifications());
       }
+    }
+    if (oldWidget.notificationClock != widget.notificationClock) {
+      _armNotificationTimer();
     }
   }
 
@@ -1262,10 +1272,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
   }
 
   void _startNotificationMonitoring() {
-    _notificationTimer ??= Timer.periodic(
-      const Duration(seconds: 15),
-      (_) => _syncMedicationNotifications(),
-    );
+    _armNotificationTimer();
     unawaited(() async {
       try {
         await _notificationService.initialize();
@@ -1280,7 +1287,58 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
     }());
   }
 
+  DateTime get _notificationNow =>
+      widget.notificationClock?.call() ?? DateTime.now();
+
+  List<DoseLogRecord> _notificationDoses(MediaryDataStore store) {
+    final activeMedicationIds = {
+      for (final medication in store.medications)
+        if (medication.active) medication.id,
+    };
+    final automaticScheduleOwners = {
+      for (final schedule in store.schedules)
+        if (schedule.active &&
+            activeMedicationIds.contains(schedule.medicationId) &&
+            schedule.frequency != 'asNeeded')
+          schedule.id: schedule.medicationId,
+    };
+    return [
+      for (final dose in uniqueDoseOccurrences(store.doseLogs))
+        if (activeMedicationIds.contains(dose.medicationId) &&
+            automaticScheduleOwners[dose.scheduleId] == dose.medicationId &&
+            !_cancelledDoseIds.contains(dose.id))
+          dose,
+    ];
+  }
+
+  Map<String, String> _notificationTimezones(MediaryDataStore store) => {
+    for (final schedule in store.schedules) schedule.id: schedule.timezone,
+  };
+
+  void _armNotificationTimer() {
+    _notificationTimer?.cancel();
+    _notificationTimer = null;
+    final store = widget.dataStore;
+    if (!mounted ||
+        store == null ||
+        !store.hasInitialData ||
+        store.profile?.preferences.doseNotifications != true) {
+      return;
+    }
+    final delay = nextMedicationReminderDelay(
+      now: _notificationNow,
+      doses: _notificationDoses(store),
+      scheduleTimezones: _notificationTimezones(store),
+    );
+    if (delay == null) return;
+    _notificationTimer = Timer(delay, () {
+      _notificationTimer = null;
+      unawaited(_syncMedicationNotifications());
+    });
+  }
+
   Future<void> _syncMedicationNotifications() async {
+    _armNotificationTimer();
     final store = widget.dataStore;
     if (_notificationSyncInFlight) {
       _notificationSyncRequested = true;
@@ -1306,31 +1364,11 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
         for (final medication in store.medications)
           medication.id: medication.name,
       };
-      final activeMedicationIds = {
-        for (final medication in store.medications)
-          if (medication.active) medication.id,
-      };
-      final scheduleTimezones = <String, String>{
-        for (final schedule in store.schedules) schedule.id: schedule.timezone,
-      };
-      final automaticScheduleOwners = {
-        for (final schedule in store.schedules)
-          if (schedule.active &&
-              activeMedicationIds.contains(schedule.medicationId) &&
-              schedule.frequency != 'asNeeded')
-            schedule.id: schedule.medicationId,
-      };
       final due = await _notificationService.syncDueDoses(
-        doses: [
-          for (final dose in uniqueDoseOccurrences(store.doseLogs))
-            if (activeMedicationIds.contains(dose.medicationId) &&
-                automaticScheduleOwners[dose.scheduleId] == dose.medicationId &&
-                !_cancelledDoseIds.contains(dose.id))
-              dose,
-        ],
+        doses: _notificationDoses(store),
         medicationNames: names,
-        scheduleTimezones: scheduleTimezones,
-        now: DateTime.now(),
+        scheduleTimezones: _notificationTimezones(store),
+        now: _notificationNow,
       );
       if (kIsWeb && mounted) {
         for (final notification in due) {
@@ -1346,6 +1384,8 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       if (_notificationSyncRequested && mounted) {
         _notificationSyncRequested = false;
         unawaited(_syncMedicationNotifications());
+      } else {
+        _armNotificationTimer();
       }
     }
   }

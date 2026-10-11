@@ -239,6 +239,8 @@ void main() {
         late List<Map<String, Object>> delivered;
         late List<Map<String, Object>> pending;
         late bool permissionEnabled;
+        late bool exactAlarmPermissionEnabled;
+        String? exactSchedulingError;
         late FlutterLocalNotificationsPlatform previousPlatform;
         setUp(() {
           debugDefaultTargetPlatformOverride = platform;
@@ -252,6 +254,8 @@ void main() {
           delivered = [];
           pending = [];
           permissionEnabled = true;
+          exactAlarmPermissionEnabled = true;
+          exactSchedulingError = null;
           TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
               .setMockMethodCallHandler(channel, (call) async {
                 calls.add(call);
@@ -265,6 +269,17 @@ void main() {
                     };
                   case 'areNotificationsEnabled':
                     return permissionEnabled;
+                  case 'canScheduleExactNotifications':
+                    return exactAlarmPermissionEnabled;
+                  case 'zonedSchedule':
+                    if (platform == TargetPlatform.android &&
+                        exactSchedulingError != null &&
+                        ((call.arguments as Map)['platformSpecifics']
+                                as Map)['scheduleMode'] ==
+                            'exactAllowWhileIdle') {
+                      throw PlatformException(code: exactSchedulingError!);
+                    }
+                    return null;
                   case 'getActiveNotifications':
                     return [
                       for (final notification in delivered)
@@ -311,6 +326,181 @@ void main() {
           debugDefaultTargetPlatformOverride = null;
           FlutterLocalNotificationsPlatform.instance = previousPlatform;
         });
+
+        test(
+          'native reminders are scheduled at the selected minute boundary',
+          () async {
+            final service = DefaultMedicationNotificationService();
+            final now = DateTime.now();
+            final due = DateTime(
+              now.year,
+              now.month,
+              now.day,
+              now.hour,
+              now.minute + 2,
+            );
+            await service.syncDueDoses(
+              doses: [dose(id: 'minute-boundary', scheduledFor: due)],
+              medicationNames: const {},
+              now: now,
+            );
+            final request = calls.singleWhere(
+              (call) => call.method == 'zonedSchedule',
+            );
+            final arguments = request.arguments as Map;
+            final scheduled = DateTime.parse(
+              arguments['scheduledDateTime'] as String,
+            );
+            expect(scheduled.second, 0);
+            expect(scheduled.millisecond, 0);
+            if (platform == TargetPlatform.android) {
+              expect(
+                (arguments['platformSpecifics'] as Map)['scheduleMode'],
+                'exactAllowWhileIdle',
+              );
+            }
+            await service.dispose();
+          },
+        );
+
+        if (platform == TargetPlatform.android) {
+          test(
+            'granting exact-alarm access upgrades an existing fallback',
+            () async {
+              exactAlarmPermissionEnabled = false;
+              final service = DefaultMedicationNotificationService();
+              final now = DateTime.now();
+              final future = dose(
+                id: 'precise-upgrade',
+                scheduledFor: now.add(const Duration(hours: 1)),
+              );
+              Future<void> sync(int seconds) async {
+                await service.syncDueDoses(
+                  doses: [future],
+                  medicationNames: const {},
+                  now: now.add(Duration(seconds: seconds)),
+                );
+              }
+
+              await sync(0);
+              final first =
+                  calls
+                          .singleWhere((call) => call.method == 'zonedSchedule')
+                          .arguments
+                      as Map;
+              expect(
+                (first['platformSpecifics'] as Map)['scheduleMode'],
+                'inexactAllowWhileIdle',
+              );
+              pending.add({
+                'id': first['id'] as int,
+                'payload': first['payload'] as String,
+              });
+              exactAlarmPermissionEnabled = true;
+              await sync(1);
+              final scheduled = calls
+                  .where((call) => call.method == 'zonedSchedule')
+                  .toList();
+              expect(scheduled, hasLength(2));
+              final upgraded = scheduled.last.arguments as Map;
+              expect(
+                (upgraded['platformSpecifics'] as Map)['scheduleMode'],
+                'exactAllowWhileIdle',
+              );
+              expect(upgraded['id'], first['id']);
+              expect(upgraded['scheduledDateTime'], first['scheduledDateTime']);
+              await sync(2);
+              expect(
+                calls.where((call) => call.method == 'zonedSchedule'),
+                hasLength(2),
+              );
+              exactAlarmPermissionEnabled = false;
+              await sync(3);
+              expect(
+                ((calls
+                            .lastWhere((call) => call.method == 'zonedSchedule')
+                            .arguments
+                        as Map)['platformSpecifics']
+                    as Map)['scheduleMode'],
+                'inexactAllowWhileIdle',
+              );
+              await service.dispose();
+            },
+          );
+
+          test('permission revocation during scheduling falls back and can recover', () async {
+            exactSchedulingError = 'exact_alarms_not_permitted';
+            final service = DefaultMedicationNotificationService();
+            final now = DateTime.now();
+            final future = dose(
+              id: 'permission-race',
+              scheduledFor: now.add(const Duration(hours: 1)),
+            );
+            await service.syncDueDoses(
+              doses: [future],
+              medicationNames: const {},
+              now: now,
+            );
+            final scheduled = calls
+                .where((call) => call.method == 'zonedSchedule')
+                .toList();
+            expect(scheduled, hasLength(2));
+            final fallback = scheduled.last.arguments as Map;
+            expect(
+              (fallback['platformSpecifics'] as Map)['scheduleMode'],
+              'inexactAllowWhileIdle',
+            );
+            pending.add({
+              'id': fallback['id'] as int,
+              'payload': fallback['payload'] as String,
+            });
+            exactSchedulingError = null;
+            await service.syncDueDoses(
+              doses: [future],
+              medicationNames: const {},
+              now: now.add(const Duration(seconds: 1)),
+            );
+            expect(
+              ((calls
+                          .lastWhere((call) => call.method == 'zonedSchedule')
+                          .arguments
+                      as Map)['platformSpecifics']
+                  as Map)['scheduleMode'],
+              'exactAllowWhileIdle',
+            );
+            await service.dispose();
+          });
+
+          test('unrelated scheduling failures never silently switch to inexact alarms', () async {
+            exactSchedulingError = 'notification_error';
+            final service = DefaultMedicationNotificationService();
+            final now = DateTime.now();
+            await expectLater(
+              service.syncDueDoses(
+                doses: [
+                  dose(
+                    id: 'failed-schedule',
+                    scheduledFor: now.add(const Duration(hours: 1)),
+                  ),
+                ],
+                medicationNames: const {},
+                now: now,
+              ),
+              throwsA(
+                isA<PlatformException>().having(
+                  (error) => error.code,
+                  'code',
+                  'notification_error',
+                ),
+              ),
+            );
+            expect(
+              calls.where((call) => call.method == 'zonedSchedule'),
+              hasLength(1),
+            );
+            await service.dispose();
+          });
+        }
 
         test(
           'denied iOS permission skips scheduling and reports denial',

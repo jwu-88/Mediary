@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:mediary/data/mediary_data_store.dart';
 import 'package:mediary/data/mediary_models.dart';
 import 'package:mediary/data/mediary_repository.dart';
@@ -12,6 +13,9 @@ import 'package:mediary/main.dart';
 import 'package:mediary/notifications/medication_notification_service.dart';
 
 import 'support/continuous_text_entry.dart';
+
+class _UnavailableNotificationPlatform
+    extends FlutterLocalNotificationsPlatform {}
 
 class _EmptyCatalog implements MedicationCatalogClient {
   @override
@@ -62,6 +66,7 @@ class _SnapshotStore extends MediaryDataStore {
 class _NotificationSpy implements MedicationNotificationService {
   int cleared = 0;
   final snapshots = <List<DoseLogRecord>>[];
+  final syncTimes = <DateTime?>[];
   Completer<void>? hold;
   List<MedicationDueNotification> nextDue = [];
   @override
@@ -84,6 +89,7 @@ class _NotificationSpy implements MedicationNotificationService {
     DateTime? now,
   }) async {
     snapshots.add(doses);
+    syncTimes.add(now);
     await hold?.future;
     final result = nextDue;
     nextDue = [];
@@ -91,7 +97,61 @@ class _NotificationSpy implements MedicationNotificationService {
   }
 }
 
+class _TimedNotifications extends _NotificationSpy {
+  final service = DefaultMedicationNotificationService();
+  final delivered = <MedicationDueNotification>[];
+
+  @override
+  Future<void> initialize() => service.initialize();
+
+  @override
+  Future<List<MedicationDueNotification>> syncDueDoses({
+    required List<DoseLogRecord> doses,
+    required Map<String, String> medicationNames,
+    Map<String, String> scheduleTimezones = const {},
+    DateTime? now,
+  }) async {
+    await super.syncDueDoses(
+      doses: doses,
+      medicationNames: medicationNames,
+      scheduleTimezones: scheduleTimezones,
+      now: now,
+    );
+    final due = await service.syncDueDoses(
+      doses: doses,
+      medicationNames: medicationNames,
+      scheduleTimezones: scheduleTimezones,
+      now: now,
+    );
+    delivered.addAll(due);
+    return due;
+  }
+
+  @override
+  Future<void> dispose() => service.dispose();
+}
+
+DoseLogRecord _timedDose(DateTime due, {DateTime? snoozedUntil}) =>
+    DoseLogRecord(
+      id: 'active-dose',
+      medicationId: 'active-med',
+      scheduleId: 'active-schedule',
+      scheduledFor: due,
+      localDate: '2026-10-04',
+      localTime:
+          '${due.hour.toString().padLeft(2, '0')}:'
+          '${due.minute.toString().padLeft(2, '0')}:'
+          '${due.second.toString().padLeft(2, '0')}',
+      status: snoozedUntil == null ? 'due' : 'snoozed',
+      snoozedUntil: snoozedUntil,
+    );
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  if (!kIsWeb) {
+    FlutterLocalNotificationsPlatform.instance =
+        _UnavailableNotificationPlatform();
+  }
   late _SnapshotStore store;
   late _NotificationSpy notifications;
   setUp(() {
@@ -170,9 +230,11 @@ void main() {
           ),
       ];
   });
-  tearDown(() => store.dispose());
+  tearDown(() {
+    store.dispose();
+  });
 
-  Future<void> open(WidgetTester tester) async {
+  Future<void> open(WidgetTester tester, {DateTime Function()? clock}) async {
     await tester.pumpWidget(
       MaterialApp(
         home: AuthenticatedHome(
@@ -180,6 +242,7 @@ void main() {
           now: DateTime(2026, 10, 4, 9),
           dataStore: store,
           notificationService: notifications,
+          notificationClock: clock,
           catalogClient: _EmptyCatalog(),
           useSidebarNavigation: true,
         ),
@@ -187,6 +250,146 @@ void main() {
     );
     await tester.pump();
   }
+
+  for (final start in [
+    DateTime.utc(2026, 10, 4, 8, 59),
+    DateTime.utc(2026, 10, 4, 8, 59, 47, 321),
+    DateTime.utc(2026, 10, 4, 8, 59, 59, 999),
+  ]) {
+    testWidgets('reminds at the exact minute when opened at $start', (
+      tester,
+    ) async {
+      final timed = _TimedNotifications();
+      notifications = timed;
+      final due = DateTime.utc(2026, 10, 4, 9);
+      store.doseLogs = [_timedDose(due)];
+      final beginning = tester.binding.clock.now();
+      DateTime clock() =>
+          start.add(tester.binding.clock.now().difference(beginning));
+      await open(tester, clock: clock);
+      await tester.pump();
+      await tester.pump(
+        due.difference(clock()) - const Duration(milliseconds: 1),
+      );
+      expect(timed.delivered, isEmpty);
+      await tester.pump(const Duration(milliseconds: 1));
+      await tester.pump();
+      expect(timed.delivered.single.doseId, 'active-dose');
+      expect(timed.delivered.single.scheduledFor.toUtc(), due);
+      expect(timed.syncTimes.last, due);
+      await tester.pump(const Duration(seconds: 20));
+      expect(timed.delivered, hasLength(1));
+      await tester.pumpWidget(const SizedBox());
+      await timed.dispose();
+    });
+  }
+
+  testWidgets('snoozed reminders fire at their new second-level deadline', (
+    tester,
+  ) async {
+    final timed = _TimedNotifications();
+    notifications = timed;
+    final start = DateTime.utc(2026, 10, 4, 8, 59, 58);
+    final original = DateTime.utc(2026, 10, 4, 9);
+    final until = original.add(const Duration(seconds: 7, milliseconds: 500));
+    store.doseLogs = [_timedDose(original, snoozedUntil: until)];
+    final beginning = tester.binding.clock.now();
+    DateTime clock() =>
+        start.add(tester.binding.clock.now().difference(beginning));
+    await open(tester, clock: clock);
+    await tester.pump(original.difference(clock()));
+    expect(timed.delivered, isEmpty);
+    await tester.pump(
+      until.difference(clock()) - const Duration(milliseconds: 1),
+    );
+    expect(timed.delivered, isEmpty);
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pump();
+    expect(timed.delivered.single.scheduledFor, until);
+    expect(timed.syncTimes.last, until);
+    await tester.pumpWidget(const SizedBox());
+    await timed.dispose();
+  });
+
+  testWidgets('editing a reminder rearms an earlier deadline immediately', (
+    tester,
+  ) async {
+    final timed = _TimedNotifications();
+    notifications = timed;
+    final start = DateTime.utc(2026, 10, 4, 9, 0, 1);
+    final earlier = start.add(const Duration(seconds: 2));
+    store.doseLogs = [_timedDose(DateTime.utc(2026, 10, 4, 9, 1))];
+    final beginning = tester.binding.clock.now();
+    DateTime clock() =>
+        start.add(tester.binding.clock.now().difference(beginning));
+    await open(tester, clock: clock);
+    store.doseLogs = [_timedDose(earlier)];
+    store.refresh();
+    await tester.pump();
+    await tester.pump(
+      earlier.difference(clock()) - const Duration(milliseconds: 1),
+    );
+    expect(timed.delivered, isEmpty);
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pump();
+    expect(timed.delivered.single.scheduledFor.toUtc(), earlier);
+    await tester.pump(const Duration(minutes: 1));
+    expect(timed.delivered, hasLength(1));
+    await tester.pumpWidget(const SizedBox());
+    await timed.dispose();
+  });
+
+  testWidgets('deleting the last future reminder cancels its timer', (
+    tester,
+  ) async {
+    final timed = _TimedNotifications();
+    notifications = timed;
+    final start = DateTime.utc(2026, 10, 4, 8, 59, 50);
+    final due = DateTime.utc(2026, 10, 4, 9);
+    store.doseLogs = [_timedDose(due)];
+    final beginning = tester.binding.clock.now();
+    DateTime clock() =>
+        start.add(tester.binding.clock.now().difference(beginning));
+    await open(tester, clock: clock);
+    store.doseLogs = [];
+    store.refresh();
+    await tester.pump();
+    final count = timed.snapshots.length;
+    await tester.pump(due.difference(clock()) + const Duration(minutes: 1));
+    expect(timed.delivered, isEmpty);
+    expect(timed.snapshots, hasLength(count));
+    await tester.pumpWidget(const SizedBox());
+    await timed.dispose();
+  });
+
+  testWidgets(
+    'resuming after a clock jump immediately reconciles a due minute',
+    (tester) async {
+      final timed = _TimedNotifications();
+      notifications = timed;
+      final start = DateTime.utc(2026, 10, 4, 8, 59, 50);
+      final due = DateTime.utc(2026, 10, 4, 9);
+      store.doseLogs = [_timedDose(due)];
+      final beginning = tester.binding.clock.now();
+      var jump = Duration.zero;
+      DateTime clock() =>
+          start.add(tester.binding.clock.now().difference(beginning) + jump);
+      await open(tester, clock: clock);
+      expect(timed.delivered, isEmpty);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      jump = const Duration(seconds: 11);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      await tester.pump();
+      expect(timed.delivered.single.scheduledFor.toUtc(), due);
+      final count = timed.snapshots.length;
+      await tester.pump(const Duration(seconds: 20));
+      expect(timed.delivered, hasLength(1));
+      expect(timed.snapshots, hasLength(count));
+      await tester.pumpWidget(const SizedBox());
+      await timed.dispose();
+    },
+  );
 
   testWidgets(
     'web reminders appear and expire without interrupting text input',

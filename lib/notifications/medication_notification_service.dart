@@ -1,14 +1,15 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../data/mediary_models.dart';
 import '../data/dose_occurrence_identity.dart';
 import '../text_formatting.dart';
 import '../time_formatting.dart';
+import 'medication_reminder_timing.dart';
 import 'web_notification_stub.dart'
     if (dart.library.html) 'web_notification_web.dart';
 
@@ -80,13 +81,13 @@ class DefaultMedicationNotificationService
   static const _scheduledPayloadPrefix = 'mediary:scheduled:';
   static final _summaryId = notificationIdForDose('mediary:due-summary');
   static const _recentDoseWindow = Duration(minutes: 2);
-  static bool _timeZonesInitialized = false;
 
   final FlutterLocalNotificationsPlugin _plugin;
   final Set<String> _notifiedDoseIds = <String>{};
   final Set<String> _scheduledDoseIds = <String>{};
   final Map<String, DateTime> _reminderTimes = <String, DateTime>{};
   final Map<String, String> _scheduledNames = <String, String>{};
+  final Map<int, AndroidScheduleMode> _scheduledModes = {};
   final Set<int> _legacyDeliveredIds = <int>{};
   final Map<String, String> _doseNotificationKeys = <String, String>{};
   final Set<String> _notifiedOccurrenceKeys = <String>{};
@@ -104,16 +105,7 @@ class DefaultMedicationNotificationService
   @override
   Future<void> initialize() async {
     if (_initialized || _disposed) return;
-    if (!_timeZonesInitialized) {
-      tz_data.initializeTimeZones();
-      try {
-        tz.setLocalLocation(tz.getLocation(deviceScheduleTimezone()));
-      } catch (_) {
-        // keep the package's default location if the platform zone cannot be
-        // mapped to an iana name.
-      }
-      _timeZonesInitialized = true;
-    }
+    initializeMedicationReminderTimeZones();
 
     if (!_supportsNativeNotifications) {
       _initialized = true;
@@ -298,9 +290,10 @@ class DefaultMedicationNotificationService
     final currentTime = now ?? DateTime.now();
     final scheduledTimes = <String, DateTime>{
       for (final dose in doses)
-        dose.id:
-            dose.snoozedUntil ??
-            _scheduledDateFor(dose, scheduleTimezones[dose.scheduleId]),
+        dose.id: medicationReminderTime(
+          dose,
+          scheduleTimezone: scheduleTimezones[dose.scheduleId],
+        ),
     };
     // resolve legacy duplicates and terminal states exactly as the ui does,
     // before filtering active doses. a taken duplicate must suppress its due
@@ -442,6 +435,7 @@ class DefaultMedicationNotificationService
     }
 
     if (await permissionState() != 'granted') return newlyDue;
+    final androidScheduleMode = await _preferredAndroidScheduleMode();
 
     // clear stale delivered alerts before scheduling replacements, since
     // cancellation also removes pending requests with the same native id.
@@ -495,6 +489,7 @@ class DefaultMedicationNotificationService
     final futureNotificationIds = futureReminders
         .map((reminder) => reminder.id)
         .toSet();
+    _scheduledModes.removeWhere((id, _) => !futureNotificationIds.contains(id));
     for (final doseId in _scheduledDoseIds.difference(futureIds).toList()) {
       _scheduledDoseIds.remove(doseId);
     }
@@ -518,6 +513,8 @@ class DefaultMedicationNotificationService
     for (final reminder in futureReminders) {
       if (pendingNotificationIds.contains(reminder.id) &&
           pendingPayloads[reminder.id] == reminder.payload &&
+          (defaultTargetPlatform != TargetPlatform.android ||
+              _scheduledModes[reminder.id] == androidScheduleMode) &&
           reminder.doses.every(
             (dose) =>
                 previouslyScheduledIds.contains(dose.doseId) &&
@@ -526,7 +523,10 @@ class DefaultMedicationNotificationService
           )) {
         continue;
       }
-      await _scheduleReminder(reminder);
+      await _scheduleReminder(
+        reminder,
+        androidScheduleMode: androidScheduleMode,
+      );
     }
     _scheduledNames.removeWhere((id, _) => !futureIds.contains(id));
 
@@ -579,8 +579,28 @@ class DefaultMedicationNotificationService
     );
   }
 
-  Future<void> _scheduleReminder(_ScheduledReminder reminder) async {
+  Future<AndroidScheduleMode> _preferredAndroidScheduleMode() async {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        final enabled = await _plugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >()
+            ?.canScheduleExactNotifications();
+        if (enabled == false) return AndroidScheduleMode.inexactAllowWhileIdle;
+      } catch (_) {
+        // older platform implementations may not expose this permission check.
+      }
+    }
+    return AndroidScheduleMode.exactAllowWhileIdle;
+  }
+
+  Future<void> _scheduleReminder(
+    _ScheduledReminder reminder, {
+    AndroidScheduleMode? androidScheduleMode,
+  }) async {
     final scheduled = tz.TZDateTime.from(reminder.scheduledFor, tz.local);
+    var mode = androidScheduleMode ?? await _preferredAndroidScheduleMode();
     try {
       await _plugin.zonedSchedule(
         id: reminder.id,
@@ -588,23 +608,29 @@ class DefaultMedicationNotificationService
         body: reminder.body,
         scheduledDate: scheduled,
         notificationDetails: _notificationDetails(reminder.payload),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        androidScheduleMode: mode,
         payload: reminder.payload,
       );
-    } catch (_) {
-      // if android exact-alarm access was declined or revoked, retain a
-      // deliverable reminder rather than dropping it altogether. the normal
-      // path remains exact and the active-app sync still catches equality.
+    } on PlatformException catch (error) {
+      if (defaultTargetPlatform != TargetPlatform.android ||
+          mode != AndroidScheduleMode.exactAllowWhileIdle ||
+          error.code != 'exact_alarms_not_permitted') {
+        rethrow;
+      }
+      // permission can be revoked between checking access and scheduling.
+      // retain a reminder, then upgrade it on the next permitted sync.
+      mode = AndroidScheduleMode.inexactAllowWhileIdle;
       await _plugin.zonedSchedule(
         id: reminder.id,
         title: reminder.title,
         body: reminder.body,
         scheduledDate: scheduled,
         notificationDetails: _notificationDetails(reminder.payload),
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        androidScheduleMode: mode,
         payload: reminder.payload,
       );
     }
+    _scheduledModes[reminder.id] = mode;
     _scheduledDoseIds.addAll(reminder.doseIds);
     for (final dose in reminder.doses) {
       _scheduledNames[dose.doseId] = dose.medicationName;
@@ -630,6 +656,7 @@ class DefaultMedicationNotificationService
   }
 
   Future<void> _cancelNativeRequest(int id, {String? payload}) async {
+    _scheduledModes.remove(id);
     await _plugin.cancel(id: id);
     if (defaultTargetPlatform != TargetPlatform.android) return;
     if (payload != null) await _plugin.cancel(id: id, tag: payload);
@@ -675,70 +702,10 @@ class DefaultMedicationNotificationService
     _notifiedDoseIds.clear();
     _scheduledDoseIds.clear();
     _scheduledNames.clear();
+    _scheduledModes.clear();
     _legacyDeliveredIds.clear();
     _notifiedOccurrenceKeys.clear();
     _doseNotificationKeys.clear();
-  }
-
-  DateTime _scheduledDateFor(DoseLogRecord dose, String? timezone) {
-    final normalizedTimezone = timezone?.trim();
-    if (normalizedTimezone == null || normalizedTimezone.isEmpty) {
-      // older dose logs do not carry a timezone on the dose document. their
-      // firestore timestamp is already the source of truth, so preserve it.
-      return dose.scheduledFor;
-    }
-    final location = _locationFor(timezone);
-    final dateParts = dose.localDate.split('-').map(int.tryParse).toList();
-    final timeParts = dose.localTime.split(':').map(int.tryParse).toList();
-    if (dateParts.length == 3 &&
-        dateParts.every((part) => part != null) &&
-        timeParts.length >= 2 &&
-        timeParts.take(2).every((part) => part != null)) {
-      final metadataDate = tz.TZDateTime(
-        location,
-        dateParts[0]!,
-        dateParts[1]!,
-        dateParts[2]!,
-        timeParts[0]!,
-        timeParts[1]!,
-        timeParts.length > 2 && timeParts[2] != null ? timeParts[2]! : 0,
-      );
-      if (normalizedTimezone == 'UTC') {
-        // before schedules stored the device's iana timezone, the app
-        // defaulted to utc while scheduledfor was still written from the
-        // device clock. recognize only that legacy shape; an explicitly
-        // selected utc schedule continues to use its metadata as the source
-        // of truth.
-        final deviceLocation = _locationFor(deviceScheduleTimezone());
-        final deviceTime = tz.TZDateTime.from(
-          dose.scheduledFor,
-          deviceLocation,
-        );
-        final matchesLegacyLocalTime =
-            deviceTime.year == dateParts[0] &&
-            deviceTime.month == dateParts[1] &&
-            deviceTime.day == dateParts[2] &&
-            deviceTime.hour == timeParts[0] &&
-            deviceTime.minute == timeParts[1] &&
-            deviceTime.second ==
-                (timeParts.length > 2 && timeParts[2] != null
-                    ? timeParts[2]
-                    : 0);
-        if (matchesLegacyLocalTime) return dose.scheduledFor;
-      }
-      return metadataDate;
-    }
-    return tz.TZDateTime.from(dose.scheduledFor, location);
-  }
-
-  tz.Location _locationFor(String? timezone) {
-    final normalized = timezone?.trim();
-    if (normalized == null || normalized.isEmpty) return tz.local;
-    try {
-      return tz.getLocation(normalized);
-    } catch (_) {
-      return tz.local;
-    }
   }
 
   NotificationDetails _notificationDetails(String payload) =>
@@ -785,6 +752,7 @@ class DefaultMedicationNotificationService
     _scheduledDoseIds.clear();
     _reminderTimes.clear();
     _scheduledNames.clear();
+    _scheduledModes.clear();
     _legacyDeliveredIds.clear();
     _notifiedOccurrenceKeys.clear();
     _doseNotificationKeys.clear();
