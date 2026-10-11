@@ -217,18 +217,18 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: CalendarScreen(
-            initialDate: DateTime(2026, 8, 23),
+            initialDate: DateTime(2026, 10, 11),
             initialDoses: const [
               CalendarDoseData(
                 id: 'dose-1',
-                localDate: '2026-08-23',
+                localDate: '2026-10-11',
                 name: 'Vitamin D3',
                 details: '1000 IU · 8:00 AM',
                 status: 'taken',
               ),
               CalendarDoseData(
                 id: 'dose-2',
-                localDate: '2026-08-23',
+                localDate: '2026-10-11',
                 name: 'Amoxicillin',
                 details: '500 mg · 10:30 AM',
                 status: 'due',
@@ -239,7 +239,10 @@ void main() {
       ),
     );
 
-    expect(find.text('August 2026'), findsOneWidget);
+    expect(find.text('October 2026'), findsOneWidget);
+    expect(find.text('October'), findsOneWidget);
+    expect(find.text('1 dose'), findsOneWidget);
+    expect(find.text('October adherence'), findsNothing);
     expect(find.text('Vitamin D3'), findsOneWidget);
     expect(find.text('Amoxicillin'), findsOneWidget);
     expect(
@@ -249,20 +252,27 @@ void main() {
 
     await tester.tap(find.byKey(const Key('nextMonthButton')));
     await tester.pump();
-    expect(find.text('September 2026'), findsOneWidget);
+    expect(find.text('November 2026'), findsOneWidget);
+    expect(find.text('November'), findsOneWidget);
+    expect(find.text('0 doses'), findsOneWidget);
     expect(find.text('No medications scheduled'), findsOneWidget);
     expect(find.text('Vitamin D3'), findsNothing);
     expect(find.text('Amoxicillin'), findsNothing);
 
     await tester.tap(find.byKey(const Key('previousMonthButton')));
     await tester.pump();
-    expect(find.text('August 2026'), findsOneWidget);
+    expect(find.text('October 2026'), findsOneWidget);
+    expect(find.text('October'), findsOneWidget);
+    expect(find.text('1 dose'), findsOneWidget);
+    expect(find.text('October adherence'), findsNothing);
     expect(find.text('Vitamin D3'), findsOneWidget);
     expect(find.text('Amoxicillin'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('nextMonthButton')));
     await tester.pump();
-    expect(find.text('September 2026'), findsOneWidget);
+    expect(find.text('November 2026'), findsOneWidget);
+    expect(find.text('November'), findsOneWidget);
+    expect(find.text('0 doses'), findsOneWidget);
     expect(find.text('No medications scheduled'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('calendarAddButton')));

@@ -713,14 +713,12 @@ class _AdherenceSummary extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$month adherence',
+                  month,
                   style: AppTextStyles.caption.copyWith(color: palette.muted),
                 ),
                 const SizedBox(height: AppSpacing.xs),
                 Text(
-                  scheduled == 0
-                      ? 'No scheduled doses'
-                      : '$taken of $scheduled doses',
+                  taken == 1 ? '1 dose' : '$taken doses',
                   key: const Key('calendarAdherenceCount'),
                   style: TextStyle(
                     color: palette.ink,
