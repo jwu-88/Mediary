@@ -188,8 +188,65 @@ Future<CameraAccessState> requestCameraAccess() async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  runApp(const MyApp());
+  // Start Firebase before the first frame, but do not block Flutter from
+  // rendering while the native Firebase plugins finish initializing. On iOS
+  // this can be noticeably slow on a simulator (especially on a cold start),
+  // which otherwise leaves the launch screen looking frozen.
+  final firebaseInitialization = Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  runApp(FirebaseBootstrap(initialization: firebaseInitialization));
+}
+
+class FirebaseBootstrap extends StatelessWidget {
+  const FirebaseBootstrap({super.key, required this.initialization});
+
+  final Future<FirebaseApp> initialization;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<FirebaseApp>(
+      future: initialization,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return const MaterialApp(home: _FirebaseStartupError());
+        }
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const MaterialApp(home: _FirebaseStartupScreen());
+        }
+        return const MyApp();
+      },
+    );
+  }
+}
+
+class _FirebaseStartupScreen extends StatelessWidget {
+  const _FirebaseStartupScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(body: Center(child: CircularProgressIndicator()));
+  }
+}
+
+class _FirebaseStartupError extends StatelessWidget {
+  const _FirebaseStartupError();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'Mediary could not start. Check your connection and try again.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyLarge,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MyApp extends StatefulWidget {
