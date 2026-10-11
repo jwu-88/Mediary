@@ -403,7 +403,7 @@ Future<MedicationPickedImage?> pasteMedicationPhoto() async {
 
 /// ocr-backed detector for user-selected and pasted images.
 ///
-/// the platform adapter uses ml kit on android/ios and tesseract.js in the
+/// the platform adapter uses apple vision on ios and tesseract.js in the
 /// browser. every image goes through ocr before catalog verification.
 class MedicationOcrDetector implements MedicationScanDetector {
   const MedicationOcrDetector();

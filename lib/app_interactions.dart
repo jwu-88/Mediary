@@ -137,8 +137,7 @@ class ResponsiveCupertinoButton extends StatelessWidget {
 abstract final class AppHaptics {
   static bool get isSupported {
     if (kIsWeb) return false;
-    return defaultTargetPlatform == TargetPlatform.iOS ||
-        defaultTargetPlatform == TargetPlatform.android;
+    return defaultTargetPlatform == TargetPlatform.iOS;
   }
 
   static Future<void> selection() => trigger(AppHapticKind.selection);

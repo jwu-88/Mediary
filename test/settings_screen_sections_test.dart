@@ -23,7 +23,7 @@ void main() {
           accentColor: AppAccentColor.blue,
           onAccentColorChanged: (_) {},
           accountDisplayName: 'Mediary',
-          accountEmail: 'jayden@example.com',
+          accountEmail: 'user@example.com',
           onOpenAccount: () => accountOpenCount += 1,
         ),
       ),
@@ -52,7 +52,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(of: account, matching: find.text('jayden@example.com')),
+      find.descendant(of: account, matching: find.text('user@example.com')),
       findsOneWidget,
     );
     await tester.tap(find.byKey(const Key('settingsAccountRow')));
@@ -75,7 +75,7 @@ void main() {
           onAppearanceModeChanged: (_) {},
           accentColor: AppAccentColor.blue,
           onAccentColorChanged: (_) {},
-          accountEmail: 'jayden@example.com',
+          accountEmail: 'user@example.com',
           onOpenAccount: () {},
           onSignOut: () async {},
         ),

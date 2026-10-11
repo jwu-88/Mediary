@@ -3,14 +3,17 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-// Exercise the shipped bridge, not a duplicate implementation. Image decode
-// failure routes directly to the engine and makes worker lifecycle deterministic.
+// exercise the shipped bridge. image decode failure routes directly to the
+// engine and makes worker lifecycle deterministic.
 const html = readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
 const bridge = html.match(/<script>\s*(window\.MediaryOcr[\s\S]*?)<\/script>/)[1];
 
-function harness({ failFirst = false, decode = false, width = 800, height = 715, results } = {}) {
+function harness({ failFirst = false, lazyEngine = false, failEngineFirst = false, stallEngineFirst = false, decode = false, width = 800, height = 715, results } = {}) {
   const calls = [];
   const canvases = [];
+  const scripts = [];
+  const loadTimeouts = new Map();
+  let timeoutId = 0;
   let workers = 0;
   let busy = false;
   const Tesseract = {
@@ -60,9 +63,30 @@ function harness({ failFirst = false, decode = false, width = 800, height = 715,
     return result;
   }
   const context = vm.createContext({
-    window: { Tesseract }, Tesseract,
+    window: {
+      Tesseract: lazyEngine ? undefined : Tesseract,
+      setTimeout(callback) { const id = ++timeoutId; loadTimeouts.set(id, callback); return id; },
+      clearTimeout(id) { loadTimeouts.delete(id); },
+    }, Tesseract,
     console: { warn() {} }, Uint32Array, Map,
-    document: { createElement: canvas },
+    document: {
+      createElement(kind) {
+        return kind === 'script' ? { remove() { this.removed = true; } } : canvas();
+      },
+      head: {
+        appendChild(script) {
+          scripts.push(script);
+          if (stallEngineFirst && scripts.length === 1) return;
+          queueMicrotask(() => {
+            if (failEngineFirst && scripts.length === 1) script.onerror();
+            else {
+              context.window.Tesseract = Tesseract;
+              script.onload();
+            }
+          });
+        },
+      },
+    },
     Image: class {
       naturalWidth = width;
       naturalHeight = height;
@@ -70,8 +94,49 @@ function harness({ failFirst = false, decode = false, width = 800, height = 715,
     },
   });
   vm.runInContext(bridge, context);
-  return { ocr: context.window.MediaryOcr, calls, canvases, get workers() { return workers; } };
+  return {
+    ocr: context.window.MediaryOcr, calls, canvases, scripts, loadTimeouts,
+    get workers() { return workers; },
+    expireLoads() { for (const callback of loadTimeouts.values()) callback(); },
+  };
 }
+
+test('startup does not download OCR and concurrent first scans load it once', async () => {
+  const h = harness({ lazyEngine: true });
+  assert.equal(h.scripts.length, 0);
+  assert.equal(h.workers, 0);
+  await Promise.all([h.ocr.recognize('photo1'), h.ocr.recognize('photo2')]);
+  assert.equal(h.scripts.length, 1);
+  assert.match(h.scripts[0].src, /tesseract\.js@4\.1\.1/);
+  assert.equal(h.scripts[0].async, true);
+  assert.equal(h.scripts[0].referrerPolicy, 'no-referrer');
+  assert.equal(h.workers, 1);
+  assert.equal(h.loadTimeouts.size, 0);
+});
+
+test('a failed engine download is removed and the next scan retries', async () => {
+  const h = harness({ lazyEngine: true, failEngineFirst: true });
+  assert.equal(await h.ocr.recognize('offline'), '');
+  assert.equal(h.workers, 0);
+  assert.equal(h.scripts[0].removed, true);
+  assert.ok(await h.ocr.recognize('retry'));
+  assert.equal(h.scripts.length, 2);
+  assert.equal(h.workers, 1);
+  assert.equal(h.loadTimeouts.size, 0);
+});
+
+test('a stalled engine download times out and does not poison retries', async () => {
+  const h = harness({ lazyEngine: true, stallEngineFirst: true });
+  const first = h.ocr.recognize('stalled');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.loadTimeouts.size, 1);
+  h.expireLoads();
+  assert.equal(await first, '');
+  assert.equal(h.scripts[0].removed, true);
+  assert.ok(await h.ocr.recognize('retry'));
+  assert.equal(h.scripts.length, 2);
+  assert.equal(h.loadTimeouts.size, 0);
+});
 
 test('v4 worker initializes English and is reused across queued scans', async () => {
   const h = harness();

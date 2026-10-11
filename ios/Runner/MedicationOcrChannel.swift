@@ -6,11 +6,11 @@ import Vision
 
 /// ios ocr bridge backed by apple's vision framework.
 ///
-/// vision is available on both physical ios devices and apple silicon
-/// simulators, so the app does not need to link google ml kit's incompatible
-/// simulator-only binaries for this feature.
+/// vision runs locally on physical ios devices and apple silicon simulators.
 final class MedicationOcrChannel: NSObject {
   private static let channelName = "com.mediary/medication_ocr"
+  private static let renderingContext = CIContext(options: [.cacheIntermediates: false])
+  private static let recognitionQueue = DispatchQueue(label: "com.mediary.ocr", qos: .userInitiated)
 
   static func register(with messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(name: channelName, binaryMessenger: messenger)
@@ -39,23 +39,23 @@ final class MedicationOcrChannel: NSObject {
     }
   }
 
-  private static func recognize(imageData: Data, result: @escaping FlutterResult) {
-    guard let image = UIImage(data: imageData), let imageReference = image.cgImage else {
-      result(
-        FlutterError(
-          code: "INVALID_IMAGE",
-          message: "The selected image could not be decoded.",
-          details: nil
+  static func recognize(imageData: Data, result: @escaping FlutterResult) {
+    recognitionQueue.async {
+      // image decoding and preprocessing must not block the flutter ui thread.
+      guard let imageReference = decodedImageForRecognition(imageData) else {
+        finish(
+          result: result,
+          value: FlutterError(
+            code: "INVALID_IMAGE",
+            message: "The selected image could not be decoded.",
+            details: nil
+          )
         )
-      )
-      return
-    }
-
-    DispatchQueue.global(qos: .userInitiated).async {
-      let orientation = cgImagePropertyOrientation(for: image.imageOrientation)
+        return
+      }
       let variants = recognitionVariants(
         from: imageReference,
-        orientation: orientation
+        orientation: .up
       )
       var recognizedTexts = [String]()
 
@@ -75,6 +75,22 @@ final class MedicationOcrChannel: NSObject {
     }
   }
 
+  static func decodedImageForRecognition(_ data: Data) -> CGImage? {
+    let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+    guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else {
+      return nil
+    }
+    // decode a bounded thumbnail directly instead of allocating the original
+    // full-resolution photo. imageio also applies its stored orientation.
+    let options = [
+      kCGImageSourceCreateThumbnailFromImageAlways: true,
+      kCGImageSourceCreateThumbnailWithTransform: true,
+      kCGImageSourceThumbnailMaxPixelSize: 2400,
+      kCGImageSourceShouldCacheImmediately: true,
+    ] as CFDictionary
+    return CGImageSourceCreateThumbnailAtIndex(source, 0, options)
+  }
+
   private struct RecognitionVariant {
     let image: CGImage
     let orientation: CGImagePropertyOrientation
@@ -84,7 +100,7 @@ final class MedicationOcrChannel: NSObject {
     from image: CGImage,
     orientation: CGImagePropertyOrientation
   ) -> [RecognitionVariant] {
-    let normalizedImage = upscaledImage(image) ?? image
+    guard let normalizedImage = imageForRecognition(image) else { return [] }
     var variants = [RecognitionVariant(
       image: normalizedImage,
       orientation: orientation
@@ -92,7 +108,6 @@ final class MedicationOcrChannel: NSObject {
 
     let source = CIImage(cgImage: normalizedImage)
       .oriented(forExifOrientation: Int32(orientation.rawValue))
-    let context = CIContext(options: nil)
     for (contrast, brightness) in [(1.25, 0.02), (1.55, 0.0)] {
       guard let filter = CIFilter(name: "CIColorControls") else { continue }
       filter.setValue(source, forKey: kCIInputImageKey)
@@ -101,22 +116,23 @@ final class MedicationOcrChannel: NSObject {
       filter.setValue(brightness, forKey: kCIInputBrightnessKey)
       guard
         let output = filter.outputImage,
-        let processedImage = context.createCGImage(output, from: output.extent)
+        let processedImage = renderingContext.createCGImage(output, from: output.extent)
       else {
         continue
       }
       variants.append(RecognitionVariant(
-        image: upscaledImage(processedImage) ?? processedImage,
+        image: imageForRecognition(processedImage) ?? processedImage,
         orientation: .up
       ))
     }
     return variants
   }
 
-  private static func upscaledImage(_ image: CGImage) -> CGImage? {
+  static func imageForRecognition(_ image: CGImage) -> CGImage? {
     let sourceDimension = CGFloat(max(image.width, image.height))
-    let scale = min(2.5, max(1.0, 2400.0 / sourceDimension))
-    guard scale > 1.01 else { return image }
+    let maxDimension: CGFloat = 2400
+    let scale = min(2.5, maxDimension / sourceDimension)
+    guard sourceDimension > maxDimension || scale > 1.01 else { return image }
 
     let width = max(1, Int(CGFloat(image.width) * scale))
     let height = max(1, Int(CGFloat(image.height) * scale))
@@ -130,7 +146,7 @@ final class MedicationOcrChannel: NSObject {
       space: colorSpace,
       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
     ) else {
-      return image
+      return nil
     }
 
     context.interpolationQuality = .high
@@ -177,22 +193,6 @@ final class MedicationOcrChannel: NSObject {
       .filter { !$0.isEmpty }
       .filter { seen.insert($0.lowercased()).inserted }
       .joined(separator: "\n")
-  }
-
-  private static func cgImagePropertyOrientation(
-    for orientation: UIImage.Orientation
-  ) -> CGImagePropertyOrientation {
-    switch orientation {
-    case .up: return .up
-    case .down: return .down
-    case .left: return .left
-    case .right: return .right
-    case .upMirrored: return .upMirrored
-    case .downMirrored: return .downMirrored
-    case .leftMirrored: return .leftMirrored
-    case .rightMirrored: return .rightMirrored
-    @unknown default: return .up
-    }
   }
 
   private static func finish(result: @escaping FlutterResult, value: Any) {

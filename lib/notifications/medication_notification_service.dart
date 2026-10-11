@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 
@@ -67,7 +66,7 @@ abstract interface class MedicationNotificationService {
   Future<void> dispose();
 }
 
-/// uses flutter_local_notifications on android/ios and an in-app event stream
+/// uses ios local notifications and an in-app event stream
 /// on web. the service only schedules user-owned dose logs; no public catalog or
 /// health data is sent anywhere.
 class DefaultMedicationNotificationService
@@ -87,8 +86,6 @@ class DefaultMedicationNotificationService
   final Set<String> _scheduledDoseIds = <String>{};
   final Map<String, DateTime> _reminderTimes = <String, DateTime>{};
   final Map<String, String> _scheduledNames = <String, String>{};
-  final Map<int, AndroidScheduleMode> _scheduledModes = {};
-  final Set<int> _legacyDeliveredIds = <int>{};
   final Map<String, String> _doseNotificationKeys = <String, String>{};
   final Set<String> _notifiedOccurrenceKeys = <String>{};
   Future<void> _operationQueue = Future<void>.value();
@@ -99,8 +96,12 @@ class DefaultMedicationNotificationService
   bool get _supportsNativeNotifications =>
       _nativeAvailable &&
       !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.iOS);
+      defaultTargetPlatform == TargetPlatform.iOS;
+
+  IOSFlutterLocalNotificationsPlugin? get _iosNotifications => _plugin
+      .resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin
+      >();
 
   @override
   Future<void> initialize() async {
@@ -112,7 +113,6 @@ class DefaultMedicationNotificationService
       return;
     }
 
-    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const darwin = DarwinInitializationSettings(
       requestAlertPermission: false,
       requestBadgePermission: false,
@@ -120,7 +120,7 @@ class DefaultMedicationNotificationService
     );
     try {
       final result = await _plugin.initialize(
-        settings: const InitializationSettings(android: android, iOS: darwin),
+        settings: const InitializationSettings(iOS: darwin),
       );
       _nativeAvailable = result != null;
     } catch (_) {
@@ -143,23 +143,11 @@ class DefaultMedicationNotificationService
     }
     if (!_supportsNativeNotifications) return;
 
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      final android = _plugin
-          .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin
-          >();
-      await android?.requestNotificationsPermission();
-      // android 12+ can defer inexact alarms by several minutes. medication
-      // reminders need the exact alarm permission so the alert is delivered at
-      // the time selected by the user, including while the device is idle.
-      await android?.requestExactAlarmsPermission();
-    } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-      await _plugin
-          .resolvePlatformSpecificImplementation<
-            IOSFlutterLocalNotificationsPlugin
-          >()
-          ?.requestPermissions(alert: true, badge: true, sound: true);
-    }
+    await _iosNotifications?.requestPermissions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
   }
 
   @override
@@ -168,22 +156,7 @@ class DefaultMedicationNotificationService
     if (kIsWeb) return webNotificationPermissionState();
     if (!_supportsNativeNotifications) return 'unavailable';
     try {
-      final bool? enabled;
-      if (defaultTargetPlatform == TargetPlatform.iOS) {
-        enabled =
-            (await _plugin
-                    .resolvePlatformSpecificImplementation<
-                      IOSFlutterLocalNotificationsPlugin
-                    >()
-                    ?.checkPermissions())
-                ?.isEnabled;
-      } else {
-        enabled = await _plugin
-            .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin
-            >()
-            ?.areNotificationsEnabled();
-      }
+      final enabled = (await _iosNotifications?.checkPermissions())?.isEnabled;
       if (enabled == null) return 'unavailable';
       return enabled ? 'granted' : 'denied';
     } catch (_) {
@@ -213,7 +186,7 @@ class DefaultMedicationNotificationService
       for (final request in await _plugin.pendingNotificationRequests()) {
         final reminder = _ScheduledReminder.fromPayload(request.payload);
         if (reminder == null || !reminder.doseIds.contains(doseId)) continue;
-        await _cancelNativeRequest(request.id, payload: request.payload);
+        await _cancelNativeRequest(request.id);
         final remaining = reminder.doses
             .where((dose) => dose.doseId != doseId)
             .toList();
@@ -248,18 +221,14 @@ class DefaultMedicationNotificationService
     try {
       for (final notification in await _plugin.getActiveNotifications()) {
         final doseIds = _doseIdsForPayload(_activePayload(notification));
-        if (doseIds.isEmpty &&
-            notification.channelId != 'medication_reminders') {
-          continue;
-        }
+        if (doseIds.isEmpty) continue;
         _notifiedDoseIds.addAll(doseIds);
         if (notification.id != null) {
-          if (doseIds.isEmpty) _legacyDeliveredIds.add(notification.id!);
           await _cancelDelivered(notification);
         }
       }
     } catch (_) {
-      // some desktop hosts do not expose an os notification tray.
+      // native queries can fail if notification access changes.
     }
   });
 
@@ -331,19 +300,11 @@ class DefaultMedicationNotificationService
           _notifiedOccurrenceKeys.add(key);
         }
       }
-      if (notification.channelId == 'medication_reminders' &&
-          notification.id != null) {
-        _legacyDeliveredIds.add(notification.id!);
-      }
     }
     final changedReminderIds = <String>{};
     final newlyDue = <MedicationDueNotification>[];
     for (final dose in uniqueActiveDoses) {
       final scheduledFor = scheduledTimes[dose.id] ?? dose.scheduledFor;
-      if (_legacyDeliveredIds.contains(notificationIdForDose(dose.id)) &&
-          !scheduledFor.isAfter(currentTime)) {
-        _notifiedDoseIds.add(dose.id);
-      }
       if (scheduledFor.isAfter(currentTime)) {
         // a delivered receipt for the original time must not suppress a
         // later snoozed reminder after recreating the service.
@@ -395,7 +356,6 @@ class DefaultMedicationNotificationService
     }
     _notifiedDoseIds.removeWhere((id) => !activeIds.contains(id));
     _reminderTimes.removeWhere((id, _) => !activeIds.contains(id));
-    _legacyDeliveredIds.clear();
     _notifiedOccurrenceKeys.removeWhere(
       (key) => !activeOccurrenceKeys.contains(key),
     );
@@ -435,7 +395,6 @@ class DefaultMedicationNotificationService
     }
 
     if (await permissionState() != 'granted') return newlyDue;
-    final androidScheduleMode = await _preferredAndroidScheduleMode();
 
     // clear stale delivered alerts before scheduling replacements, since
     // cancellation also removes pending requests with the same native id.
@@ -489,7 +448,6 @@ class DefaultMedicationNotificationService
     final futureNotificationIds = futureReminders
         .map((reminder) => reminder.id)
         .toSet();
-    _scheduledModes.removeWhere((id, _) => !futureNotificationIds.contains(id));
     for (final doseId in _scheduledDoseIds.difference(futureIds).toList()) {
       _scheduledDoseIds.remove(doseId);
     }
@@ -507,14 +465,12 @@ class DefaultMedicationNotificationService
       pendingNotificationIds.add(request.id);
       pendingPayloads[request.id] = request.payload;
       if (!futureNotificationIds.contains(request.id)) {
-        await _cancelNativeRequest(request.id, payload: request.payload);
+        await _cancelNativeRequest(request.id);
       }
     }
     for (final reminder in futureReminders) {
       if (pendingNotificationIds.contains(reminder.id) &&
           pendingPayloads[reminder.id] == reminder.payload &&
-          (defaultTargetPlatform != TargetPlatform.android ||
-              _scheduledModes[reminder.id] == androidScheduleMode) &&
           reminder.doses.every(
             (dose) =>
                 previouslyScheduledIds.contains(dose.doseId) &&
@@ -523,10 +479,7 @@ class DefaultMedicationNotificationService
           )) {
         continue;
       }
-      await _scheduleReminder(
-        reminder,
-        androidScheduleMode: androidScheduleMode,
-      );
+      await _scheduleReminder(reminder);
     }
     _scheduledNames.removeWhere((id, _) => !futureIds.contains(id));
 
@@ -569,68 +522,28 @@ class DefaultMedicationNotificationService
     required String title,
     required String body,
     required String payload,
-  }) {
-    return _plugin.show(
+  }) async {
+    await _iosNotifications?.show(
       id: id,
       title: title,
       body: body,
-      notificationDetails: _notificationDetails(payload),
+      notificationDetails: _notificationDetails,
       payload: payload,
     );
   }
 
-  Future<AndroidScheduleMode> _preferredAndroidScheduleMode() async {
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      try {
-        final enabled = await _plugin
-            .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin
-            >()
-            ?.canScheduleExactNotifications();
-        if (enabled == false) return AndroidScheduleMode.inexactAllowWhileIdle;
-      } catch (_) {
-        // older platform implementations may not expose this permission check.
-      }
-    }
-    return AndroidScheduleMode.exactAllowWhileIdle;
-  }
-
-  Future<void> _scheduleReminder(
-    _ScheduledReminder reminder, {
-    AndroidScheduleMode? androidScheduleMode,
-  }) async {
+  Future<void> _scheduleReminder(_ScheduledReminder reminder) async {
+    final ios = _iosNotifications;
+    if (ios == null) throw StateError('iOS notifications are unavailable');
     final scheduled = tz.TZDateTime.from(reminder.scheduledFor, tz.local);
-    var mode = androidScheduleMode ?? await _preferredAndroidScheduleMode();
-    try {
-      await _plugin.zonedSchedule(
-        id: reminder.id,
-        title: reminder.title,
-        body: reminder.body,
-        scheduledDate: scheduled,
-        notificationDetails: _notificationDetails(reminder.payload),
-        androidScheduleMode: mode,
-        payload: reminder.payload,
-      );
-    } on PlatformException catch (error) {
-      if (defaultTargetPlatform != TargetPlatform.android ||
-          mode != AndroidScheduleMode.exactAllowWhileIdle ||
-          error.code != 'exact_alarms_not_permitted') {
-        rethrow;
-      }
-      // permission can be revoked between checking access and scheduling.
-      // retain a reminder, then upgrade it on the next permitted sync.
-      mode = AndroidScheduleMode.inexactAllowWhileIdle;
-      await _plugin.zonedSchedule(
-        id: reminder.id,
-        title: reminder.title,
-        body: reminder.body,
-        scheduledDate: scheduled,
-        notificationDetails: _notificationDetails(reminder.payload),
-        androidScheduleMode: mode,
-        payload: reminder.payload,
-      );
-    }
-    _scheduledModes[reminder.id] = mode;
+    await ios.zonedSchedule(
+      id: reminder.id,
+      title: reminder.title,
+      body: reminder.body,
+      scheduledDate: scheduled,
+      notificationDetails: _notificationDetails,
+      payload: reminder.payload,
+    );
     _scheduledDoseIds.addAll(reminder.doseIds);
     for (final dose in reminder.doses) {
       _scheduledNames[dose.doseId] = dose.medicationName;
@@ -645,29 +558,16 @@ class DefaultMedicationNotificationService
     }
   }
 
-  // android exposes the tag, but not payload, for delivered notifications.
-  // carry the receipt in its tag so cleanup/restart behavior matches ios.
+  // ios retains each reminder receipt in its notification payload.
   String? _activePayload(ActiveNotification notification) =>
-      notification.payload ?? notification.tag;
+      notification.payload;
 
   Future<void> _cancelDelivered(ActiveNotification notification) async {
     if (notification.id == null) return;
-    await _plugin.cancel(id: notification.id!, tag: notification.tag);
+    await _plugin.cancel(id: notification.id!);
   }
 
-  Future<void> _cancelNativeRequest(int id, {String? payload}) async {
-    _scheduledModes.remove(id);
-    await _plugin.cancel(id: id);
-    if (defaultTargetPlatform != TargetPlatform.android) return;
-    if (payload != null) await _plugin.cancel(id: id, tag: payload);
-    // also clear an earlier delivery if its receipt/tag changed with the
-    // medication name, batch membership, or snooze time.
-    for (final notification in await _activeNativeNotifications()) {
-      if (notification.id == id && notification.tag != null) {
-        await _cancelDelivered(notification);
-      }
-    }
-  }
+  Future<void> _cancelNativeRequest(int id) => _plugin.cancel(id: id);
 
   Set<String> _doseIdsForPayload(String? payload) {
     if (payload == null) return const {};
@@ -702,33 +602,21 @@ class DefaultMedicationNotificationService
     _notifiedDoseIds.clear();
     _scheduledDoseIds.clear();
     _scheduledNames.clear();
-    _scheduledModes.clear();
-    _legacyDeliveredIds.clear();
     _notifiedOccurrenceKeys.clear();
     _doseNotificationKeys.clear();
   }
 
-  NotificationDetails _notificationDetails(String payload) =>
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          'medication_reminders',
-          'Medication reminders',
-          channelDescription: 'Reminders to take scheduled medications.',
-          importance: Importance.high,
-          priority: Priority.high,
-          onlyAlertOnce: true,
-          tag: payload,
-        ),
-        iOS: const DarwinNotificationDetails(
-          // keep reminders visible even when the app is currently in the
-          // foreground. the scheduled notification is still delivered by ios in
-          // the background or after the app is closed.
-          presentAlert: true,
-          presentBanner: true,
-          presentList: true,
-          presentSound: true,
-          threadIdentifier: 'mediary_medication_reminders',
-        ),
+  DarwinNotificationDetails get _notificationDetails =>
+      const DarwinNotificationDetails(
+        // keep reminders visible even when the app is currently in the
+        // foreground. the scheduled notification is still delivered by ios in
+        // the background or after the app is closed.
+        presentAlert: true,
+        presentBanner: true,
+        presentList: true,
+        presentSound: true,
+        interruptionLevel: InterruptionLevel.timeSensitive,
+        threadIdentifier: 'mediary_medication_reminders',
       );
 
   /// stable positive id so a firestore dose update replaces its old request.
@@ -752,8 +640,6 @@ class DefaultMedicationNotificationService
     _scheduledDoseIds.clear();
     _reminderTimes.clear();
     _scheduledNames.clear();
-    _scheduledModes.clear();
-    _legacyDeliveredIds.clear();
     _notifiedOccurrenceKeys.clear();
     _doseNotificationKeys.clear();
     if (kIsWeb) clearDeliveredWebNotifications();

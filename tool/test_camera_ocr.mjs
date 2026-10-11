@@ -143,7 +143,7 @@ async function createProbePage(mode = 'fixture') {
       });
     }, baselineBridge);
   }
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     window.__ocrAttempts = [];
     window.__ocrEvidence = null;
     if (typeof window.MediaryOcr.recognizeWithEvidence === 'function') {
@@ -153,6 +153,11 @@ async function createProbePage(mode = 'fixture') {
         try { window.__ocrEvidence = JSON.parse(encoded); } catch { window.__ocrEvidence = null; }
         return encoded;
       };
+    }
+    // the app loads the engine on demand; validation loads it before
+    // instrumenting worker creation so every recognition pass is recorded.
+    if (!window.Tesseract && typeof window.MediaryOcr._loadEngine === 'function') {
+      await window.MediaryOcr._loadEngine();
     }
     if (!window.Tesseract) return;
     const create = window.Tesseract.createWorker;

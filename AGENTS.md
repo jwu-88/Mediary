@@ -4,7 +4,7 @@
 
 This is a single Flutter application. Keep Dart application code in `lib/`; the current entry point is `lib/main.dart`. Put widget and unit tests in `test/`, mirroring the source file where practical (for example, `lib/widgets/counter.dart` → `test/widgets/counter_test.dart`).
 
-Platform runners live in `android/`, `ios/`, `web/`, `linux/`, `macos/`, and `windows/`. Change them only for platform-specific configuration. Declare packages, app metadata, and bundled assets in `pubspec.yaml`; add assets under a clearly named top-level directory such as `assets/images/` and register them there.
+Product development targets iOS and web. Platform runners live in `ios/`, `web/`, `linux/`, `macos/`, and `windows/`. Change them only for platform-specific configuration. Declare packages, app metadata, and bundled assets in `pubspec.yaml`; add assets under a clearly named top-level directory such as `assets/images/` and register them there.
 
 ## Build, Test, and Development Commands
 
@@ -13,7 +13,7 @@ Platform runners live in `android/`, `ios/`, `web/`, `linux/`, `macos/`, and `wi
 - `flutter analyze` — run the Dart analyzer and the configured Flutter lints.
 - `flutter test` — run the `flutter_test` suite in `test/`.
 - `dart format .` — format all Dart code before submitting changes.
-- `flutter build <platform>` — create a release build, for example `flutter build apk` or `flutter build web`.
+- `flutter build <platform>` — create a release build, for example `flutter build ios --no-codesign` or `flutter build web`.
 
 ## Coding Style & Naming Conventions
 

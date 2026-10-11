@@ -186,7 +186,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(
         home: ProfileScreen(
-          email: 'jayden@example.com',
+          email: 'user@example.com',
           displayName: 'Mediary',
           bottomPadding: 0,
         ),

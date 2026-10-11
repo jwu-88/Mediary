@@ -7,7 +7,7 @@ import 'package:mediary/profile_screen.dart';
 import 'support/continuous_text_entry.dart';
 
 void main() {
-  for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+  for (final platform in [TargetPlatform.iOS]) {
     for (final size in const [Size(390, 844), Size(1280, 800)]) {
       void configure(WidgetTester tester) {
         tester.view.physicalSize = size;

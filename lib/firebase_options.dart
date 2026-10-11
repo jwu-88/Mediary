@@ -20,8 +20,6 @@ class DefaultFirebaseOptions {
       return web;
     }
     switch (defaultTargetPlatform) {
-      case TargetPlatform.android:
-        return android;
       case TargetPlatform.iOS:
         return ios;
       case TargetPlatform.macOS:
@@ -49,14 +47,6 @@ class DefaultFirebaseOptions {
     messagingSenderId: '958809412045',
     projectId: 'cacapp-3a771',
     authDomain: 'cacapp-3a771.firebaseapp.com',
-    storageBucket: 'cacapp-3a771.firebasestorage.app',
-  );
-
-  static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBS-e95lWlY1nlwf4yK9Rzl710WFow0sls',
-    appId: '1:958809412045:android:08c08350befaac04c57484',
-    messagingSenderId: '958809412045',
-    projectId: 'cacapp-3a771',
     storageBucket: 'cacapp-3a771.firebasestorage.app',
   );
 

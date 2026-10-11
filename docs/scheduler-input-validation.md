@@ -22,9 +22,8 @@ The notification service uses the same occurrence identity and status precedence
 as the UI, including legacy `HH:mm` and canonical `HH:mm:ss` records. Taken or
 cancelled duplicates cannot create a due alert. Receipts suppress repeat alerts
 when a record ID changes or the service restarts; a receipt for an earlier time
-does not suppress a snoozed reminder. Android delivered alerts expose tags rather
-than payloads, so new alerts carry their receipt in the tag and cancellation
-passes that tag. Legacy Android alerts are cleared by their app channel.
+does not suppress a snoozed reminder. iOS delivered alerts retain their
+receipts in their notification payloads.
 
 The calendar's pending rows showed the selected dose amount, but the hydrated
 rows lost it. Pending and persisted calendar rows now show the same medication
@@ -41,15 +40,15 @@ Timezone data is initialized once for time-picker validation.
 - Chrome regression suite: **66 passed** across time entry, auth/profile/search,
   scheduler persistence, toast lifecycle, reminders, and calendar/dashboard rows.
 - `flutter analyze --no-pub`: no issues.
-- Release web build, debug Android APK, and debug iOS simulator build: passed.
+- Release web build and debug iOS simulator build: passed.
 - Character-by-character tests keep one keyboard connection while clearing,
   deleting, correcting invalid input, and crossing past/future time validation.
-- Android/iOS form variants cover 390 × 844 and 1280 × 800 layouts, keyboard
+- iOS form variants cover 390 × 844 and 1280 × 800 layouts, keyboard
   insets, and parent rebuilds. Time-entry tests also cover 12/24-hour formats,
   larger desktop sizes, and large text.
 - Scheduler tests compare displayed drafts to captured write values and then
   hydrate the same records to verify unchanged IDs, labels, dates, and status.
-- Native method-channel tests cover both Android and iOS, eight simultaneous
+- Native method-channel tests cover iOS, eight simultaneous
   doses, reordered snapshots, cancellation, native delivery versus foreground
   catch-up, the iOS 64-request limit, restart receipts, snoozing, and legacy data.
 
@@ -78,7 +77,6 @@ flutter test --no-pub --platform chrome \
   test/calendar_table_layout_test.dart \
   test/dashboard_table_layout_test.dart
 flutter build web --no-pub
-flutter build apk --debug --no-pub
 flutter build ios --simulator --debug --no-codesign --no-pub
 ```
 

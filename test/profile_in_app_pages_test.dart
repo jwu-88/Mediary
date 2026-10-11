@@ -17,7 +17,7 @@ void main() {
   Widget buildProfile({Future<void> Function()? onSignOut}) {
     return MaterialApp(
       home: ProfileScreen(
-        email: 'jayden@example.com',
+        email: 'user@example.com',
         displayName: 'Mediary',
         bottomPadding: 0,
         onSignOut: onSignOut,
@@ -77,7 +77,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('profileNameField')),
-      'Jayden Reed',
+      'Mediary User',
     );
     await tester.tap(find.byKey(const Key('cancelProfileEditButton')));
     await tester.pumpAndSettle();
@@ -94,7 +94,7 @@ void main() {
           .widget<TextField>(find.byKey(const Key('profileNameField')))
           .controller!
           .text,
-      'Jayden Reed',
+      'Mediary User',
     );
 
     await tester.ensureVisible(find.byKey(const Key('addAllergyButton')));

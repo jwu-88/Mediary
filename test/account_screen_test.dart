@@ -10,7 +10,7 @@ void main() {
   }) {
     return MaterialApp(
       home: ProfileScreen(
-        email: 'jayden@example.com',
+        email: 'user@example.com',
         displayName: 'Mediary',
         pageTitle: 'Account',
         bottomPadding: 0,
@@ -32,7 +32,7 @@ void main() {
 
     expect(find.text('Account'), findsOneWidget);
     expect(find.text('Mediary'), findsOneWidget);
-    expect(find.text('jayden@example.com'), findsOneWidget);
+    expect(find.text('user@example.com'), findsOneWidget);
     expect(find.text('Health Details'), findsOneWidget);
     expect(find.text('0 active'), findsOneWidget);
     expect(find.text('Care Team'), findsOneWidget);
@@ -101,7 +101,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: ProfileScreen(
-          email: 'jayden@example.com',
+          email: 'user@example.com',
           displayName: 'Mediary',
           bottomPadding: 0,
           activeMedications: [medication],

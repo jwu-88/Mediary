@@ -6,7 +6,7 @@ stops the live camera and opens **Review photo**, showing the captured image wit
 a scan write. Use photo starts recognition once, retains the frozen image while
 processing, and opens Review Medication when recognition finishes.
 
-Native iOS/Android camera capture continues to use the system image picker. Its
+Native iOS camera capture continues to use the system image picker. Its
 returned photo goes through the same in-app confirmation screen. The operating
 system may also show its own camera confirmation. Gallery selection keeps its
 existing direct recognition flow.
@@ -34,7 +34,7 @@ existing direct recognition flow.
 The photo review regression cases cover no recognition/saving before consent,
 retake and Back, unchanged image bytes, duplicate approval, canceled and late
 capture, invalid image data, retry after approval failure, and a slow scan save.
-The layout matrix covers iOS and Android at 320 × 640, 402 × 874, and 568 × 320,
+The layout matrix covers iOS at 320 × 640, 402 × 874, and 568 × 320,
 with 1× and 3× text. Browser tests exercise actual video/canvas capture with a
 synthetic camera, freeze, stream shutdown, retake, background/foreground resume,
 and delayed permission completion.
@@ -47,11 +47,11 @@ flutter test
 sh tool/test_browser_camera.sh
 flutter build web
 flutter build ios --simulator --debug --no-codesign
-flutter build apk --debug
 ```
 
-The VM suite passes 456 tests, including 21 photo-review tests; both browser
-camera tests pass. The iOS build uses the project's local ignored Firebase
-configuration, which is not part of these commits. These checks verify app flow,
-layout, browser camera lifecycle, and mobile compilation. Physical device optics
-and manufacturer-specific native camera interfaces were not exercised.
+The current VM suite passes 529 tests, including the photo-review cases; both
+browser camera tests pass. iOS initializes Firebase from the client options in
+`lib/firebase_options.dart`, so the build does not need a local plist. These
+checks verify app flow, layout, browser camera lifecycle, and mobile compilation.
+Physical device optics and manufacturer-specific native camera interfaces were
+not exercised.

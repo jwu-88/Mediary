@@ -84,12 +84,12 @@ Four controls passed: denied camera access, an empty stream, a missing fixture,
 and worker initialization failure followed by a successful real-engine retry.
 
 Final repository checks passed: `flutter analyze`, all 435 VM Flutter tests,
-all five browser adapter tests, all nine browser bridge tests, and
+all five browser adapter tests, all 12 browser bridge tests, and
 `flutter build web`. The camera probe is a test-only build target; the production
 build continues to use `lib/main.dart`.
 
 These tests use `canvas.captureStream()` as a synthetic camera. They do not
-measure hardware autofocus, motion, changing room light, or native Vision/ML Kit
+measure hardware autofocus, motion, changing room light, or native Vision
 recognition. Correct brand/ingredient identity does not verify an exact RxNorm
 product, strength, form, or schedule. Severe curvature and obscured lettering
 still need another camera angle or manual search.

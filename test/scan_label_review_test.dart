@@ -76,7 +76,7 @@ Future<void> _reveal(WidgetTester tester, Finder target) async {
 }
 
 void main() {
-  for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+  for (final platform in [TargetPlatform.iOS]) {
     for (final scenario in [
       (const Size(320, 640), 1.0),
       (const Size(320, 640), 3.0),

@@ -230,7 +230,7 @@ void main() {
   });
 
   if (!kIsWeb) {
-    for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+    for (final platform in [TargetPlatform.iOS]) {
       group('$platform native tray reconciliation', () {
         const channel = MethodChannel(
           'dexterous.com/flutter/local_notifications',
@@ -239,23 +239,15 @@ void main() {
         late List<Map<String, Object>> delivered;
         late List<Map<String, Object>> pending;
         late bool permissionEnabled;
-        late bool exactAlarmPermissionEnabled;
-        String? exactSchedulingError;
         late FlutterLocalNotificationsPlatform previousPlatform;
         setUp(() {
           debugDefaultTargetPlatformOverride = platform;
           previousPlatform = FlutterLocalNotificationsPlatform.instance;
-          if (platform == TargetPlatform.iOS) {
-            IOSFlutterLocalNotificationsPlugin.registerWith();
-          } else {
-            AndroidFlutterLocalNotificationsPlugin.registerWith();
-          }
+          IOSFlutterLocalNotificationsPlugin.registerWith();
           calls = [];
           delivered = [];
           pending = [];
           permissionEnabled = true;
-          exactAlarmPermissionEnabled = true;
-          exactSchedulingError = null;
           TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
               .setMockMethodCallHandler(channel, (call) async {
                 calls.add(call);
@@ -267,48 +259,13 @@ void main() {
                       'isEnabled': permissionEnabled,
                       'isAlertEnabled': permissionEnabled,
                     };
-                  case 'areNotificationsEnabled':
-                    return permissionEnabled;
-                  case 'canScheduleExactNotifications':
-                    return exactAlarmPermissionEnabled;
-                  case 'zonedSchedule':
-                    if (platform == TargetPlatform.android &&
-                        exactSchedulingError != null &&
-                        ((call.arguments as Map)['platformSpecifics']
-                                as Map)['scheduleMode'] ==
-                            'exactAllowWhileIdle') {
-                      throw PlatformException(code: exactSchedulingError!);
-                    }
-                    return null;
                   case 'getActiveNotifications':
-                    return [
-                      for (final notification in delivered)
-                        {
-                          ...notification,
-                          if (platform == TargetPlatform.android &&
-                              notification['payload'] != null)
-                            'tag': notification['payload']!,
-                        }..remove(
-                          platform == TargetPlatform.android
-                              ? 'payload'
-                              : 'tag',
-                        ),
-                    ];
+                    return delivered.toList();
                   case 'pendingNotificationRequests':
                     return pending.toList();
                   case 'cancel':
-                    final id = platform == TargetPlatform.iOS
-                        ? call.arguments
-                        : (call.arguments as Map)['id'];
-                    final tag = platform == TargetPlatform.android
-                        ? (call.arguments as Map)['tag']
-                        : null;
-                    delivered.removeWhere(
-                      (item) =>
-                          item['id'] == id &&
-                          (platform == TargetPlatform.iOS ||
-                              (item['tag'] ?? item['payload']) == tag),
-                    );
+                    final id = call.arguments;
+                    delivered.removeWhere((item) => item['id'] == id);
                     pending.removeWhere((item) => item['id'] == id);
                     return null;
                   case 'cancelAll':
@@ -353,154 +310,14 @@ void main() {
             );
             expect(scheduled.second, 0);
             expect(scheduled.millisecond, 0);
-            if (platform == TargetPlatform.android) {
-              expect(
-                (arguments['platformSpecifics'] as Map)['scheduleMode'],
-                'exactAllowWhileIdle',
-              );
-            }
+            expect(
+              (arguments['platformSpecifics'] as Map)['interruptionLevel'],
+              InterruptionLevel.timeSensitive.index,
+            );
+
             await service.dispose();
           },
         );
-
-        if (platform == TargetPlatform.android) {
-          test(
-            'granting exact-alarm access upgrades an existing fallback',
-            () async {
-              exactAlarmPermissionEnabled = false;
-              final service = DefaultMedicationNotificationService();
-              final now = DateTime.now();
-              final future = dose(
-                id: 'precise-upgrade',
-                scheduledFor: now.add(const Duration(hours: 1)),
-              );
-              Future<void> sync(int seconds) async {
-                await service.syncDueDoses(
-                  doses: [future],
-                  medicationNames: const {},
-                  now: now.add(Duration(seconds: seconds)),
-                );
-              }
-
-              await sync(0);
-              final first =
-                  calls
-                          .singleWhere((call) => call.method == 'zonedSchedule')
-                          .arguments
-                      as Map;
-              expect(
-                (first['platformSpecifics'] as Map)['scheduleMode'],
-                'inexactAllowWhileIdle',
-              );
-              pending.add({
-                'id': first['id'] as int,
-                'payload': first['payload'] as String,
-              });
-              exactAlarmPermissionEnabled = true;
-              await sync(1);
-              final scheduled = calls
-                  .where((call) => call.method == 'zonedSchedule')
-                  .toList();
-              expect(scheduled, hasLength(2));
-              final upgraded = scheduled.last.arguments as Map;
-              expect(
-                (upgraded['platformSpecifics'] as Map)['scheduleMode'],
-                'exactAllowWhileIdle',
-              );
-              expect(upgraded['id'], first['id']);
-              expect(upgraded['scheduledDateTime'], first['scheduledDateTime']);
-              await sync(2);
-              expect(
-                calls.where((call) => call.method == 'zonedSchedule'),
-                hasLength(2),
-              );
-              exactAlarmPermissionEnabled = false;
-              await sync(3);
-              expect(
-                ((calls
-                            .lastWhere((call) => call.method == 'zonedSchedule')
-                            .arguments
-                        as Map)['platformSpecifics']
-                    as Map)['scheduleMode'],
-                'inexactAllowWhileIdle',
-              );
-              await service.dispose();
-            },
-          );
-
-          test('permission revocation during scheduling falls back and can recover', () async {
-            exactSchedulingError = 'exact_alarms_not_permitted';
-            final service = DefaultMedicationNotificationService();
-            final now = DateTime.now();
-            final future = dose(
-              id: 'permission-race',
-              scheduledFor: now.add(const Duration(hours: 1)),
-            );
-            await service.syncDueDoses(
-              doses: [future],
-              medicationNames: const {},
-              now: now,
-            );
-            final scheduled = calls
-                .where((call) => call.method == 'zonedSchedule')
-                .toList();
-            expect(scheduled, hasLength(2));
-            final fallback = scheduled.last.arguments as Map;
-            expect(
-              (fallback['platformSpecifics'] as Map)['scheduleMode'],
-              'inexactAllowWhileIdle',
-            );
-            pending.add({
-              'id': fallback['id'] as int,
-              'payload': fallback['payload'] as String,
-            });
-            exactSchedulingError = null;
-            await service.syncDueDoses(
-              doses: [future],
-              medicationNames: const {},
-              now: now.add(const Duration(seconds: 1)),
-            );
-            expect(
-              ((calls
-                          .lastWhere((call) => call.method == 'zonedSchedule')
-                          .arguments
-                      as Map)['platformSpecifics']
-                  as Map)['scheduleMode'],
-              'exactAllowWhileIdle',
-            );
-            await service.dispose();
-          });
-
-          test('unrelated scheduling failures never silently switch to inexact alarms', () async {
-            exactSchedulingError = 'notification_error';
-            final service = DefaultMedicationNotificationService();
-            final now = DateTime.now();
-            await expectLater(
-              service.syncDueDoses(
-                doses: [
-                  dose(
-                    id: 'failed-schedule',
-                    scheduledFor: now.add(const Duration(hours: 1)),
-                  ),
-                ],
-                medicationNames: const {},
-                now: now,
-              ),
-              throwsA(
-                isA<PlatformException>().having(
-                  (error) => error.code,
-                  'code',
-                  'notification_error',
-                ),
-              ),
-            );
-            expect(
-              calls.where((call) => call.method == 'zonedSchedule'),
-              hasLength(1),
-            );
-            await service.dispose();
-          });
-        }
 
         test(
           'denied iOS permission skips scheduling and reports denial',
@@ -544,10 +361,7 @@ void main() {
           final scheduled = calls
               .where((call) => call.method == 'zonedSchedule')
               .toList();
-          expect(
-            scheduled,
-            hasLength(platform == TargetPlatform.iOS ? 64 : 100),
-          );
+          expect(scheduled, hasLength(64));
           final payloads = scheduled.map(
             (call) => (call.arguments as Map)['payload'],
           );
@@ -912,36 +726,6 @@ void main() {
           );
           await service.dispose();
         });
-
-        if (platform == TargetPlatform.android) {
-          test(
-            'opening removes legacy Android alerts without a payload',
-            () async {
-              final service = DefaultMedicationNotificationService();
-              final now = DateTime.now();
-              final due = dose(id: 'legacy-android', scheduledFor: now);
-              delivered.add({
-                'id':
-                    DefaultMedicationNotificationService.notificationIdForDose(
-                      due.id,
-                    ),
-                'channelId': 'medication_reminders',
-              });
-              await service.clearDeliveredNotifications();
-              expect(delivered, isEmpty);
-              expect(
-                await service.syncDueDoses(
-                  doses: [due],
-                  medicationNames: const {},
-                  now: now,
-                ),
-                isEmpty,
-              );
-              expect(calls.where((call) => call.method == 'show'), isEmpty);
-              await service.dispose();
-            },
-          );
-        }
       });
     }
   }

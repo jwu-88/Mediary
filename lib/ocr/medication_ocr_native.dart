@@ -12,8 +12,8 @@ Future<MedicationOcrEvidence> recognizeMedicationEvidence(
 );
 
 /// uses the platform's native ocr implementation without exposing dart:io to
-/// web builds. ios uses apple's vision framework and android uses ml kit
-/// through the app's own platform channel. passing bytes keeps this path
+/// web builds. ios uses apple's vision framework through the app's own
+/// platform channel. passing bytes keeps this path
 /// compatible with both photo-library and clipboard images.
 Future<String> recognizeMedicationText(
   Uint8List bytes, {

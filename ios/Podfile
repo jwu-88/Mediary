@@ -1,6 +1,6 @@
 platform :ios, '15.5'
 
-# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+# disable synchronous analytics during native builds.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
 project 'Runner', {
@@ -38,5 +38,12 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    if target.name == 'permission_handler_apple'
+      target.build_configurations.each do |configuration|
+        definitions = Array(configuration.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] || '$(inherited)')
+        configuration.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] =
+          (definitions + ['PERMISSION_CAMERA=1']).uniq
+      end
+    end
   end
 end

@@ -66,11 +66,42 @@
 </head>
 <body>
   <!-- browser ocr handles camera frames and selected/pasted photos. native
-       apps use Vision or ML Kit through the platform adapter instead. -->
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
+       ios uses apple vision through the platform adapter instead. -->
   <script>
     window.MediaryOcr = window.MediaryOcr || {};
     window.MediaryOcr._worker = null;
+    window.MediaryOcr._engineLoad = null;
+    // load the large engine only when scanning is used, without blocking
+    // flutter startup. failed downloads can be retried on the next scan.
+    window.MediaryOcr._loadEngine = function () {
+      if (window.Tesseract) return Promise.resolve(window.Tesseract);
+      if (window.MediaryOcr._engineLoad) return window.MediaryOcr._engineLoad;
+      window.MediaryOcr._engineLoad = new Promise(function (resolve, reject) {
+        var script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js';
+        script.async = true;
+        script.referrerPolicy = 'no-referrer';
+        var timeout = window.setTimeout(function () {
+          fail('OCR engine download timed out');
+        }, 15000);
+        function fail(message) {
+          window.clearTimeout(timeout);
+          script.remove();
+          reject(new Error(message));
+        }
+        script.onload = function () {
+          window.clearTimeout(timeout);
+          if (window.Tesseract) resolve(window.Tesseract);
+          else fail('OCR engine did not initialize');
+        };
+        script.onerror = function () { fail('OCR engine download failed'); };
+        document.head.appendChild(script);
+      }).catch(function (error) {
+        window.MediaryOcr._engineLoad = null;
+        throw error;
+      });
+      return window.MediaryOcr._engineLoad;
+    };
     // keep whole lines so filtering cannot remove a warning/negation while
     // leaving its ingredient behind. engine confidence measures readability,
     // not whether a medication has been identified.
@@ -92,13 +123,13 @@
       });
     };
     window.MediaryOcr.recognize = async function (imageDataUrl) {
-      if (!window.Tesseract) return { text: '', recoveredUncertainText: false };
       try {
+        var engine = await window.MediaryOcr._loadEngine();
         if (!window.MediaryOcr._worker) {
           // this page pins tesseract.js 4: createworker accepts options, and
           // language loading/initialization must finish before recognition.
           // the version-5 createworker('eng', ...) signature fails on v4.
-          window.MediaryOcr._worker = await Tesseract.createWorker({
+          window.MediaryOcr._worker = await engine.createWorker({
             workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/worker.min.js',
             langPath: 'https://tessdata.projectnaptha.com/4.0.0',
             corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@4.0.4'

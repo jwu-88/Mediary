@@ -289,6 +289,17 @@ void main() {
           expect(after.details, before.details);
           expect(after.localDate, before.localDate);
           expect(after.status, before.status);
+          await tester.scrollUntilVisible(
+            find.text('Audit Medication'),
+            200,
+            scrollable: find
+                .descendant(
+                  of: find.byKey(const Key('calendarScrollView')),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
+          await tester.pumpAndSettle();
           expect(
             find.text('1 MG\n0.5 Tablet\n${expected.format(format)}'),
             findsOneWidget,
