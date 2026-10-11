@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app_interactions.dart';
 
-/// A compact iOS-style switch with the same translucent treatment as Mediary's
+/// a compact ios-style switch with the same translucent treatment as mediary's
 /// circular glass controls.
 class LiquidGlassSwitch extends StatelessWidget {
   const LiquidGlassSwitch({

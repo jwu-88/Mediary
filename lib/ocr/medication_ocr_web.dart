@@ -18,8 +18,8 @@ Future<MedicationOcrEvidence> recognizeMedicationEvidence(
   String fileName = '',
 }) async {
   try {
-    // Older cached pages and preprocessing-baseline probes expose only the
-    // plain-text bridge. Preserve their behavior without inventing recovery.
+    // older cached pages and preprocessing-baseline probes expose only the
+    // plain-text bridge. preserve their behavior without inventing recovery.
     if (!_evidenceRecognizer.isA<JSFunction>()) {
       return MedicationOcrEvidence(
         await recognizeMedicationText(bytes, fileName: fileName),
@@ -50,9 +50,9 @@ Future<String> recognizeMedicationText(
       _medicationImageDataUrl(bytes, fileName).toJS,
     ).toDart).toDart;
   } catch (_) {
-    // The browser may block the external OCR worker or be offline. Returning
+    // the browser may block the external ocr worker or be offline. returning
     // an empty result keeps the review flow safe and routes to manual review.
-    // The JavaScript bridge also resets its worker after an error so the next
+    // the javascript bridge also resets its worker after an error so the next
     // scan gets a clean initialization attempt.
     return '';
   }

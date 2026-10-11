@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'app_controls.dart';
 
-/// A captured image is held here until the person chooses to analyze it.
+/// a captured image is held here until the person chooses to analyze it.
 class CameraPhotoReviewScreen extends StatefulWidget {
   const CameraPhotoReviewScreen({
     super.key,
@@ -220,7 +220,7 @@ class _FrozenPhotoState extends State<_FrozenPhoto> {
             final oldProvider = _provider;
             if (oldProvider != null) unawaited(oldProvider.evict());
             _decodeSize = size;
-            // Only the display decode is bounded. OCR receives the original
+            // only the display decode is bounded. ocr receives the original
             // full-resolution bytes, and discarded previews leave the cache.
             _provider = ResizeImage(
               MemoryImage(widget.bytes),

@@ -27,8 +27,8 @@ void main() {
                 child: child!,
               ),
               home: Scaffold(
-                // Match the desktop shell's reserved sidebar space without
-                // changing the viewport MediaQuery seen by destination pages.
+                // match the desktop shell's reserved sidebar space without
+                // changing the viewport mediaquery seen by destination pages.
                 body: Padding(
                   padding: const EdgeInsets.only(left: 76),
                   child: CalendarScreen(

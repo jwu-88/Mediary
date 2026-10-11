@@ -8,8 +8,8 @@ import 'package:flutter/material.dart';
 import 'app_interactions.dart';
 import 'app_controls.dart';
 
-/// A capsule search field that uses the same glass treatment as the native
-/// bottom navigator. Web keeps the capsule shape but uses a solid surface.
+/// a capsule search field that uses the same glass treatment as the native
+/// bottom navigator. web keeps the capsule shape but uses a solid surface.
 class LiquidGlassSearchField extends StatefulWidget {
   const LiquidGlassSearchField({
     super.key,
@@ -33,7 +33,7 @@ class LiquidGlassSearchField extends StatefulWidget {
   final bool showClearButton;
   final bool autofocus;
 
-  /// Defaults to native glass and a solid web surface.
+  /// defaults to native glass and a solid web surface.
   final bool? useLiquidGlass;
 
   @override
@@ -100,7 +100,7 @@ class _LiquidGlassSearchFieldState extends State<LiquidGlassSearchField> {
       ),
       decoration: BoxDecoration(
         borderRadius: radius,
-        // A restrained solid tint keeps the field glassy without the
+        // a restrained solid tint keeps the field glassy without the
         // decorative shading that made it feel overly synthetic.
         color: useGlass
             ? (dark

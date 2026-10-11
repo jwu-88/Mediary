@@ -1,8 +1,8 @@
-/// Formats catalog and schedule text for consistent, readable UI labels.
+/// formats catalog and schedule text for consistent, readable ui labels.
 ///
-/// Public catalog values are intentionally stored as received. This helper is
-/// display-only, preserving short medical abbreviations such as `MG`, `IU`,
-/// and `Rx` while title-casing ordinary words.
+/// public catalog values are intentionally stored as received. this helper is
+/// display-only, preserving short medical abbreviations such as `mg`, `iu`,
+/// and `rx` while title-casing ordinary words.
 String titleCaseDisplay(String value) {
   final trimmed = value.trim();
   if (trimmed.isEmpty) return '';

@@ -229,6 +229,7 @@ void main() {
           .first,
     );
     await tester.ensureVisible(find.byKey(const Key('addScanResultButton')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('addScanResultButton')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('scanScheduleError')), findsOneWidget);

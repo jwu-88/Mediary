@@ -190,7 +190,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         await _showWeeklyReport();
       } else {
         openReport();
-        // A supplied callback commonly pushes a route synchronously. Keep the
+        // a supplied callback commonly pushes a route synchronously. keep the
         // source action locked through that transition so two rapid clicks
         // cannot add duplicate report routes to the navigator.
         await Future<void>.delayed(const Duration(milliseconds: 400));
@@ -303,8 +303,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _removeDoseAt(int index) async {
     if (index < 0 || index >= _doses.length) return;
-    // A schedule row represents one occurrence. Regimen deletion is managed
-    // explicitly in Profile, even when this dose has a medication ID.
+    // a schedule row represents one occurrence. regimen deletion is managed
+    // explicitly in profile, even when this dose has a medication id.
     await _removeDose(_doses[index]);
   }
 
@@ -326,7 +326,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _restoreRemovedDose(_RemovedDashboardDose removed) {
     if (!mounted) return;
-    // Rollback belongs to the failed operation, independent of the Undo slot.
+    // rollback belongs to the failed operation, independent of the undo slot.
     setState(() {
       _removedDoseIds.remove(removed.dose.id);
       if (!_doses.any((dose) => dose.id == removed.dose.id)) {
@@ -1963,9 +1963,9 @@ class _DoseRow extends StatelessWidget {
   }
 }
 
-/// Shared geometry for the schedule header and every dose row.
+/// shared geometry for the schedule header and every dose row.
 ///
-/// Keeping the same metrics in both places prevents the column dividers from
+/// keeping the same metrics in both places prevents the column dividers from
 /// drifting and gives the artwork a dedicated slot before medication text.
 class _ScheduleLayoutMetrics {
   const _ScheduleLayoutMetrics({

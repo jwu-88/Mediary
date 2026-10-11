@@ -1,6 +1,6 @@
 # Web and mobile UI refinement
 
-Date: October 5, 2026. Branch: `codex/ui-consistency`, based on the completed hard-test fixes. Three agents worked in separate copies; changes were integrated in a managed worktree. The primary checkout and other agents' devices/browser sessions were not changed.
+Date: October 5, 2026. Branch: `ui-consistency`, based on the completed hard-test fixes. Three agents worked in separate copies; changes were integrated in a managed worktree. The primary checkout and other agents' devices/browser sessions were not changed.
 
 ## Implemented
 

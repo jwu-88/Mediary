@@ -580,8 +580,8 @@ void main() {
               calls.where((call) => call.method == 'zonedSchedule'),
               hasLength(1),
             );
-            // Removing a dose from a batch must refresh its payload even though
-            // the request's time and stable ID remain unchanged.
+            // removing a dose from a batch must refresh its payload even though
+            // the request's time and stable id remain unchanged.
             await service.syncDueDoses(
               doses: doses.skip(1).toList(),
               medicationNames: const {},
@@ -891,7 +891,7 @@ void main() {
       final now = DateTime.utc(2026, 9, 13, 9, 1);
       final scheduled = dose(
         id: 'utc-dose',
-        // This value is deliberately different; the schedule metadata is the
+        // this value is deliberately different; the schedule metadata is the
         // source of truth for newly-created records.
         scheduledFor: DateTime.utc(2026, 9, 13, 9),
       );

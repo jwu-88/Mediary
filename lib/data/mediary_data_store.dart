@@ -155,10 +155,10 @@ class MediaryDataStore extends ChangeNotifier {
           },
         ),
       );
-      // Hydrate the user's medication data independently of profile setup.
-      // Profile normalization is a write and can fail or be delayed on a
+      // hydrate the user's medication data independently of profile setup.
+      // profile normalization is a write and can fail or be delayed on a
       // returning session; it must not prevent schedules and dose logs from
-      // reaching the UI.
+      // reaching the ui.
       await repository.ensureProfile(user);
     } catch (exception) {
       if (_isCurrent(generation)) _handleError(exception);
@@ -272,7 +272,7 @@ class MediaryDataStore extends ChangeNotifier {
     if (_disposed) throw StateError('Account is closed.');
     _removingMedicationIds.add(id);
     try {
-      // Let an already-running generator finish before querying deletions so
+      // let an already-running generator finish before querying deletions so
       // it cannot recreate occurrences after their medication was removed.
       await _doseWindowSync;
       if (!_isCurrent(generation)) {
@@ -358,8 +358,8 @@ class MediaryDataStore extends ChangeNotifier {
         );
         completed = true;
       } catch (exception, stackTrace) {
-        // Keep the active UI available when a background reconciliation is
-        // temporarily offline. The next schedule/profile snapshot retries.
+        // keep the active ui available when a background reconciliation is
+        // temporarily offline. the next schedule/profile snapshot retries.
         if (_isCurrent(generation)) {
           _lastDoseWindowSignature = null;
           _handleError(exception, stackTrace);

@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 const _mediaryStorageBucket = 'cacapp-3a771.firebasestorage.app';
 
-/// Returns whether [value] is an HTTPS profile image served by Mediary's
-/// Firebase Storage bucket or Google's authenticated profile-image service.
+/// returns whether [value] is an https profile image served by mediary's
+/// firebase storage bucket or google's authenticated profile-image service.
 bool isAllowedProfileImageUrl(String? value) {
   final candidate = value?.trim() ?? '';
   if (candidate.isEmpty) return false;

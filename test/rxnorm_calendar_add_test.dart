@@ -192,7 +192,7 @@ Future<void> _openScan(
     ),
   );
   await tester.pumpAndSettle();
-  // Visit Calendar first to also exercise refreshing an existing destination.
+  // visit calendar first to also exercise refreshing an existing destination.
   await _selectDestination(tester, 1);
   await _selectDestination(tester, 2);
   await tester.tap(find.byKey(const Key('captureMedicationButton')));
@@ -280,7 +280,7 @@ void main() {
         tester.widget<CalendarScreen>(find.byType(CalendarScreen)).initialDate,
         DateTime.parse(store.dose!.localDate),
       );
-      // An unrelated update and out-of-order streams must not hide the row.
+      // an unrelated update and out-of-order streams must not hide the row.
       store.publishSavedRecords(
         medicationReady: false,
         scheduleReady: false,

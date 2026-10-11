@@ -36,7 +36,7 @@
   <meta name="twitter:description" content="Identify, organize, and track medications with Mediary.">
   <meta name="twitter:image" content="https://cacapp-3a771.web.app/og-image.svg">
 
-  <!-- iOS meta tags & icons -->
+  <!-- ios meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Mediary">
@@ -57,7 +57,7 @@
     }
   </style>
 
-  <!-- Favicon -->
+  <!-- favicon -->
   <link rel="icon" type="image/png" href="favicon.png" media="(prefers-color-scheme: light)"/>
   <link rel="icon" type="image/png" href="favicon-dark.png" media="(prefers-color-scheme: dark)"/>
 
@@ -65,14 +65,14 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
-  <!-- Browser OCR handles camera frames and selected/pasted photos. Native
+  <!-- browser ocr handles camera frames and selected/pasted photos. native
        apps use Vision or ML Kit through the platform adapter instead. -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
   <script>
     window.MediaryOcr = window.MediaryOcr || {};
     window.MediaryOcr._worker = null;
-    // Keep whole lines so filtering cannot remove a warning/negation while
-    // leaving its ingredient behind. Engine confidence measures readability,
+    // keep whole lines so filtering cannot remove a warning/negation while
+    // leaving its ingredient behind. engine confidence measures readability,
     // not whether a medication has been identified.
     window.MediaryOcr._readableLines = function (data) {
       if (!data) return [];
@@ -95,9 +95,9 @@
       if (!window.Tesseract) return { text: '', recoveredUncertainText: false };
       try {
         if (!window.MediaryOcr._worker) {
-          // This page pins Tesseract.js 4: createWorker accepts options, and
+          // this page pins tesseract.js 4: createworker accepts options, and
           // language loading/initialization must finish before recognition.
-          // The version-5 createWorker('eng', ...) signature fails on v4.
+          // the version-5 createworker('eng', ...) signature fails on v4.
           window.MediaryOcr._worker = await Tesseract.createWorker({
             workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/worker.min.js',
             langPath: 'https://tessdata.projectnaptha.com/4.0.0',
@@ -107,11 +107,11 @@
           await window.MediaryOcr._worker.initialize('eng');
         }
 
-        // Normalize through a canvas so browsers decode AVIF/HEIC uploads
-        // before Tesseract receives them. Small product photos often have
+        // normalize through a canvas so browsers decode avif/heic uploads
+        // before tesseract receives them. small product photos often have
         // label text that is only a few pixels high, so an upscale is
         // important here: the old max(1, ...) scale silently left a 768px
-        // image at 768px and sent its soft text to OCR unchanged.
+        // image at 768px and sent its soft text to ocr unchanged.
         var sourceCanvas = await new Promise(function (resolve) {
           var image = new Image();
           image.onload = function () {
@@ -121,8 +121,8 @@
                 image.naturalWidth,
                 image.naturalHeight
               );
-              // Upscale small labels, but never enlarge an already large
-              // upload beyond the OCR worker's practical input size.
+              // upscale small labels, but never enlarge an already large
+              // upload beyond the ocr worker's practical input size.
               var scale = Math.min(2.5, maxDimension / sourceDimension);
               var canvas = document.createElement('canvas');
               canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
@@ -131,9 +131,9 @@
               if (!context) return resolve(null);
               context.imageSmoothingEnabled = true;
               context.imageSmoothingQuality = 'high';
-              // Remove transparent-image artifacts before OCR. A transparent
+              // remove transparent-image artifacts before ocr. a transparent
               // canvas can otherwise turn otherwise valid label pixels into
-              // zero-alpha text for the OCR worker.
+              // zero-alpha text for the ocr worker.
               context.fillStyle = '#ffffff';
               context.fillRect(0, 0, canvas.width, canvas.height);
               context.drawImage(image, 0, 0, canvas.width, canvas.height);
@@ -147,8 +147,8 @@
         });
 
         if (!sourceCanvas) {
-          // If the browser cannot decode the format, retain the original data
-          // URL so Tesseract can still attempt recognition directly.
+          // if the browser cannot decode the format, retain the original data
+          // url so tesseract can still attempt recognition directly.
           await window.MediaryOcr._worker.setParameters({
             tessedit_pageseg_mode: '11',
             preserve_interword_spaces: '1'
@@ -157,9 +157,9 @@
           return { text: window.MediaryOcr._readableLines(fallback && fallback.data).join('\n'), recoveredUncertainText: false };
         }
 
-        // Create a high-contrast grayscale pass as well as a binary pass. The
-        // Claritin package has pale text and uneven lighting, which can leave
-        // the default color pass with no detectable glyphs. Auto-leveling
+        // create a high-contrast grayscale pass as well as a binary pass. the
+        // claritin package has pale text and uneven lighting, which can leave
+        // the default color pass with no detectable glyphs. auto-leveling
         // from the image histogram keeps this useful for both bright and dark
         // labels without hard-coding a brand or background color.
         var enhancedCanvas = document.createElement('canvas');
@@ -263,8 +263,8 @@
           binaryContext.putImageData(binaryPixels, 0, 0);
         }
 
-        // A luminance conversion can erase yellow lettering on blue packages.
-        // The green channel separates those colors while retaining white text;
+        // a luminance conversion can erase yellow lettering on blue packages.
+        // the green channel separates those colors while retaining white text;
         // keep it as an additional pass, never as a replacement for full color.
         var channelCanvas = document.createElement('canvas');
         channelCanvas.width = sourceCanvas.width;
@@ -282,7 +282,7 @@
           channelContext.putImageData(channelPixels, 0, 0);
         }
 
-        // White/yellow text on a dark label needs its own polarity. Global
+        // white/yellow text on a dark label needs its own polarity. global
         // thresholding often erases it, especially in dim camera frames.
         var invertedCanvas = document.createElement('canvas');
         invertedCanvas.width = sourceCanvas.width;
@@ -308,8 +308,8 @@
         ];
         if (channelContext) variants.push({ canvas: channelCanvas, pageSegMode: '11' });
         if (invertedContext) variants.push({ canvas: invertedCanvas, pageSegMode: '11' });
-        // Overlapping tiles keep names near any edge in view. A central crop
-        // alone cuts off the brand near the top of a real camera frame. Use
+        // overlapping tiles keep names near any edge in view. a central crop
+        // alone cuts off the brand near the top of a real camera frame. use
         // block segmentation and both skew directions for tilted packaging.
         for (var tileOrigin of [[0, 0], [0.25, 0], [0, 0.4], [0.25, 0.4]]) {
           for (var angle of [-6, 6]) {
@@ -336,8 +336,8 @@
             variants.push({ canvas: focusedCanvas, pageSegMode: '6' });
           }
         }
-        // Preserve readable evidence from every pass.
-        // Do not dump low-confidence fragments into the review or name parser.
+        // preserve readable evidence from every pass.
+        // do not dump low-confidence fragments into the review or name parser.
         var recognizedLines = new Map();
         var uncertainLines = new Map();
         function evidenceKey(text) {
@@ -348,9 +348,9 @@
           for (var line of (data && data.lines) || []) {
             var text = (line.text || '').trim().replace(/\s+/g, ' ');
             var key = evidenceKey(text);
-            // Never recover a lone uncertain read, punctuation, isolated
+            // never recover a lone uncertain read, punctuation, isolated
             // letters, multiword noise, or a whole low-confidence paragraph.
-            // Only a repeated standalone word is eligible; never strip a
+            // only a repeated standalone word is eligible; never strip a
             // direction/negation off its drug to manufacture that word.
             if (line.confidence < 20 || line.confidence >= 45 ||
                 !/^[a-z]{5,}$/.test(key) || seenInPass.has(key) ||
@@ -400,8 +400,8 @@
         return { text: '', recoveredUncertainText: false };
       }
     };
-    // A single worker cannot safely process overlapping parameter/recognition
-    // jobs. Queue scans and recover after failures without poisoning retries.
+    // a single worker cannot safely process overlapping parameter/recognition
+    // jobs. queue scans and recover after failures without poisoning retries.
     window.MediaryOcr._recognizeImage = window.MediaryOcr.recognize;
     window.MediaryOcr._queue = Promise.resolve();
     window.MediaryOcr._scanWithEvidence = function (imageDataUrl) {

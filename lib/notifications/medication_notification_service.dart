@@ -12,7 +12,7 @@ import '../time_formatting.dart';
 import 'web_notification_stub.dart'
     if (dart.library.html) 'web_notification_web.dart';
 
-/// A due dose that can be presented by a native notification or the web UI.
+/// a due dose that can be presented by a native notification or the web ui.
 class MedicationDueNotification {
   const MedicationDueNotification({
     required this.doseId,
@@ -29,9 +29,9 @@ class MedicationDueNotification {
   String get body => 'Time to take ${titleCaseDisplay(medicationName)}';
 }
 
-/// Platform-independent notification contract used by the authenticated shell.
+/// platform-independent notification contract used by the authenticated shell.
 ///
-/// The web implementation is intentionally an in-app notification. Browsers
+/// the web implementation is intentionally an in-app notification. browsers
 /// require a user gesture before requesting notification permission and do not
 /// reliably support background scheduled notifications, so the web shell shows
 /// a short-lived toast instead.
@@ -40,21 +40,21 @@ abstract interface class MedicationNotificationService {
 
   Future<void> requestPermission();
 
-  /// Returns a user-facing permission state such as granted, denied, or
-  /// unavailable. Web reads this without requesting permission.
+  /// returns a user-facing permission state such as granted, denied, or
+  /// unavailable. web reads this without requesting permission.
   Future<String> permissionState();
 
-  /// Cancels one dose reminder without requiring a full data synchronization.
+  /// cancels one dose reminder without requiring a full data synchronization.
   Future<void> cancelDose(String doseId);
 
-  /// Clears delivered alerts when the app opens, without cancelling future
+  /// clears delivered alerts when the app opens, without cancelling future
   /// reminders or changing whether a dose has been taken.
   Future<void> clearDeliveredNotifications();
 
-  /// Synchronizes notifications for the current dose-log snapshot.
+  /// synchronizes notifications for the current dose-log snapshot.
   ///
-  /// On web, the returned records are newly due doses that the UI should show.
-  /// On mobile, they are also surfaced when a dose became due while the app was
+  /// on web, the returned records are newly due doses that the ui should show.
+  /// on mobile, they are also surfaced when a dose became due while the app was
   /// active; future doses are scheduled natively and normally return no record.
   Future<List<MedicationDueNotification>> syncDueDoses({
     required List<DoseLogRecord> doses,
@@ -66,8 +66,8 @@ abstract interface class MedicationNotificationService {
   Future<void> dispose();
 }
 
-/// Uses flutter_local_notifications on Android/iOS and an in-app event stream
-/// on web. The service only schedules user-owned dose logs; no public catalog or
+/// uses flutter_local_notifications on android/ios and an in-app event stream
+/// on web. the service only schedules user-owned dose logs; no public catalog or
 /// health data is sent anywhere.
 class DefaultMedicationNotificationService
     implements MedicationNotificationService {
@@ -109,8 +109,8 @@ class DefaultMedicationNotificationService
       try {
         tz.setLocalLocation(tz.getLocation(deviceScheduleTimezone()));
       } catch (_) {
-        // Keep the package's default location if the platform zone cannot be
-        // mapped to an IANA name.
+        // keep the package's default location if the platform zone cannot be
+        // mapped to an iana name.
       }
       _timeZonesInitialized = true;
     }
@@ -132,8 +132,8 @@ class DefaultMedicationNotificationService
       );
       _nativeAvailable = result != null;
     } catch (_) {
-      // Flutter widget tests and desktop hosts do not register a native
-      // notifications platform implementation. Keep the web/in-app portion
+      // flutter widget tests and desktop hosts do not register a native
+      // notifications platform implementation. keep the web/in-app portion
       // testable and allow the app shell to continue without reminders.
       _nativeAvailable = false;
     }
@@ -157,7 +157,7 @@ class DefaultMedicationNotificationService
             AndroidFlutterLocalNotificationsPlugin
           >();
       await android?.requestNotificationsPermission();
-      // Android 12+ can defer inexact alarms by several minutes. Medication
+      // android 12+ can defer inexact alarms by several minutes. medication
       // reminders need the exact alarm permission so the alert is delivered at
       // the time selected by the user, including while the device is idle.
       await android?.requestExactAlarmsPermission();
@@ -216,7 +216,7 @@ class DefaultMedicationNotificationService
     if (kIsWeb) cancelWebDoseNotification(doseId);
     if (_supportsNativeNotifications) {
       await _cancelNativeRequest(notificationIdForDose(doseId));
-      // Simultaneous doses share one pending request. Preserve the other
+      // simultaneous doses share one pending request. preserve the other
       // reminders even when cancellation happens after a service restart.
       for (final request in await _plugin.pendingNotificationRequests()) {
         final reminder = _ScheduledReminder.fromPayload(request.payload);
@@ -229,14 +229,14 @@ class DefaultMedicationNotificationService
           if (reminder.scheduledFor.isAfter(DateTime.now())) {
             await _scheduleReminder(_ScheduledReminder(remaining));
           } else {
-            // A delayed request may already be due. Let the next snapshot
+            // a delayed request may already be due. let the next snapshot
             // deliver the remaining doses instead of scheduling in the past.
             _scheduledDoseIds.removeAll(remaining.map((dose) => dose.doseId));
           }
         }
       }
-      // A foreground alert can represent several doses. Clear it if one of
-      // those doses was taken, snoozed, or removed; the UI retains every dose.
+      // a foreground alert can represent several doses. clear it if one of
+      // those doses was taken, snoozed, or removed; the ui retains every dose.
       for (final notification in await _activeNativeNotifications()) {
         if (_doseIdsForPayload(_activePayload(notification)).contains(doseId) &&
             notification.id != null) {
@@ -267,7 +267,7 @@ class DefaultMedicationNotificationService
         }
       }
     } catch (_) {
-      // Some desktop hosts do not expose an OS notification tray.
+      // some desktop hosts do not expose an os notification tray.
     }
   });
 
@@ -302,9 +302,9 @@ class DefaultMedicationNotificationService
             dose.snoozedUntil ??
             _scheduledDateFor(dose, scheduleTimezones[dose.scheduleId]),
     };
-    // Resolve legacy duplicates and terminal states exactly as the UI does,
-    // before filtering active doses. A taken duplicate must suppress its due
-    // counterpart, including HH:mm versus HH:mm:ss records.
+    // resolve legacy duplicates and terminal states exactly as the ui does,
+    // before filtering active doses. a taken duplicate must suppress its due
+    // counterpart, including hh:mm versus hh:mm:ss records.
     final activeDoses = uniqueDoseOccurrences(doses)
         .where((dose) => dose.status == 'due' || dose.status == 'snoozed')
         .toList(growable: false);
@@ -326,7 +326,7 @@ class DefaultMedicationNotificationService
     final delivered = _supportsNativeNotifications
         ? await _activeNativeNotifications()
         : const <ActiveNotification>[];
-    // OS alerts survive service recreation. Restore receipts before deciding
+    // os alerts survive service recreation. restore receipts before deciding
     // which doses are new, so opening a second session cannot alert again.
     for (final notification in delivered) {
       final ids = _doseIdsForPayload(_activePayload(notification));
@@ -352,7 +352,7 @@ class DefaultMedicationNotificationService
         _notifiedDoseIds.add(dose.id);
       }
       if (scheduledFor.isAfter(currentTime)) {
-        // A delivered receipt for the original time must not suppress a
+        // a delivered receipt for the original time must not suppress a
         // later snoozed reminder after recreating the service.
         _notifiedDoseIds.remove(dose.id);
       }
@@ -381,8 +381,8 @@ class DefaultMedicationNotificationService
       }
       final isRecent =
           currentTime.difference(scheduledFor) <= _recentDoseWindow;
-      // Suppression must survive subsequent timer ticks, not just the first
-      // snapshot. Otherwise yesterday's reminders flood the next refresh.
+      // suppression must survive subsequent timer ticks, not just the first
+      // snapshot. otherwise yesterday's reminders flood the next refresh.
       if (isDue && !isRecent) {
         _notifiedDoseIds.add(dose.id);
         _notifiedOccurrenceKeys.add(occurrenceKey);
@@ -413,7 +413,7 @@ class DefaultMedicationNotificationService
 
     if (!_supportsNativeNotifications) {
       if (kIsWeb) {
-        // Keep browser-level alerts singular per sync pass. The shell still
+        // keep browser-level alerts singular per sync pass. the shell still
         // receives the full due list for its deduplicated in-app toast stack,
         // but a burst of simultaneous records must not become a browser alert
         // flood.
@@ -434,17 +434,17 @@ class DefaultMedicationNotificationService
     }
 
     if (doses.isEmpty) {
-      // An empty snapshot is also how sign-out, notification opt-out, and a
-      // deleted schedule are represented. Clear alerts that were already
-      // delivered as well as requests still waiting in the OS queue.
+      // an empty snapshot is also how sign-out, notification opt-out, and a
+      // deleted schedule are represented. clear alerts that were already
+      // delivered as well as requests still waiting in the os queue.
       await _clearNativeNotifications();
       return newlyDue;
     }
 
     if (await permissionState() != 'granted') return newlyDue;
 
-    // Clear stale delivered alerts before scheduling replacements, since
-    // cancellation also removes pending requests with the same native ID.
+    // clear stale delivered alerts before scheduling replacements, since
+    // cancellation also removes pending requests with the same native id.
     for (final notification in delivered) {
       final doseIds = _doseIdsForPayload(_activePayload(notification));
       if (doseIds.isEmpty) continue;
@@ -482,8 +482,8 @@ class DefaultMedicationNotificationService
           );
     }
     final allReminders = byTime.values.map(_ScheduledReminder.new);
-    // A single request represents each reminder instant, including multiple
-    // medications. Keep iOS's nearest 64 requests without a burst of alerts.
+    // a single request represents each reminder instant, including multiple
+    // medications. keep ios's nearest 64 requests without a burst of alerts.
     final futureReminders =
         (defaultTargetPlatform == TargetPlatform.iOS
                 ? allReminders.take(64)
@@ -499,7 +499,7 @@ class DefaultMedicationNotificationService
       _scheduledDoseIds.remove(doseId);
     }
 
-    // Native pending requests survive an app restart. Reconcile those that
+    // native pending requests survive an app restart. reconcile those that
     // were created by an older in-memory service instance as well.
     final pending = await _plugin.pendingNotificationRequests();
     final pendingDoseIds = <String>{};
@@ -530,12 +530,12 @@ class DefaultMedicationNotificationService
     }
     _scheduledNames.removeWhere((id, _) => !futureIds.contains(id));
 
-    // If the app was open when the due time passed, show the native reminder
-    // immediately. Background delivery is handled by the scheduled request.
+    // if the app was open when the due time passed, show the native reminder
+    // immediately. background delivery is handled by the scheduled request.
     final immediate = <MedicationDueNotification>[];
     for (final notification in newlyDue) {
-      // The OS already owns delivery for a reminder scheduled while the app
-      // was active. Showing it again here would play a second sound/banner.
+      // the os already owns delivery for a reminder scheduled while the app
+      // was active. showing it again here would play a second sound/banner.
       if (previouslyScheduledIds.contains(notification.doseId) &&
           !pendingDoseIds.contains(notification.doseId)) {
         continue;
@@ -543,7 +543,7 @@ class DefaultMedicationNotificationService
       immediate.add(notification);
     }
     if (immediate.isNotEmpty) {
-      // Use one foreground alert for a burst, replacing the previous alert
+      // use one foreground alert for a burst, replacing the previous alert
       // instead of adding one tray entry and sound per due medication.
       for (final notification in delivered) {
         if (_doseIdsForPayload(_activePayload(notification)).isNotEmpty &&
@@ -592,8 +592,8 @@ class DefaultMedicationNotificationService
         payload: reminder.payload,
       );
     } catch (_) {
-      // If Android exact-alarm access was declined or revoked, retain a
-      // deliverable reminder rather than dropping it altogether. The normal
+      // if android exact-alarm access was declined or revoked, retain a
+      // deliverable reminder rather than dropping it altogether. the normal
       // path remains exact and the active-app sync still catches equality.
       await _plugin.zonedSchedule(
         id: reminder.id,
@@ -619,8 +619,8 @@ class DefaultMedicationNotificationService
     }
   }
 
-  // Android exposes the tag, but not payload, for delivered notifications.
-  // Carry the receipt in its tag so cleanup/restart behavior matches iOS.
+  // android exposes the tag, but not payload, for delivered notifications.
+  // carry the receipt in its tag so cleanup/restart behavior matches ios.
   String? _activePayload(ActiveNotification notification) =>
       notification.payload ?? notification.tag;
 
@@ -633,7 +633,7 @@ class DefaultMedicationNotificationService
     await _plugin.cancel(id: id);
     if (defaultTargetPlatform != TargetPlatform.android) return;
     if (payload != null) await _plugin.cancel(id: id, tag: payload);
-    // Also clear an earlier delivery if its receipt/tag changed with the
+    // also clear an earlier delivery if its receipt/tag changed with the
     // medication name, batch membership, or snooze time.
     for (final notification in await _activeNativeNotifications()) {
       if (notification.id == id && notification.tag != null) {
@@ -654,7 +654,7 @@ class DefaultMedicationNotificationService
         );
         if (decoded is List) return decoded.whereType<String>().toSet();
       } on FormatException {
-        // Ignore alerts created by an unknown or older payload format.
+        // ignore alerts created by an unknown or older payload format.
       }
     }
     if (payload.startsWith(_scheduledPayloadPrefix)) {
@@ -665,12 +665,12 @@ class DefaultMedicationNotificationService
 
   Future<void> _clearNativeNotifications() async {
     try {
-      // This service is the sole owner of this app's local notifications, so
-      // cancelAll also removes medication alerts that were already displayed
-      // and are therefore absent from pendingNotificationRequests().
+      // this service is the sole owner of this app's local notifications, so
+      // cancelall also removes medication alerts that were already displayed
+      // and are therefore absent from pendingnotificationrequests().
       await _plugin.cancelAll();
     } catch (_) {
-      // Cleanup must not prevent the authenticated shell from continuing.
+      // cleanup must not prevent the authenticated shell from continuing.
     }
     _notifiedDoseIds.clear();
     _scheduledDoseIds.clear();
@@ -683,8 +683,8 @@ class DefaultMedicationNotificationService
   DateTime _scheduledDateFor(DoseLogRecord dose, String? timezone) {
     final normalizedTimezone = timezone?.trim();
     if (normalizedTimezone == null || normalizedTimezone.isEmpty) {
-      // Older dose logs do not carry a timezone on the dose document. Their
-      // Firestore timestamp is already the source of truth, so preserve it.
+      // older dose logs do not carry a timezone on the dose document. their
+      // firestore timestamp is already the source of truth, so preserve it.
       return dose.scheduledFor;
     }
     final location = _locationFor(timezone);
@@ -704,10 +704,10 @@ class DefaultMedicationNotificationService
         timeParts.length > 2 && timeParts[2] != null ? timeParts[2]! : 0,
       );
       if (normalizedTimezone == 'UTC') {
-        // Before schedules stored the device's IANA timezone, the app
-        // defaulted to UTC while scheduledFor was still written from the
-        // device clock. Recognize only that legacy shape; an explicitly
-        // selected UTC schedule continues to use its metadata as the source
+        // before schedules stored the device's iana timezone, the app
+        // defaulted to utc while scheduledfor was still written from the
+        // device clock. recognize only that legacy shape; an explicitly
+        // selected utc schedule continues to use its metadata as the source
         // of truth.
         final deviceLocation = _locationFor(deviceScheduleTimezone());
         final deviceTime = tz.TZDateTime.from(
@@ -753,8 +753,8 @@ class DefaultMedicationNotificationService
           tag: payload,
         ),
         iOS: const DarwinNotificationDetails(
-          // Keep reminders visible even when the app is currently in the
-          // foreground. The scheduled notification is still delivered by iOS in
+          // keep reminders visible even when the app is currently in the
+          // foreground. the scheduled notification is still delivered by ios in
           // the background or after the app is closed.
           presentAlert: true,
           presentBanner: true,
@@ -764,7 +764,7 @@ class DefaultMedicationNotificationService
         ),
       );
 
-  /// Stable positive ID so a Firestore dose update replaces its old request.
+  /// stable positive id so a firestore dose update replaces its old request.
   static int notificationIdForDose(String doseId) {
     var hash = 0x811c9dc5;
     for (final codeUnit in doseId.codeUnits) {
@@ -792,7 +792,7 @@ class DefaultMedicationNotificationService
   });
 }
 
-/// One OS request per instant; its payload retains all constituent dose IDs
+/// one os request per instant; its payload retains all constituent dose ids
 /// and enough data to cancel one without dropping the other reminders.
 class _ScheduledReminder {
   _ScheduledReminder(List<MedicationDueNotification> values)

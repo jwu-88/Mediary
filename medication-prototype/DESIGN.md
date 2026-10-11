@@ -2,15 +2,15 @@
 
 ## User Experience Analysis
 
-The product supports people who need a simple, reliable way to understand medications and follow a schedule. The primary needs are fast medication capture, trustworthy identification, clear dose reminders, visible adherence history, and accessible reference information. Because medication data is safety-sensitive, AI results are explicitly labeled with confidence and must be reviewed before a schedule is created.
+The product supports people who need a simple, reliable way to understand medications and follow a schedule. The primary needs are fast medication capture, trustworthy identification, clear dose reminders, visible adherence history, and accessible reference information. Because medication data is safety-sensitive, scan results are labeled with confidence and must be reviewed before a schedule is created.
 
-The core flow is: **scan medication → review AI identification → confirm dosage and frequency → add to calendar → receive reminders → mark each dose taken or skipped**. Users can also search the medication library, open reference details, and add a known medication without scanning.
+The core flow is: **scan medication → review the suggested identification → confirm dosage and frequency → add to calendar → receive reminders → mark each dose taken or skipped**. Users can also search the medication library, open reference details, and add a known medication without scanning.
 
 ## Product Interface Planning
 
 - **Today:** next dose, adherence summary, and the day’s dose timeline.
 - **Scan:** camera-first capture with clear framing and alternate gallery/barcode inputs.
-- **AI Result:** identification confidence, medication facts, safety notice, and editable schedule.
+- **Scan Result:** identification confidence, medication facts, safety notice, and editable schedule.
 - **Calendar:** monthly adherence overview and selected-day dose history.
 - **Library:** medication search, categories, education, and browsable results.
 - **Medication Detail:** uses, dosage forms, safety information, and schedule action.

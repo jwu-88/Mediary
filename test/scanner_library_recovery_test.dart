@@ -76,7 +76,7 @@ void main() {
         ),
       );
       if (size.width > 800) {
-        // The collapsed sidebar exposes the icon, not the expanded label.
+        // the collapsed sidebar exposes the icon, not the expanded label.
         await tester.tapAt(
           Offset(
             38,

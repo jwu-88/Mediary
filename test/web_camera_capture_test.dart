@@ -35,13 +35,13 @@ void main() {
     final registry = _CaptureRegistry();
     ui_web.debugOverridePlatformViewRegistry(registry);
     addTearDown(() => ui_web.debugOverridePlatformViewRegistry(null));
-    // The browser runner supplies a synthetic camera device and grants access.
+    // the browser runner supplies a synthetic camera device and grants access.
     expect(await tester.runAsync(requestWebCameraAccess), isTrue);
     await tester.pumpWidget(
       const MaterialApp(home: Scaffold(body: WebCameraPreview(active: true))),
     );
-    // Widget tests mock platform-view creation; mount the registered factory
-    // so the actual browser video and canvas APIs can be exercised.
+    // widget tests mock platform-view creation; mount the registered factory
+    // so the actual browser video and canvas apis can be exercised.
     final view = tester.widget<HtmlElementView>(find.byType(HtmlElementView));
     final factory = registry.factories[view.viewType]!;
     final element = factory(123) as web.HTMLElement;

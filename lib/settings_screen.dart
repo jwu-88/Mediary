@@ -757,7 +757,7 @@ class _PrivacyControlsPageState extends State<_PrivacyControlsPage> {
         setState(() => _cameraAccess = allowed);
       }
     } catch (_) {
-      // Some preview/test platforms do not provide a permission backend.
+      // some preview/test platforms do not provide a permission backend.
     }
   }
 

@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'app_interactions.dart';
 import 'app_theme.dart';
 
-/// A compact glass swatch selector for Mediary's supported accent palettes.
+/// a compact glass swatch selector for mediary's supported accent palettes.
 class LiquidGlassAccentSelector extends StatelessWidget {
   const LiquidGlassAccentSelector({
     super.key,

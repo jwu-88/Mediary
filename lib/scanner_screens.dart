@@ -20,9 +20,9 @@ import 'text_formatting.dart';
 import 'time_formatting.dart';
 import 'web_camera.dart';
 
-/// Camera permission state used by [MedicationScannerScreen].
+/// camera permission state used by [medicationscannerscreen].
 ///
-/// This lives outside the application shell so the scanner can be reused
+/// this lives outside the application shell so the scanner can be reused
 /// without importing the app's authentication or navigation code.
 enum ScannerAccessState {
   notRequested,
@@ -136,7 +136,7 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
     setState(() => _isAnalyzing = true);
     if (!mounted) return;
     try {
-      // Keep the file chooser in the original pointer-activation turn. Web
+      // keep the file chooser in the original pointer-activation turn. web
       // browsers reject a file dialog opened after an asynchronous delay.
       await (widget.onChoosePhoto ?? widget.onCapture)();
     } finally {
@@ -163,8 +163,8 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
         bottom: false,
         child: LayoutBuilder(
           builder: (context, pageConstraints) {
-            // Keep the camera surface above the app navigation area. The
-            // shell uses an extended body on iOS, so a full-height camera
+            // keep the camera surface above the app navigation area. the
+            // shell uses an extended body on ios, so a full-height camera
             // panel would otherwise continue behind the toolbar and make its
             // black canvas appear to interfere with the navigation surface.
             final availableHeight =
@@ -177,8 +177,8 @@ class _MedicationScannerScreenState extends State<MedicationScannerScreen> {
                 16,
                 widget.bottomNavigationInset,
               ),
-              // Keep the camera surface centered independently of the
-              // navigation inset so the redesigned Scan destination remains
+              // keep the camera surface centered independently of the
+              // navigation inset so the redesigned scan destination remains
               // balanced on both compact phones and wider web viewports.
               child: Align(
                 alignment: Alignment.center,
@@ -1880,7 +1880,7 @@ class _SafetyNotice extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Confirm the package and prescription label before adding. AI identification does not replace advice from your pharmacist.',
+              'Confirm the package and prescription label before adding. Automated identification does not replace advice from your pharmacist.',
               style: TextStyle(
                 color: palette.warningText,
                 fontSize: 12,

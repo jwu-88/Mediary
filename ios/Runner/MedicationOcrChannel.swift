@@ -4,10 +4,10 @@ import ImageIO
 import UIKit
 import Vision
 
-/// iOS OCR bridge backed by Apple's Vision framework.
+/// ios ocr bridge backed by apple's vision framework.
 ///
-/// Vision is available on both physical iOS devices and Apple Silicon
-/// simulators, so the app does not need to link Google ML Kit's incompatible
+/// vision is available on both physical ios devices and apple silicon
+/// simulators, so the app does not need to link google ml kit's incompatible
 /// simulator-only binaries for this feature.
 final class MedicationOcrChannel: NSObject {
   private static let channelName = "com.mediary/medication_ocr"
@@ -68,9 +68,9 @@ final class MedicationOcrChannel: NSObject {
         }
       }
 
-      // Vision can return slightly different lines for each preprocessing
-      // pass. Keep the first occurrence of each line so the Flutter review
-      // screen receives useful text without duplicated OCR output.
+      // vision can return slightly different lines for each preprocessing
+      // pass. keep the first occurrence of each line so the flutter review
+      // screen receives useful text without duplicated ocr output.
       finish(result: result, value: mergeRecognizedText(recognizedTexts))
     }
   }

@@ -42,7 +42,7 @@ void main() {
         'Benadryl\nALLERGY\nDiphenhydramine HCl 25 mg',
         'Benadry1\nALLERGY',
         'Bena dryl\nALLERGY',
-        // Actual Tesseract output from the supplied dim, tilted camera feed.
+        // actual tesseract output from the supplied dim, tilted camera feed.
         'LDCIId( ) |\nl ALLERGY\n'
             '= D|ph(=nhydramme HCI 25mg | Anlahvstamlne\n'
             'Dlphenhydramme HCI 25mg | Anhhnstamlne\n'

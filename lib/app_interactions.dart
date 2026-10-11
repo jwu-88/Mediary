@@ -1,28 +1,27 @@
 import 'dart:async';
 import 'dart:ui';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_theme.dart';
 
-/// Whether a backdrop blur is safe for the current rendering target.
+/// whether a backdrop blur is safe for the current rendering target.
 ///
-/// iOS can make a blurred surface over a scrolling or frequently updating
-/// screen fall back to an expensive offscreen render pass. The tinted glass
+/// ios can make a blurred surface over a scrolling or frequently updating
+/// screen fall back to an expensive offscreen render pass. the tinted glass
 /// surfaces remain visually consistent without the blur, so skip that pass on
-/// iOS to keep typing, scrolling, and navigation responsive.
+/// ios to keep typing, scrolling, and navigation responsive.
 bool shouldUseBackdropBlur(BuildContext context) {
   if (kIsWeb) return false;
   return defaultTargetPlatform != TargetPlatform.iOS;
 }
 
-/// A backdrop blur that is skipped on web and on iOS.
+/// a backdrop blur that is skipped on web and on ios.
 ///
-/// `BackdropFilter` forces a `saveLayer` + backdrop read every frame. On the
-/// CanvasKit/Skwasm web renderer and on iOS scrolling surfaces this is a major
+/// `backdropfilter` forces a `savelayer` + backdrop read every frame. on the
+/// canvaskit/skwasm web renderer and on ios scrolling surfaces this is a major
 /// source of jank, so those targets fall back to the surrounding tint alone.
 class WebAwareBlur extends StatelessWidget {
   const WebAwareBlur({super.key, required this.sigma, required this.child});
@@ -40,19 +39,19 @@ class WebAwareBlur extends StatelessWidget {
   }
 }
 
-/// The kind of native tactile response produced by an [AppPressable].
+/// the kind of native tactile response produced by an [apppressable].
 enum AppHapticKind { none, selection, primaryAction }
 
-/// Controls how progress is presented while an [AppPressable] is busy.
+/// controls how progress is presented while an [apppressable] is busy.
 enum AppPressableLoadingPresentation { replace, overlay }
 
-/// A Cupertino-style button with the same hover, focus, press, and loading
+/// a cupertino-style button with the same hover, focus, press, and loading
 /// feedback as the rest of the web shell.
 ///
-/// Flutter's [CupertinoButton] provides excellent touch feedback, but its web
-/// hover state is intentionally minimal. This adapter keeps its iOS padding,
+/// flutter's [cupertinobutton] provides excellent touch feedback, but its web
+/// hover state is intentionally minimal. this adapter keeps its ios padding,
 /// colors, and typography while adding the same interaction feedback used by
-/// [AppPressable].
+/// [apppressable].
 class ResponsiveCupertinoButton extends StatelessWidget {
   const ResponsiveCupertinoButton({
     super.key,
@@ -131,9 +130,9 @@ class ResponsiveCupertinoButton extends StatelessWidget {
   }
 }
 
-/// Platform-safe haptic feedback for Mediary interactions.
+/// platform-safe haptic feedback for mediary interactions.
 ///
-/// Calls are intentionally ignored on web and desktop platforms. This keeps
+/// calls are intentionally ignored on web and desktop platforms. this keeps
 /// browser clicks silent and avoids invoking unsupported platform channels.
 abstract final class AppHaptics {
   static bool get isSupported {
@@ -160,9 +159,9 @@ abstract final class AppHaptics {
   }
 }
 
-/// A cross-platform interaction wrapper for custom tappable surfaces.
+/// a cross-platform interaction wrapper for custom tappable surfaces.
 ///
-/// It adds pointer hover, press, keyboard, loading, semantics, and optional
+/// it adds pointer hover, press, keyboard, loading, semantics, and optional
 /// native haptic feedback without imposing a visual card style on [child].
 class AppPressable extends StatefulWidget {
   const AppPressable({
@@ -201,7 +200,7 @@ class AppPressable extends StatefulWidget {
 
   final Widget child;
 
-  /// May return a [Future]. When [autoManageBusy] is true, an unfinished
+  /// may return a [future]. when [automanagebusy] is true, an unfinished
   /// future automatically activates the configured loading presentation.
   final FutureOr<void> Function()? onPressed;
 
@@ -215,12 +214,12 @@ class AppPressable extends StatefulWidget {
   final bool enableHaptics;
   final bool enableHoverEffect;
 
-  /// Retained for source compatibility. Hover feedback no longer changes
+  /// retained for source compatibility. hover feedback no longer changes
   /// geometry, so this value is intentionally ignored.
   final double hoverScale;
   final double pressedScale;
 
-  /// Retained for source compatibility. Hover feedback no longer changes
+  /// retained for source compatibility. hover feedback no longer changes
   /// geometry, so this value is intentionally ignored.
   final Offset hoverOffset;
   final Duration motionDuration;
@@ -237,8 +236,8 @@ class AppPressable extends StatefulWidget {
   final FocusNode? focusNode;
   final bool autofocus;
 
-  /// Receives callback failures after the interaction has returned to an idle
-  /// state. When omitted, unexpected failures are reported to Flutter's error
+  /// receives callback failures after the interaction has returned to an idle
+  /// state. when omitted, unexpected failures are reported to flutter's error
   /// pipeline instead of becoming unhandled asynchronous errors.
   final void Function(Object error, StackTrace stackTrace)? onError;
 
@@ -375,9 +374,9 @@ class _AppPressableState extends State<AppPressable> {
         : _focused
         ? focusOverlay
         : Colors.transparent;
-    // Hover feedback must not change the button's geometry. Scaling or
-    // translating a full-width surface can paint into adjacent UI, especially
-    // beside the expanding web sidebar. Keep motion for the intentional press
+    // hover feedback must not change the button's geometry. scaling or
+    // translating a full-width surface can paint into adjacent ui, especially
+    // beside the expanding web sidebar. keep motion for the intentional press
     // response and use the overlay above for hover feedback instead.
     final effectiveCursor = _isBusy
         ? SystemMouseCursors.progress
@@ -421,7 +420,7 @@ class _AppPressableState extends State<AppPressable> {
       child: content,
     );
 
-    // iOS gets an overlay-only press response. Avoiding a transform layer on
+    // ios gets an overlay-only press response. avoiding a transform layer on
     // every tappable surface keeps complex cards and scrolling lists cheap to
     // composite while preserving immediate visual feedback.
     if (!isIOS) {
@@ -471,7 +470,7 @@ class _AppPressableState extends State<AppPressable> {
       child: content,
     );
 
-    // Keep the gesture detector at the root so a keyed AppPressable resolves
+    // keep the gesture detector at the root so a keyed apppressable resolves
     // to the actual hit target in widget tests and browser automation.
     return GestureDetector(
       behavior: HitTestBehavior.opaque,

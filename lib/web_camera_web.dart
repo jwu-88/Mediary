@@ -13,7 +13,7 @@ int _viewCounter = 0;
 int _cameraGeneration = 0;
 Future<bool>? _pendingCameraAccess;
 
-/// Requests the browser camera stream. On macOS this delegates to the
+/// requests the browser camera stream. on macos this delegates to the
 /// browser's normal camera permission prompt and keeps the stream available
 /// for the scanner preview.
 Future<bool> requestWebCameraAccess() {
@@ -47,7 +47,7 @@ Future<bool> _requestCameraStream(int generation) async {
           ),
         )
         .toDart;
-    // Permission can finish after retake, navigation, or disposal. A stale
+    // permission can finish after retake, navigation, or disposal. a stale
     // request must release its tracks instead of reviving a hidden camera.
     if (generation != _cameraGeneration) {
       stream.getTracks().toDart.forEach((track) => track.stop());
@@ -61,7 +61,7 @@ Future<bool> _requestCameraStream(int generation) async {
   }
 }
 
-/// Waits for a visible live frame without encoding an unused image.
+/// waits for a visible live frame without encoding an unused image.
 Future<bool> waitForWebCameraFrame({
   Duration timeout = const Duration(seconds: 3),
 }) async {
@@ -85,7 +85,7 @@ Future<bool> waitForWebCameraFrame({
   return false;
 }
 
-/// Captures the displayed frame, optionally pausing the preview at the shutter.
+/// captures the displayed frame, optionally pausing the preview at the shutter.
 Future<Uint8List?> captureWebCameraFrame({bool freezePreview = false}) async {
   final video = _activeVideo;
   if (_cameraStream == null ||
@@ -191,8 +191,8 @@ class _WebCameraPreviewState extends State<WebCameraPreview>
       video.setAttribute('playsinline', 'true');
       video.style.width = '100%';
       video.style.height = '100%';
-      // Show the full camera feed instead of cropping the sides to fill the
-      // wide desktop preview. The surrounding camera panel supplies the
+      // show the full camera feed instead of cropping the sides to fill the
+      // wide desktop preview. the surrounding camera panel supplies the
       // rounded frame and black letterbox area when aspect ratios differ.
       video.style.objectFit = 'contain';
       video.style.objectPosition = 'center center';

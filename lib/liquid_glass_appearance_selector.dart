@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'app_interactions.dart';
 import 'app_theme.dart';
 
-/// A three-way glass selector for the app's light, dark, and system themes.
+/// a three-way glass selector for the app's light, dark, and system themes.
 class LiquidGlassAppearanceSelector extends StatelessWidget {
   const LiquidGlassAppearanceSelector({
     super.key,

@@ -105,7 +105,7 @@ bool _isCanceledGoogleAuth(FirebaseAuthException error) {
   }.contains(_normalizedAuthCode(error.code));
 }
 
-/// Converts Firebase's platform-specific codes into safe, actionable copy.
+/// converts firebase's platform-specific codes into safe, actionable copy.
 String firebaseAuthErrorMessage(
   FirebaseAuthException error, {
   required FirebaseAuthAction action,
@@ -204,9 +204,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   AppAccentColor _accentColor = AppAccentColor.blue;
   TimeDisplayFormat _timeDisplayFormat = TimeDisplayFormat.twelveHour;
 
-  // Themes are expensive to build (ColorScheme.fromSeed + ~40 sub-themes).
-  // Cache them so a setState for appearance/accent does not rebuild both
-  // ThemeData trees on every frame of the theme transition.
+  // themes are expensive to build (colorscheme.fromseed + ~40 sub-themes).
+  // cache them so a setstate for appearance/accent does not rebuild both
+  // themedata trees on every frame of the theme transition.
   late ThemeData _lightTheme = AppTheme.lightFor(_accentColor);
   late ThemeData _darkTheme = AppTheme.darkFor(_accentColor);
 
@@ -451,7 +451,7 @@ class _AuthGateState extends State<AuthGate> {
                       try {
                         await newUser.sendEmailVerification();
                       } on FirebaseAuthException {
-                        // Account creation succeeded. The verification page lets
+                        // account creation succeeded. the verification page lets
                         // the user safely retry delivery without creating a
                         // duplicate account.
                       }
@@ -1178,8 +1178,8 @@ class AuthenticatedHome extends StatefulWidget {
   final CameraPermissionRequester? cameraPermissionRequester;
   final Future<bool> Function()? onOpenCameraSettings;
 
-  /// Overrides adaptive navigation selection for previews and tests.
-  /// Web uses the sidebar by default; native platforms use the bottom bar.
+  /// overrides adaptive navigation selection for previews and tests.
+  /// web uses the sidebar by default; native platforms use the bottom bar.
   final bool? useSidebarNavigation;
 
   @override
@@ -1286,8 +1286,8 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       _notificationSyncRequested = true;
       return;
     }
-    // Wait for the complete authenticated snapshot before deciding which
-    // native reminders should remain. The store starts empty while Firestore
+    // wait for the complete authenticated snapshot before deciding which
+    // native reminders should remain. the store starts empty while firestore
     // listeners hydrate; syncing that transient state can consume the
     // notification service's initial-sync protection.
     if (store == null || !store.hasInitialData || !mounted) {
@@ -1372,7 +1372,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
     if (!kIsWeb) return;
     unawaited(
       _notificationService.requestPermission().catchError((_) {
-        // The in-app reminder remains available if the browser blocks the
+        // the in-app reminder remains available if the browser blocks the
         // permission request outside a user gesture.
       }),
     );
@@ -2131,8 +2131,8 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
   }
 
   Future<void> _runMedicationScanRequest(MedicationScanRequest request) async {
-    // The result screen saves complete metadata with its existing retry flow.
-    // Do not block local recognition on an initial, empty server write.
+    // the result screen saves complete metadata with its existing retry flow.
+    // do not block local recognition on an initial, empty server write.
     MedicationScanResult result;
     try {
       result = await _scanDetector.detect(request);
@@ -2178,8 +2178,8 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
         page.items,
         extractedText: extractedText,
       );
-      // Approximate catalog results still need a name match. A lone result
-      // can be a different formulation (for example Claritin vs Claritin-D).
+      // approximate catalog results still need a name match. a lone result
+      // can be a different formulation (for example claritin vs claritin-d).
       if (candidate == null) return null;
       try {
         return await _catalogClient.getDetails(candidate.rxcui);
@@ -2755,7 +2755,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
     ];
   }
 
-  // A dose snapshot can arrive before its medication and schedule. Keep the
+  // a dose snapshot can arrive before its medication and schedule. keep the
   // newly saved row until it can be displayed, or is explicitly cancelled.
   Iterable<DoseLogRecord> _calendarReconciledDoseLogs(
     MediaryDataStore? store,
@@ -2833,7 +2833,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
 
   @override
   Widget build(BuildContext context) {
-    // Only build a destination once it has been visited. IndexedStack keeps
+    // only build a destination once it has been visited. indexedstack keeps
     // every child mounted and rebuilds all of them on each frame (e.g. during
     // the theme transition), so deferring unseen screens cuts that cost.
     Widget lazy(int index, Widget Function(BuildContext) build) =>

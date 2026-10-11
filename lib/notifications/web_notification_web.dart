@@ -9,7 +9,7 @@ Future<void> requestWebNotificationPermission() async {
     try {
       await web.Notification.requestPermission().toDart;
     } catch (_) {
-      // Browser permission requests can be rejected outside a user gesture.
+      // browser permission requests can be rejected outside a user gesture.
     }
   }
 }
@@ -41,7 +41,7 @@ void showWebNotification({
       _doseNotifications[doseId] = notification;
     }
   } catch (_) {
-    // The in-app toast remains the fallback when browser notifications are
+    // the in-app toast remains the fallback when browser notifications are
     // unavailable or the permission was revoked.
   }
 }

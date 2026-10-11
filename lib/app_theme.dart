@@ -1,7 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-/// Edit these semantic color variables to restyle the whole application.
+/// edit these semantic color variables to restyle the whole application.
 abstract final class AppColors {
   static const accent = Color(0xFF1565C0);
   static const lightAccent = Color(0xFF0A62D0);
@@ -14,7 +14,7 @@ abstract final class AppColors {
   static const lightOutline = Color(0xFFC6C6C8);
   static const lightError = Color(0xFFBA1A1A);
 
-  // Keep dark mode deep and calm without collapsing into a harsh pure black.
+  // keep dark mode deep and calm without collapsing into a harsh pure black.
   static const darkBackground = Color(0xFF0B0C0F);
   static const darkSurface = Color(0xFF202126);
   static const darkText = Color(0xFFF2F2F7);
@@ -23,7 +23,7 @@ abstract final class AppColors {
   static const darkError = Color(0xFFFFB4AB);
 }
 
-/// Shared corner radii for rectangular surfaces. Circular controls and
+/// shared corner radii for rectangular surfaces. circular controls and
 /// capsule controls intentionally keep their own geometry.
 abstract final class AppRadii {
   static const standard = 14.0;
@@ -31,7 +31,7 @@ abstract final class AppRadii {
   static const pill = 32.0;
 }
 
-/// Shared geometry and typography for interactive controls.
+/// shared geometry and typography for interactive controls.
 abstract final class AppButtonMetrics {
   static const minWidth = 64.0;
   static const minHeight = 48.0;
@@ -54,7 +54,7 @@ abstract final class AppButtonMetrics {
   );
 }
 
-/// The common spacing rhythm used by both touch and pointer layouts.
+/// the common spacing rhythm used by both touch and pointer layouts.
 abstract final class AppSpacing {
   static const xs = 4.0;
   static const sm = 8.0;
@@ -83,7 +83,7 @@ abstract final class AppTextStyles {
   static const caption = TextStyle(fontSize: 12, height: 1.35);
 }
 
-/// User-selectable accent palettes. Blue remains Mediary's default.
+/// user-selectable accent palettes. blue remains mediary's default.
 enum AppAccentColor {
   blue(
     label: 'Blue',
@@ -134,7 +134,7 @@ enum AppAccentColor {
 }
 
 abstract final class AppTheme {
-  /// Keeps palette and brightness changes calm enough to read as one motion.
+  /// keeps palette and brightness changes calm enough to read as one motion.
   static const transitionDuration = Duration(milliseconds: 200);
   static const transitionCurve = Curves.easeInOutCubic;
 
@@ -411,10 +411,10 @@ abstract final class AppTheme {
   }
 }
 
-/// Paints the animated theme background behind every route.
+/// paints the animated theme background behind every route.
 ///
-/// This prevents the platform's unpainted surface from showing through while
-/// Material interpolates between light, dark, system, and accent themes.
+/// this prevents the platform's unpainted surface from showing through while
+/// material interpolates between light, dark, system, and accent themes.
 class AppThemeTransitionSurface extends StatelessWidget {
   const AppThemeTransitionSurface({super.key, required this.child});
 

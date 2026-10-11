@@ -7,10 +7,10 @@ import 'data/medication_catalog_client.dart';
 import 'medication_label_details.dart';
 import 'ocr/medication_ocr.dart' as medication_ocr;
 
-/// Data contracts for the medication scan pipeline.
+/// data contracts for the medication scan pipeline.
 ///
-/// The detector is intentionally separate from the camera widget so the
-/// OCR implementation can change without affecting the review or calendar flow.
+/// the detector is intentionally separate from the camera widget so the
+/// ocr implementation can change without affecting the review or calendar flow.
 enum MedicationScanSource { camera, selectedPhoto }
 
 class MedicationScanRequest {
@@ -56,11 +56,11 @@ class MedicationScanResult {
       confidence.isFinite ? confidence.clamp(0.0, 1.0) : 0;
 }
 
-/// Selects the strongest RxNorm result for a name extracted from a label.
+/// selects the strongest rxnorm result for a name extracted from a label.
 ///
-/// RxNorm product names commonly include strength and dosage form, so an
+/// rxnorm product names commonly include strength and dosage form, so an
 /// exact string comparison would incorrectly reject valid results such as
-/// "Amoxicillin 500 MG Oral Capsule" for the detected name "Amoxicillin".
+/// "amoxicillin 500 mg oral capsule" for the detected name "amoxicillin".
 MedicationCatalogRecord? matchMedicationCatalogRecord(
   String query,
   Iterable<MedicationCatalogRecord> records, {
@@ -73,7 +73,7 @@ MedicationCatalogRecord? matchMedicationCatalogRecord(
   final queryClaritinD = _hasClaritinD(normalizedQuery);
   final labelDetails = MedicationLabelDetails.fromText(extractedText);
   final context = labelDetails.productText;
-  // Excedrin also names an aspirin-free product. A brand-only query cannot
+  // excedrin also names an aspirin-free product. a brand-only query cannot
   // choose the first catalog formulation unless the label supplies all three
   // ingredients of the standard combination.
   if (normalizedQuery == 'excedrin') {
@@ -104,8 +104,8 @@ MedicationCatalogRecord? matchMedicationCatalogRecord(
       continue;
     }
     final recordIngredients = _catalogIngredients(names);
-    // A shared brand/ingredient token is not enough to match a different
-    // formulation. Include all fields so a short synonym cannot conceal the
+    // a shared brand/ingredient token is not enough to match a different
+    // formulation. include all fields so a short synonym cannot conceal the
     // combination named in the product or generic name.
     if (queryIngredients.isNotEmpty &&
         recordIngredients.isNotEmpty &&
@@ -128,8 +128,8 @@ MedicationCatalogRecord? matchMedicationCatalogRecord(
     }
     final recordStrengths = _labelStrengths(recordText);
     final recordIngredientStrengths = _labelIngredientStrengths(recordText);
-    // Associate a dose with its ingredient. A set of bare numbers loses the
-    // repeated 250 mg strengths on a three-ingredient Excedrin label and can
+    // associate a dose with its ingredient. a set of bare numbers loses the
+    // repeated 250 mg strengths on a three-ingredient excedrin label and can
     // also accept a catalog product with the doses assigned the wrong way.
     if (queryIngredients.length > 1 &&
         ingredientStrengths.entries.any((entry) {
@@ -138,8 +138,8 @@ MedicationCatalogRecord? matchMedicationCatalogRecord(
         })) {
       continue;
     }
-    // Two readable strengths on a combination label are stronger evidence
-    // than a short brand synonym. A single OCR number is only a ranking hint.
+    // two readable strengths on a combination label are stronger evidence
+    // than a short brand synonym. a single ocr number is only a ranking hint.
     if (queryIngredients.length > 1 &&
         strengths.length == queryIngredients.length &&
         recordStrengths.length == queryIngredients.length &&
@@ -161,9 +161,9 @@ MedicationCatalogRecord? matchMedicationCatalogRecord(
         recordScore = recordScore < 700 ? 700 : recordScore;
       }
     }
-    // RxNorm may return the generic combination for a branded query, or a
-    // brand-only record for a generic combination. Require the complete known
-    // ingredient set so neither plain Claritin nor aspirin-free Excedrin can
+    // rxnorm may return the generic combination for a branded query, or a
+    // brand-only record for a generic combination. require the complete known
+    // ingredient set so neither plain claritin nor aspirin-free excedrin can
     // stand in for a different combination.
     if (recordScore == 0 &&
         (queryIngredients.containsAll({'loratadine', 'pseudoephedrine'}) ||
@@ -189,8 +189,8 @@ bool _hasCompatibleExplicitIngredients(
   MedicationCatalogRecord record,
   Set<String> expected,
 ) {
-  // A brand synonym cannot fill in an ingredient missing from an explicit
-  // formula. Unknown slash-separated ingredients must not disappear merely
+  // a brand synonym cannot fill in an ingredient missing from an explicit
+  // formula. unknown slash-separated ingredients must not disappear merely
   // because the camera's alias list does not recognize their names.
   for (final field in [record.name, record.genericName]) {
     final withoutBrand = field.replaceAll(RegExp(r'\[[^\]]*\]'), '');
@@ -209,8 +209,8 @@ bool _hasCompatibleExplicitIngredients(
       explicit.addAll(ingredients);
       if (components.length > 1 && ingredients.isEmpty) {
         if (_brandMedicationAliases.keys.any(tokens.contains)) continue;
-        // A concentration denominator is not another active ingredient.
-        // For example, do not treat "5 mL" in "12.5 mg / 5 mL" as a drug.
+        // a concentration denominator is not another active ingredient.
+        // for example, do not treat "5 ml" in "12.5 mg / 5 ml" as a drug.
         if (!RegExp(r'^(?:\d+(?:\s+\d+)?\s*)?(?:ml|l|mg|mcg|g)\b')
             .hasMatch(normalized)) {
           unknownComponent = true;
@@ -294,9 +294,9 @@ Map<String, double> _excedrinOcrFormulations(String normalized) {
   final formulations = {
     for (final name in _excedrinFormulations(normalized)) name: .94,
   };
-  // A cylindrical label can compress one letter in MIGRAINE even when the
-  // independently read Excedrin brand is intact. Keep this correction local
-  // to Excedrin detection and cap its confidence; never fuzzy-match catalog
+  // a cylindrical label can compress one letter in migraine even when the
+  // independently read excedrin brand is intact. keep this correction local
+  // to excedrin detection and cap its confidence; never fuzzy-match catalog
   // formulations or infer a variant from the brand alone.
   if (!formulations.containsKey('Excedrin Migraine') &&
       normalized
@@ -374,8 +374,8 @@ Future<MedicationPickedImage?> pickMedicationPhoto() async {
   );
 }
 
-/// Opens the native camera and returns the photo the person confirms.
-/// Cancelling the camera returns null and does not start a medication scan.
+/// opens the native camera and returns the photo the person confirms.
+/// cancelling the camera returns null and does not start a medication scan.
 Future<MedicationPickedImage?> captureMedicationPhoto({
   ImagePicker? picker,
 }) async {
@@ -390,8 +390,8 @@ Future<MedicationPickedImage?> captureMedicationPhoto({
   );
 }
 
-/// Reads a PNG/JPEG image from the system clipboard when the platform exposes
-/// image clipboard data. Text-only clipboard contents return null.
+/// reads a png/jpeg image from the system clipboard when the platform exposes
+/// image clipboard data. text-only clipboard contents return null.
 Future<MedicationPickedImage?> pasteMedicationPhoto() async {
   final bytes = await Pasteboard.image;
   if (bytes == null || bytes.isEmpty) return null;
@@ -401,10 +401,10 @@ Future<MedicationPickedImage?> pasteMedicationPhoto() async {
   );
 }
 
-/// OCR-backed detector for user-selected and pasted images.
+/// ocr-backed detector for user-selected and pasted images.
 ///
-/// The platform adapter uses ML Kit on Android/iOS and Tesseract.js in the
-/// browser. Every image goes through OCR before catalog verification.
+/// the platform adapter uses ml kit on android/ios and tesseract.js in the
+/// browser. every image goes through ocr before catalog verification.
 class MedicationOcrDetector implements MedicationScanDetector {
   const MedicationOcrDetector();
 
@@ -473,20 +473,20 @@ class MedicationOcrDetector implements MedicationScanDetector {
   }
 }
 
-/// Extracts a medication name conservatively from OCR output.
+/// extracts a medication name conservatively from ocr output.
 ///
-/// Brand aliases are checked before generic names because OTC labels usually
-/// lead with the brand name (for example, "Advil"). The line fallback keeps
-/// the detector useful for other labels without inventing a name when OCR is
+/// brand aliases are checked before generic names because otc labels usually
+/// lead with the brand name (for example, "advil"). the line fallback keeps
+/// the detector useful for other labels without inventing a name when ocr is
 /// too noisy; an unfamiliar name needs a readable strength or dosage form,
-/// and RxNorm still verifies the returned candidate before scheduling.
+/// and rxnorm still verifies the returned candidate before scheduling.
 String? detectMedicationName(String extractedText) =>
     _detectMedicationName(extractedText).name;
 
 ({String? name, double confidence}) _detectMedicationName(
   String extractedText,
 ) {
-  // Preserve OCR evidence, but do not identify a product from a medication
+  // preserve ocr evidence, but do not identify a product from a medication
   // mentioned only in directions, warnings, or an inactive ingredient list.
   final productText = _productLabelText(extractedText);
   final normalized = _normalizeMedicationName(productText);
@@ -500,8 +500,8 @@ String? detectMedicationName(String extractedText) =>
   }
 
   for (var index = 0; index < tokens.length; index++) {
-    // Check the whole brand including its suffix before fuzzy matching the
-    // shorter base name. OCR often separates D or attaches the hour number.
+    // check the whole brand including its suffix before fuzzy matching the
+    // shorter base name. ocr often separates d or attaches the hour number.
     for (var count = 1; count <= 3 && index + count <= tokens.length; count++) {
       final joined = tokens.sublist(index, index + count).join();
       final suffix = RegExp(r'^(.+)d(?:12|24)?$').firstMatch(joined);
@@ -538,12 +538,12 @@ String? detectMedicationName(String extractedText) =>
     brands['Claritin-D'] = evidence;
   } else if (brands.containsKey('Claritin') &&
       _hasUnresolvedClaritinSuffix(productText)) {
-    // A clipped or unreadable formulation suffix must not become plain
-    // Claritin. A later complete D variant above still wins over this noise.
+    // a clipped or unreadable formulation suffix must not become plain
+    // claritin. a later complete d variant above still wins over this noise.
     return (name: null, confidence: .25);
   }
-  // Conflicting brands require review instead of whichever token OCR listed
-  // first. Likewise, keep a readable combination intact when no brand is read.
+  // conflicting brands require review instead of whichever token ocr listed
+  // first. likewise, keep a readable combination intact when no brand is read.
   if (brands.length > 1) return (name: null, confidence: .25);
   if (brands.containsKey('Excedrin')) {
     final formulations = _excedrinOcrFormulations(normalized);
@@ -586,8 +586,8 @@ String? detectMedicationName(String extractedText) =>
     );
   }
 
-  // A symptom, package slogan, or punctuation fragment is not a medication
-  // name. Retain support for unfamiliar medicines only when the same line
+  // a symptom, package slogan, or punctuation fragment is not a medication
+  // name. retain support for unfamiliar medicines only when the same line
   // contains a name-shaped phrase followed by product evidence.
   final labelName = RegExp(
     r'^([A-Za-z][A-Za-z-]{3,}(?:\s+[A-Za-z][A-Za-z-]{2,})?)\s+'
@@ -629,7 +629,7 @@ double? _medicationAliasAt(List<String> tokens, int index, String alias) {
   final first = tokens[index];
   final second = tokens[index + 1];
   final joined = '$first$second';
-  // Joining exact fragments also handles a single trailing OCR letter, but
+  // joining exact fragments also handles a single trailing ocr letter, but
   // fuzzy joins require two substantial fragments to avoid absorbing suffixes.
   if (joined == alias) return .85;
   if (confidence != null) return confidence;
@@ -654,7 +654,7 @@ bool _hasUnresolvedClaritinSuffix(String text) =>
 double? _medicationAliasConfidence(String token, String alias) {
   if (token == alias) return .94;
   if (token.length < 5) return null;
-  // A trailing character can be a formulation suffix, not an OCR typo.
+  // a trailing character can be a formulation suffix, not an ocr typo.
   if (token.startsWith(alias)) return null;
   if (_editDistanceAtMostOne(token, alias)) return .7;
   String fold(String value) =>

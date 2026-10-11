@@ -13,7 +13,7 @@ import 'liquid_glass_search_field.dart';
 import 'medication_artwork.dart';
 import 'text_formatting.dart';
 
-/// A medication that can be added to the user's schedule.
+/// a medication that can be added to the user's schedule.
 @immutable
 class MedicationOption {
   const MedicationOption({
@@ -67,9 +67,9 @@ class MedicationOption {
   }
 }
 
-/// Pushes the medication picker and returns its selected medications.
+/// pushes the medication picker and returns its selected medications.
 ///
-/// A `null` result means that the person cancelled the picker.
+/// a `null` result means that the person cancelled the picker.
 Future<List<MedicationOption>?> showAddMedicationScreen(
   BuildContext context, {
   MedicationCatalogClient? catalogClient,
@@ -318,7 +318,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                             ),
                             if (selectionCount > 0)
                               _SelectedMedicationSummary(
-                                // Keep catalog results available as selections grow.
+                                // keep catalog results available as selections grow.
                                 maxHeight: math.max(
                                   constraints.maxHeight * .4,
                                   160 * textScale,
@@ -384,7 +384,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                       else
                         SliverLayoutBuilder(
                           builder: (context, sliverConstraints) {
-                            // Recovery content grows with the text size and
+                            // recovery content grows with the text size and
                             // remains in the same scroll view as the header.
                             final minimumHeight = math.max(
                               180 * textScale,

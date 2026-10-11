@@ -385,12 +385,12 @@ class MediaryRepository {
     await removeMedication(medicationId);
   }
 
-  /// Permanently removes one medication and all of its regimen records.
+  /// permanently removes one medication and all of its regimen records.
   ///
-  /// Every query is constrained to this exact medication ID, so deleting one
-  /// medication cannot affect another medication in the same account. The
+  /// every query is constrained to this exact medication id, so deleting one
+  /// medication cannot affect another medication in the same account. the
   /// operation is committed in bounded batches so users with many schedules or
-  /// dose logs are handled without exceeding Firestore's batch limit.
+  /// dose logs are handled without exceeding firestore's batch limit.
   Future<List<String>> removeMedication(String medicationId) async {
     if (medicationId.trim().isEmpty) {
       throw ArgumentError.value(
@@ -413,7 +413,7 @@ class MediaryRepository {
     for (final dose in doses.docs) {
       doseReferences[dose.id] = dose.reference;
     }
-    // Older dose records may only point to their schedule. Include them so
+    // older dose records may only point to their schedule. include them so
     // removing a medication cannot leave a reminder orphaned by legacy data.
     final allScheduleIds = scheduleIds.toList(growable: false);
     for (var offset = 0; offset < allScheduleIds.length; offset += 30) {
@@ -441,12 +441,12 @@ class MediaryRepository {
     return doseReferences.keys.toList(growable: false);
   }
 
-  /// Annotates legacy private medication documents with live catalog aliases.
+  /// annotates legacy private medication documents with live catalog aliases.
   ///
-  /// The document IDs are intentionally preserved so schedules and dose logs
-  /// keep their existing references. Callers should build [catalogIdsByLegacyId]
-  /// by resolving legacy names through [MedicationCatalogClient], and omit any
-  /// unresolved IDs so those records remain valid manual medications.
+  /// the document ids are intentionally preserved so schedules and dose logs
+  /// keep their existing references. callers should build [catalogidsbylegacyid]
+  /// by resolving legacy names through [medicationcatalogclient], and omit any
+  /// unresolved ids so those records remain valid manual medications.
   Future<int> migrateLegacyMedicationAliases({
     required Map<String, String> catalogIdsByLegacyId,
     required String catalogVersion,
@@ -581,25 +581,25 @@ class MediaryRepository {
           }
         }
       }
-      // Update every legacy copy of this exact occurrence, not other times or
-      // dates. A stale duplicate must not undo Taken, Snooze, Delete, or Undo.
+      // update every legacy copy of this exact occurrence, not other times or
+      // dates. a stale duplicate must not undo taken, snooze, delete, or undo.
       await _commitOperations([
         for (final reference in references.values)
           (batch) => batch.update(reference, data),
       ]);
     } on FirebaseException catch (error) {
-      // A stale dashboard can outlive a dose that was removed on another
-      // device. Treat that idempotent case as success so the UI can reconcile
-      // on the next Firestore snapshot; surface permission/network failures.
+      // a stale dashboard can outlive a dose that was removed on another
+      // device. treat that idempotent case as success so the ui can reconcile
+      // on the next firestore snapshot; surface permission/network failures.
       if (error.code != 'not-found') rethrow;
     }
   }
 
-  /// Creates missing future occurrences and cancels obsolete future ones.
+  /// creates missing future occurrences and cancels obsolete future ones.
   ///
-  /// Existing records are matched by schedule, local date, and local time so
-  /// older random document IDs remain compatible. New records always use the
-  /// generator's deterministic ID, making retries and app restarts idempotent.
+  /// existing records are matched by schedule, local date, and local time so
+  /// older random document ids remain compatible. new records always use the
+  /// generator's deterministic id, making retries and app restarts idempotent.
   Future<int> ensureUpcomingDoses({
     required List<ScheduleRecord> schedules,
     required List<DoseLogRecord> existing,
@@ -662,8 +662,8 @@ class MediaryRepository {
         } else if (_canReconcile(existingDose) &&
             existingDose.scheduledFor.millisecondsSinceEpoch !=
                 occurrence.scheduledFor.millisecondsSinceEpoch) {
-          // A timezone or DST interpretation changed while the local slot
-          // stayed the same. Keep the user's dose record but repair its
+          // a timezone or dst interpretation changed while the local slot
+          // stayed the same. keep the user's dose record but repair its
           // instant so notification scheduling follows the updated schedule.
           final ref = _doseLogs.doc(existingDose.id);
           writes.add((
@@ -678,8 +678,8 @@ class MediaryRepository {
       }
     }
 
-    // A schedule edit can make an already-generated future dose obsolete.
-    // Preserve taken/missed history, but cancel anything still actionable.
+    // a schedule edit can make an already-generated future dose obsolete.
+    // preserve taken/missed history, but cancel anything still actionable.
     final generatedKeys = <String>{
       for (final entry in occurrencesBySchedule.entries)
         for (final occurrence in entry.value)
@@ -709,7 +709,7 @@ class MediaryRepository {
       }
     }
 
-    // A listener snapshot can be stale relative to another device. Read every
+    // a listener snapshot can be stale relative to another device. read every
     // target in the transaction before writing so generated doses cannot reset
     // a user action that reached the server while this snapshot was loading.
     for (var offset = 0; offset < writes.length; offset += 200) {
@@ -740,7 +740,7 @@ class MediaryRepository {
     );
   }
 
-  /// Cancels actionable doses for an inactive schedule while preserving logs.
+  /// cancels actionable doses for an inactive schedule while preserving logs.
   Future<void> cancelScheduleDoses(String scheduleId) async {
     final snapshot = await _doseLogs
         .where('scheduleId', isEqualTo: scheduleId)
@@ -861,8 +861,8 @@ class MediaryRepository {
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
     if (dose != null) {
-      // The initial add and background generator must target the same record,
-      // even if independent Firestore listeners arrive out of order.
+      // the initial add and background generator must target the same record,
+      // even if independent firestore listeners arrive out of order.
       final doseRef = _doseLogs.doc(
         ScheduleOccurrenceGenerator.deterministicOccurrenceId(
           scheduleRef.id,

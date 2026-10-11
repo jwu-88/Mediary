@@ -38,7 +38,7 @@ class _Firestore extends Fake implements FirebaseFirestore {
   }
 }
 
-// Firestore seals interfaces for production; these test-only fakes exercise
+// firestore seals interfaces for production; these test-only fakes exercise
 // repository writes without accessing an account.
 // ignore: subtype_of_sealed_class
 class _Collection extends Fake
@@ -273,7 +273,7 @@ void main() {
             endDate: date,
             timezone: 'UTC',
           ),
-          // Reproduce the old caller's schedule-ID-shaped initial dose.
+          // reproduce the old caller's schedule-id-shaped initial dose.
           dose: DoseWrite(
             id: 'schedule',
             medicationId: 'medication',

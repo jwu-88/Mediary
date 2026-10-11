@@ -15,10 +15,10 @@ const _weeklyReportNativeContentWidth = 520.0;
 const _weeklyReportDesktopContentWidth = 1120.0;
 const _weeklyChartHorizontalPadding = 10.0;
 
-/// A weekly medication-adherence report that can be pushed as a standalone
+/// a weekly medication-adherence report that can be pushed as a standalone
 /// route.
 ///
-/// Empty data is rendered as an empty report until stored medication history is
+/// empty data is rendered as an empty report until stored medication history is
 /// supplied by the signed-in user's data store.
 class WeeklyReportScreen extends StatelessWidget {
   WeeklyReportScreen({
@@ -46,11 +46,11 @@ class WeeklyReportScreen extends StatelessWidget {
   final List<int> timingOffsetsMinutes;
   final List<int> dailySkipped;
 
-  /// Actual missed counts, excluding pending doses. Legacy callers can omit
+  /// actual missed counts, excluding pending doses. legacy callers can omit
   /// these counts to derive missed doses from scheduled, taken, and skipped.
   final List<int>? dailyMissed;
 
-  /// One offset for each taken dose with a known timestamp. An explicit empty
+  /// one offset for each taken dose with a known timestamp. an explicit empty
   /// list means timing data is unavailable, including when a chart is padded.
   final List<int> timingSampleOffsetsMinutes;
   final Future<String> Function(ReportWrite report)? onSaveReport;

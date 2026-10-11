@@ -291,7 +291,7 @@ class RxNormMedicationCatalogClient implements MedicationCatalogClient {
     } on MedicationCatalogRateLimitException {
       rethrow;
     } on MedicationCatalogException {
-      // RxNorm remains a valid detail source when no FDA label is available.
+      // rxnorm remains a valid detail source when no fda label is available.
     }
 
     _detailsCache[normalized] = record;
@@ -330,7 +330,7 @@ class RxNormMedicationCatalogClient implements MedicationCatalogClient {
       final decoded = jsonDecode(body);
       if (decoded is Map<String, dynamic>) return decoded;
     } catch (_) {
-      // Fall through to the consistent user-facing exception below.
+      // fall through to the consistent user-facing exception below.
     }
     throw MedicationCatalogException('$source returned an invalid response.');
   }
@@ -363,7 +363,7 @@ class RxNormMedicationCatalogClient implements MedicationCatalogClient {
       );
     }
     final groups = drugGroup['conceptGroup'];
-    // RxNorm omits conceptGroup when a valid query has no matches.
+    // rxnorm omits conceptgroup when a valid query has no matches.
     if (groups == null) return const [];
     if (groups is! Iterable) {
       throw const MedicationCatalogException(

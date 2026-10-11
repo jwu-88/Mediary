@@ -26,8 +26,8 @@ class _RecoveryCatalogClient implements MedicationCatalogClient {
       MedicationCatalogRecord(rxcui: rxcui, name: 'Ibuprofen');
 }
 
-// Match the scan fallback's direct pushInAppPage entry. Do not wrap the pushed
-// library in Material or Scaffold: its search must work on a standalone route.
+// match the scan fallback's direct pushinapppage entry. do not wrap the pushed
+// library in material or scaffold: its search must work on a standalone route.
 void main() {
   for (final size in const [Size(320, 640), Size(568, 320), Size(1440, 900)]) {
     for (final initialQuery in ['', 'unknown', 'failed']) {

@@ -30,6 +30,6 @@ The history is minimal (`Add files`, `first commit`), so use concise, imperative
 
 ## User-Requested Completion Workflow
 
-For completed work in this project, implement and verify the changes, commit by feature, push the working branch, merge the completed changes into `main`, and push `main`. Refresh the Codex review against the updated `origin/main` and verify that the branch comparison and uncommitted changes are empty. A feature-branch push alone does not complete the user's requested workflow. Follow a later explicit request for a different branch or merge policy instead.
+For completed work in this project, implement and verify the changes, commit by feature, push the working branch, merge the completed changes into `main`, and push `main`. Refresh the review against the updated `origin/main` and verify that the branch comparison and uncommitted changes are empty. A feature-branch push alone does not complete the user's requested workflow. Follow a later explicit request for a different branch or merge policy instead.
 
 Use isolated worktrees while other agents are working. Before updating `main`, fetch the latest remote state and check that its checkout is clean. Preserve other agents' work and commit history; never reset a dirty checkout or force-push to make a change count disappear. Coordinate if another agent is actively modifying `main`.

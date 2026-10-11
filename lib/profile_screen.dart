@@ -71,8 +71,8 @@ class ProfileScreen extends StatefulWidget {
   final Future<void> Function(String medicationId)? onRemoveMedication;
   final VoidCallback? onOpenLibrary;
 
-  /// Retained for callers that have not yet migrated to the Settings shell.
-  /// Account no longer presents a nested Settings row.
+  /// retained for callers that have not yet migrated to the settings shell.
+  /// account no longer presents a nested settings row.
   final VoidCallback? onOpenSettings;
   final VoidCallback? onBack;
   final Future<void> Function()? onSignOut;

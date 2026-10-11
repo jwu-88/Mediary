@@ -1,4 +1,4 @@
-// Browser-only validation target. It uses the application's real camera and
+// browser-only validation target. it uses the application's real camera and
 // detector adapters; the runner supplies the synthetic browser camera stream.
 import 'dart:async';
 import 'dart:convert';

@@ -2,8 +2,8 @@ import '../time_formatting.dart';
 import 'mediary_models.dart';
 import 'schedule_occurrence_generator.dart';
 
-/// Treat legacy and deterministic IDs for one schedule slot as one dose.
-/// Different schedules, dates, times, and medications remain separate.
+/// treat legacy and deterministic ids for one schedule slot as one dose.
+/// different schedules, dates, times, and medications remain separate.
 List<DoseLogRecord> uniqueDoseOccurrences(Iterable<DoseLogRecord> doses) {
   final bySlot = <String, DoseLogRecord>{};
   for (final dose in doses) {

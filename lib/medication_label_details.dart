@@ -1,6 +1,6 @@
 import 'data/medication_catalog_client.dart';
 
-/// Literal ingredient names shared by name detection and label presentation.
+/// literal ingredient names shared by name detection and label presentation.
 const medicationIngredientNames = <String, String>{
   'acetaminophen': 'Acetaminophen',
   'amoxicillin': 'Amoxicillin',
@@ -18,8 +18,8 @@ const medicationIngredientNames = <String, String>{
   'pseudoephedrine': 'Pseudoephedrine',
 };
 
-/// A presentation of readable facts, separate from the original OCR evidence.
-/// Does not infer ingredients from brands, repair words, or create directions.
+/// a presentation of readable facts, separate from the original ocr evidence.
+/// does not infer ingredients from brands, repair words, or create directions.
 class MedicationLabelDetails {
   MedicationLabelDetails.fromText(String text)
     : this._(_productLines(text).join('\n'));
@@ -38,8 +38,8 @@ class MedicationLabelDetails {
   bool get hasReadableFacts =>
       ingredients.isNotEmpty || strengths.isNotEmpty || forms.isNotEmpty;
 
-  /// Prefer a clinical product whose strength/form can be confirmed over a
-  /// brand-only catalog entry. This is ranking evidence, not a probability.
+  /// prefer a clinical product whose strength/form can be confirmed over a
+  /// brand-only catalog entry. this is ranking evidence, not a probability.
   int supportingFieldCount(MedicationCatalogRecord medication) {
     final candidate = MedicationLabelDetails.fromText(
       '${medication.strength}\n${medication.form}\n${medication.name}',
@@ -55,7 +55,7 @@ class MedicationLabelDetails {
         (forms.isNotEmpty && forms.every(candidate.forms.contains) ? 1 : 0);
   }
 
-  /// Readable facts can disprove a name-only catalog match. Unknown fields
+  /// readable facts can disprove a name-only catalog match. unknown fields
   /// cannot prove a conflict, and a brand name never fills in missing facts.
   bool conflictsWith(MedicationCatalogRecord medication) {
     final catalogIngredients = _ingredients(

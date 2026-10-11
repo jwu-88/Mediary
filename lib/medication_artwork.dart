@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-/// A deterministic, generated illustration for a live catalog medication.
+/// a deterministic, generated illustration for a live catalog medication.
 ///
-/// RxNorm and openFDA provide clinical metadata and labels, but do not expose a
-/// consistent product-image field for every RxCUI. This artwork gives every
+/// rxnorm and openfda provide clinical metadata and labels, but do not expose a
+/// consistent product-image field for every rxcui. this artwork gives every
 /// live result a distinct visual identity without pretending that an unrelated
 /// pill photo is the selected product.
 class MedicationArtwork extends StatelessWidget {

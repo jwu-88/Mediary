@@ -7,7 +7,7 @@ import 'app_theme.dart';
 
 export 'app_theme.dart' show AppSpacing, AppTextStyles;
 
-/// Visual priority is shared across routes and platforms.
+/// visual priority is shared across routes and platforms.
 enum AppButtonVariant {
   primary,
   secondary,
@@ -16,7 +16,7 @@ enum AppButtonVariant {
   destructiveSecondary,
 }
 
-/// The standard action control. Text remains visible during asynchronous work,
+/// the standard action control. text remains visible during asynchronous work,
 /// and another activation is blocked until that work finishes.
 class AppButton extends StatefulWidget {
   const AppButton({
@@ -65,7 +65,7 @@ abstract class _ActionState<T extends StatefulWidget> extends State<T> {
 
   void _activateAction() {
     if (!canActivate) return;
-    // Do not await before invoking the callback. Browser camera, clipboard and
+    // do not await before invoking the callback. browser camera, clipboard and
     // file-picker operations require the original pointer's user activation.
     unawaited(AppHaptics.trigger(haptic));
     late final FutureOr<void> result;
@@ -289,7 +289,7 @@ class _AppButtonState extends _ActionState<AppButton> {
   }
 }
 
-/// Toolbar, dismiss, and navigation controls share one circular hit area.
+/// toolbar, dismiss, and navigation controls share one circular hit area.
 class AppIconButton extends StatefulWidget {
   const AppIconButton({
     super.key,

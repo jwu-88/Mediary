@@ -15,7 +15,7 @@ import 'text_formatting.dart';
 const _calendarNativeContentWidth = 520.0;
 const _calendarDesktopContentWidth = 1120.0;
 
-/// A native, interactive medication calendar based on the calendar prototype.
+/// a native, interactive medication calendar based on the calendar prototype.
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({
     super.key,
@@ -72,8 +72,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   late DateTime _selectedDate;
   late DateTime _visibleMonth;
   final Map<String, List<_CalendarDose>> _dosesByDate = {};
-  // A parent rebuild can briefly provide the old Firestore snapshot while a
-  // cancellation is propagating. Keep the local removal authoritative during
+  // a parent rebuild can briefly provide the old firestore snapshot while a
+  // cancellation is propagating. keep the local removal authoritative during
   // that window so a dose cannot reappear when the user changes pages.
   final Set<String> _removedDoseIds = <String>{};
   String? _announcement;
@@ -176,8 +176,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
       final addedDoses = await widget.onAddDose!(_selectedDate);
       if (!mounted || addedDoses == null || addedDoses.isEmpty) return;
       setState(() {
-        // Rounding a late-night default can move the occurrence to tomorrow.
-        // Keep the newly scheduled entry visible on its actual date.
+        // rounding a late-night default can move the occurrence to tomorrow.
+        // keep the newly scheduled entry visible on its actual date.
         final addedDate = DateTime.tryParse(addedDoses.first.localDate);
         if (addedDate != null &&
             !DateUtils.isSameDay(addedDate, _selectedDate)) {
@@ -429,7 +429,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               builder: (context, constraints) {
                 final textScale =
                     MediaQuery.textScalerOf(context).scale(11) / 11;
-                // The desktop shell reserves sidebar space. Use the actual
+                // the desktop shell reserves sidebar space. use the actual
                 // page width and allow larger text to retain readable columns.
                 final landscapeLayout =
                     constraints.maxWidth >= 1000 * math.max(1, textScale);

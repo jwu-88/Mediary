@@ -300,7 +300,7 @@ class _MedicationTimeSelectionPageState
                 : 'Scroll through the wheels to set the reminder time in hours and minutes.',
             style: TextStyle(color: colors.onSurfaceVariant, height: 1.45),
           ),
-          // Keep the list's input subtree at the same slot while validation
+          // keep the list's input subtree at the same slot while validation
           // changes, so editing never replaces its state or keyboard client.
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,

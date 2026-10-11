@@ -88,11 +88,11 @@ String formatLocalDate(String value) {
       '${day.toString().padLeft(2, '0')}/$year';
 }
 
-/// Returns a best-effort IANA timezone for the device's current timezone.
+/// returns a best-effort iana timezone for the device's current timezone.
 ///
-/// The schedule editor stores IANA names, while Dart exposes a short timezone
-/// abbreviation on most platforms. These are the common user-facing zones;
-/// unknown zones fall back to UTC and can still be selected explicitly.
+/// the schedule editor stores iana names, while dart exposes a short timezone
+/// abbreviation on most platforms. these are the common user-facing zones;
+/// unknown zones fall back to utc and can still be selected explicitly.
 String deviceScheduleTimezone() {
   switch (DateTime.now().timeZoneName.toUpperCase()) {
     case 'EST':
@@ -136,7 +136,7 @@ String deviceScheduleTimezone() {
   if (offset.inMinutes == 0) return 'UTC';
   final hours = offset.inHours;
   if (offset.inMinutes == hours * 60 && hours >= -12 && hours <= 14) {
-    // Etc/GMT uses the opposite sign convention.
+    // etc/gmt uses the opposite sign convention.
     return 'Etc/GMT${hours > 0 ? '-' : '+'}${hours.abs()}';
   }
   return 'UTC';
@@ -163,7 +163,7 @@ bool isMedicationTimeInPast(
   return !scheduled.isAfter(current);
 }
 
-/// The next strictly future ten-minute boundary, including date rollover.
+/// the next strictly future ten-minute boundary, including date rollover.
 DateTime nextMedicationScheduleTime({DateTime? now}) {
   final current = now ?? DateTime.now();
   final minute = (current.minute ~/ 10 + 1) * 10;
@@ -213,7 +213,7 @@ DateTime medicationScheduledDate(
   );
 }
 
-/// A clock time skipped by daylight saving must not silently become another
+/// a clock time skipped by daylight saving must not silently become another
 /// time when the user confirms it.
 bool isMedicationTimeAvailableOnDate(
   DateTime date,

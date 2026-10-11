@@ -4,7 +4,7 @@ import 'package:timezone/timezone.dart' as tz;
 import '../time_formatting.dart';
 import 'mediary_models.dart';
 
-/// A single, deterministic occurrence of a medication schedule.
+/// a single, deterministic occurrence of a medication schedule.
 class ScheduleOccurrence {
   const ScheduleOccurrence({
     required this.id,
@@ -23,11 +23,11 @@ class ScheduleOccurrence {
   final String localTime;
 }
 
-/// Pure recurrence calculation for medication schedules.
+/// pure recurrence calculation for medication schedules.
 ///
-/// The generator never reads or writes Firestore. It uses the schedule's
+/// the generator never reads or writes firestore. it uses the schedule's
 /// local date/time as the source of truth and converts each occurrence through
-/// the configured IANA timezone, which keeps DST transitions predictable.
+/// the configured iana timezone, which keeps dst transitions predictable.
 class ScheduleOccurrenceGenerator {
   const ScheduleOccurrenceGenerator();
 

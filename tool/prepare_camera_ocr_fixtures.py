@@ -52,7 +52,7 @@ def scene(im,angle=0,brightness=.65,blur=.65,label_width=740,label_height=580,gl
  bg=Image.fromarray(arr).convert('RGBA')
  bg.alpha_composite(im,((W-im.width)//2,(H-im.height)//2))
  arr=np.asarray(bg.convert('RGB')).astype(float)
- # Side lighting, dim exposure, and soft vignette applied to whole frame.
+ # side lighting, dim exposure, and soft vignette applied to whole frame.
  light=.82+.18*(xx/W)
  vignette=1-.22*((xx-W/2)**2/(W/2)**2+(yy-H/2)**2/(H/2)**2)
  arr*=brightness*light[...,None]*vignette[...,None]
@@ -88,7 +88,7 @@ expected={'Excedrin':'Excedrin Migraine','Advil':'Advil','Tylenol':'Tylenol','Al
 accepted={'Excedrin':['Excedrin Migraine','Acetaminophen/Aspirin/Caffeine','Acetaminophen / Aspirin / Caffeine'],'Advil':['Advil','Ibuprofen'],'Tylenol':['Tylenol','Acetaminophen'],'Aleve':['Aleve','Naproxen','Naproxen Sodium'],'Claritin':['Claritin','Loratadine'],'Benadryl':['Benadryl','Diphenhydramine']}
 for entry in entries:
  entry.update(path=entry['test_path'],expectedMedicationName=expected[entry['brand']],acceptedMedicationNames=accepted[entry['brand']],sourceUrl=entry['page_url'])
-# Private captured examples are not included in the manufacturer contact sheet.
+# private captured examples are not included in the manufacturer contact sheet.
 photo=Path(args.benadryl_camera_screenshot) if args.benadryl_camera_screenshot else None
 if photo and photo.exists():
  Image.open(photo).crop((2,230,1050,1018)).save(ROOT/'private-user-benadryl-camera-crop.png')

@@ -181,7 +181,7 @@ void main() {
             timeDisplayFormat: format,
           );
           final amountField = find.byKey(const Key('scheduleDoseAmountField'));
-          // Clear a validation error, then continue through a decimal value
+          // clear a validation error, then continue through a decimal value
           // using the same keyboard client.
           await tester.enterText(amountField, '0');
           await tester.ensureVisible(

@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 const webFloatingNoticeInset = 16.0;
 const webFloatingNoticeMaxWidth = 360.0;
 
-/// Shared visual treatment for transient web notices and consent prompts.
+/// shared visual treatment for transient web notices and consent prompts.
 ///
-/// Keeping this surface in one place prevents privacy/terms prompts from
-/// drifting away from the medication notification treatment as either UI
+/// keeping this surface in one place prevents privacy/terms prompts from
+/// drifting away from the medication notification treatment as either ui
 /// evolves.
 class WebFloatingNoticeCard extends StatelessWidget {
   const WebFloatingNoticeCard({

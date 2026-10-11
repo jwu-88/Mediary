@@ -6,8 +6,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'in_app_page.dart';
 
-/// Supply this at build time with `--dart-define=MEDIARY_SUPPORT_EMAIL=...`.
-/// Keeping it configurable avoids publishing an unverified personal address.
+/// supply this at build time with `--dart-define=mediary_support_email=...`.
+/// keeping it configurable avoids publishing an unverified personal address.
 const mediarySupportEmail = String.fromEnvironment('MEDIARY_SUPPORT_EMAIL');
 
 class PrivacyPolicyPage extends StatelessWidget {
@@ -266,7 +266,7 @@ class _LegalContent extends StatelessWidget {
   }
 }
 
-/// Shared styling for the login form and its separate legal navigation.
+/// shared styling for the login form and its separate legal navigation.
 BoxDecoration authPanelDecoration(ThemeData theme) {
   return BoxDecoration(
     color: theme.scaffoldBackgroundColor.withValues(
@@ -287,7 +287,7 @@ BoxDecoration authPanelDecoration(ThemeData theme) {
   );
 }
 
-/// Legal navigation stays outside the credential form.
+/// legal navigation stays outside the credential form.
 class LegalLinksFooter extends StatelessWidget {
   const LegalLinksFooter({super.key});
 

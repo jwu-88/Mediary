@@ -85,10 +85,10 @@ class MainActivity : FlutterActivity() {
         val grayscale = applyColorMatrix(
             base,
             ColorMatrix().apply {
-                // Grayscale luminance coefficients with a 1.35 contrast
-                // boost around mid-gray. Keeping this as one matrix avoids
-                // relying on ColorMatrix APIs that are unavailable on older
-                // Android SDK surfaces.
+                // grayscale luminance coefficients with a 1.35 contrast
+                // boost around mid-gray. keeping this as one matrix avoids
+                // relying on colormatrix apis that are unavailable on older
+                // android sdk surfaces.
                 set(
                     floatArrayOf(
                         0.40365f, 0.79245f, 0.1539f, 0f, -44.8f,

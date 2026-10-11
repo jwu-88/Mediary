@@ -218,7 +218,7 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
 
   void _resetSearchAndFilters() {
     _searchController.clear();
-    // An abandoned saved-list request must not restore an error after clearing.
+    // an abandoned saved-list request must not restore an error after clearing.
     _savedRequest++;
     setState(() {
       _savedOnly = false;
@@ -234,7 +234,7 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
       try {
         record = await widget.catalogClient!.getDetails(record.rxcui);
       } catch (_) {
-        // The RxNorm search result remains usable if openFDA enrichment fails.
+        // the rxnorm search result remains usable if openfda enrichment fails.
       }
     }
     if (!mounted || record == null) return;
@@ -272,8 +272,8 @@ class _MedicationLibraryScreenState extends State<MedicationLibraryScreen> {
     final contentWidth = viewportWidth >= 900
         ? responsiveContentWidth(context, nativeMaxWidth: 1120)
         : 520.0;
-    // This screen is also pushed directly from scan review, where the previous
-    // route's Scaffold cannot provide Material ancestry or keyboard resizing.
+    // this screen is also pushed directly from scan review, where the previous
+    // route's scaffold cannot provide material ancestry or keyboard resizing.
     return Scaffold(
       backgroundColor: _background,
       body: SafeArea(
@@ -920,7 +920,7 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
       final details = await client.getDetails(widget.medication.rxcui);
       if (mounted) setState(() => _medication = details);
     } catch (_) {
-      // The RxNorm result is still useful when label enrichment is offline.
+      // the rxnorm result is still useful when label enrichment is offline.
     } finally {
       if (mounted) setState(() => _isLoadingDetails = false);
     }

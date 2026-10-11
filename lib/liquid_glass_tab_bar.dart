@@ -44,9 +44,9 @@ class LiquidGlassTabBar extends StatelessWidget {
     final active = highContrast
         ? Color.lerp(primary, dark ? Colors.white : Colors.black, .22)!
         : primary;
-    // Keep the navigation surface opaque. The scanner intentionally uses a
+    // keep the navigation surface opaque. the scanner intentionally uses a
     // black camera canvas, so a translucent base here would let that canvas
-    // bleed through and produce a noisy, dithered-looking texture. The
+    // bleed through and produce a noisy, dithered-looking texture. the
     // selected destination still carries the glass treatment below.
     final surfaceColor = dark
         ? const Color(0xFF1B1D22)
@@ -84,9 +84,9 @@ class LiquidGlassTabBar extends StatelessWidget {
           borderRadius: BorderRadius.circular(
             AppButtonMetrics.navigationRadius,
           ),
-          // Keep the base surface solid. Blurring the camera canvas behind
-          // the bar creates a visible pixel/grid pattern on some iOS devices.
-          // The selected destination still uses its own glass lens below.
+          // keep the base surface solid. blurring the camera canvas behind
+          // the bar creates a visible pixel/grid pattern on some ios devices.
+          // the selected destination still uses its own glass lens below.
           child: Container(
             key: const Key('liquidGlassTabBar'),
             height: navigationHeight,

@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 
 import 'app_interactions.dart';
 
-/// An opaque, desktop-style navigation rail for the web app.
+/// an opaque, desktop-style navigation rail for the web app.
 ///
-/// The rail stays compact until the pointer enters it, then smoothly expands to
-/// reveal destination labels. It intentionally avoids blur and transparency so
-/// the web experience remains crisp and distinct from the iOS glass tab bar.
+/// the rail stays compact until the pointer enters it, then smoothly expands to
+/// reveal destination labels. it intentionally avoids blur and transparency so
+/// the web experience remains crisp and distinct from the ios glass tab bar.
 class WebNavigationSidebar extends StatefulWidget {
   const WebNavigationSidebar({
     super.key,
@@ -22,8 +22,8 @@ class WebNavigationSidebar extends StatefulWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
 
-  /// Keeps a full-width invisible hover target while the visual rail is
-  /// collapsed. The desktop shell uses this so the pointer can travel from
+  /// keeps a full-width invisible hover target while the visual rail is
+  /// collapsed. the desktop shell uses this so the pointer can travel from
   /// the icon rail to an expanded label without collapsing the rail.
   final bool overlayHoverArea;
 

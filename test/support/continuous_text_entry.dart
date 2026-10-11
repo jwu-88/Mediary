@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Sends edits through the existing keyboard connection. Unlike enterText,
+/// sends edits through the existing keyboard connection. unlike entertext,
 /// this never focuses again between characters, exposing dropped input state.
 Future<void> typeWithoutRefocusing(
   WidgetTester tester,

@@ -5,7 +5,7 @@ import 'app_layout.dart';
 import 'app_theme.dart';
 import 'liquid_glass_back_button.dart';
 
-/// Opens app-owned content as a full routed page instead of a platform dialog
+/// opens app-owned content as a full routed page instead of a platform dialog
 /// or bottom sheet.
 Future<T?> pushInAppPage<T>(
   BuildContext context, {
@@ -39,7 +39,7 @@ Future<T?> pushInAppPage<T>(
   );
 }
 
-/// Shared page shell for former popup content.
+/// shared page shell for former popup content.
 class InAppPageScaffold extends StatelessWidget {
   const InAppPageScaffold({
     super.key,
@@ -132,10 +132,10 @@ class InAppPageOption<T> {
   final bool selected;
 }
 
-/// A responsive, app-owned replacement for short action sheets and option
-/// dialogs. By default, selecting a row returns its value to the previous
-/// page. Persistent selector pages can keep the route open and receive each
-/// selection through [onChanged].
+/// a responsive, app-owned replacement for short action sheets and option
+/// dialogs. by default, selecting a row returns its value to the previous
+/// page. persistent selector pages can keep the route open and receive each
+/// selection through [onchanged].
 class InAppOptionPage<T> extends StatelessWidget {
   const InAppOptionPage({
     super.key,

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
-# Use an isolated Flutter test Chrome profile with a synthetic video device.
-# Override MEDIARY_CHROME_BINARY and FLUTTER_BIN on other operating systems.
+# use an isolated flutter test chrome profile with a synthetic video device.
+# override mediary_chrome_binary and flutter_bin on other operating systems.
 export MEDIARY_CHROME_BINARY="${MEDIARY_CHROME_BINARY:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 mediary_camera_test_dir=$(mktemp -d)
 trap 'rm -rf "$mediary_camera_test_dir"' EXIT HUP INT TERM

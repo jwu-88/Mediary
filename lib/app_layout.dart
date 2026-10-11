@@ -14,9 +14,9 @@ abstract final class AppBreakpoints {
       MediaQuery.sizeOf(context).width >= desktop;
 }
 
-/// Returns the content width used by a destination page.
+/// returns the content width used by a destination page.
 ///
-/// Native screens keep their deliberately narrow reading width. Desktop web
+/// native screens keep their deliberately narrow reading width. desktop web
 /// screens use a shared landscape cap so pages can make use of the browser's
 /// horizontal space without becoming difficult to scan.
 double responsiveContentWidth(

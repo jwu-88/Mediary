@@ -7,7 +7,7 @@ import 'app_controls.dart';
 import 'app_theme.dart' show AppButtonMetrics;
 import 'app_interactions.dart';
 
-/// A route-level back action with the same geometry and feedback as toolbars.
+/// a route-level back action with the same geometry and feedback as toolbars.
 class LiquidGlassBackButton extends StatelessWidget {
   const LiquidGlassBackButton({
     super.key,

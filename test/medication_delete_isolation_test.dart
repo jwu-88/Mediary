@@ -497,7 +497,7 @@ void main() {
       await tester.pumpAndSettle();
       await _showDoseRows(tester);
       await tester.tap(find.text('Remind Me Later'));
-      // The row remains busy while the snooze write is deliberately pending.
+      // the row remains busy while the snooze write is deliberately pending.
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       expect(changes, hasLength(1));

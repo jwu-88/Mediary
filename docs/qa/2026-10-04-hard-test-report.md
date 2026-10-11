@@ -1,6 +1,6 @@
 # Web and iOS hard-test audit and fix plan
 
-Date: October 4, 2026. Application: Mediary. All confirmed issues below have been implemented and committed by feature on `codex/hard-test-fixes`. The branch includes the original scanner/catalog changes committed as `2c6f979`.
+Date: October 4, 2026. Application: Mediary. All confirmed issues below have been implemented and committed by feature on `hard-test-fixes`. The branch includes the original scanner/catalog changes committed as `2c6f979`.
 
 Three subagents used separate frozen copies and disposable data. Chrome tests used isolated profiles; native tests used a dedicated iPhone SE simulator running iOS 27. The primary checkout, other agents' simulator/browser sessions, production accounts, and production Firestore records were left unchanged.
 
