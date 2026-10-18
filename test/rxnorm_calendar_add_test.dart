@@ -345,4 +345,65 @@ void main() {
     await _expectCalendarMedication(tester);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets('recognized scan reuses an exact legacy medication record', (
+    tester,
+  ) async {
+    final store = _Store()
+      ..medications = [
+        MedicationRecord(
+          id: 'legacy-medication-id',
+          name: _Catalog.medication.name,
+          genericName: _Catalog.medication.genericName,
+          strength: _Catalog.medication.strength,
+          form: _Catalog.medication.form,
+          route: _Catalog.medication.route,
+          instructions: '',
+          prescriber: '',
+          pharmacy: '',
+          notes: '',
+          active: true,
+          source: 'library',
+        ),
+      ];
+    await _openScan(tester, store, recognized: true);
+    await tester.tap(find.byKey(const Key('addScanResultButton')));
+    await tester.pumpAndSettle();
+
+    expect(store.attempts, 1);
+    expect(store.medication!.id, 'legacy-medication-id');
+    expect(store.medication!.catalogId, _Catalog.medication.rxcui);
+    expect(store.schedule!.medicationId, 'legacy-medication-id');
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('scan does not reuse a different legacy formulation', (
+    tester,
+  ) async {
+    final store = _Store()
+      ..medications = [
+        MedicationRecord(
+          id: 'extended-release-medication',
+          name: _Catalog.medication.name,
+          genericName: _Catalog.medication.genericName,
+          strength: _Catalog.medication.strength,
+          form: 'extended release tablet',
+          route: _Catalog.medication.route,
+          instructions: '',
+          prescriber: '',
+          pharmacy: '',
+          notes: '',
+          active: true,
+          source: 'library',
+        ),
+      ];
+    await _openScan(tester, store, recognized: true);
+    await tester.tap(find.byKey(const Key('addScanResultButton')));
+    await tester.pumpAndSettle();
+
+    expect(store.attempts, 1);
+    expect(store.medication!.id, 'rxnorm_${_Catalog.medication.rxcui}');
+    expect(store.schedule!.medicationId, store.medication!.id);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }

@@ -2310,8 +2310,9 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
     if (store == null || catalog == null) {
       throw StateError('A confirmed medication is required before scheduling.');
     }
+    await store.waitForInitialData();
 
-    final existingMedication = _existingMedicationFor(store, catalog.rxcui);
+    final existingMedication = _existingMedicationForCatalog(store, catalog);
     final medicationId =
         existingMedication?.id ?? _catalogMedicationId(catalog.rxcui);
     final doseAmount = _scanDoseAmount(schedule.dose);
@@ -2351,50 +2352,66 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       return false;
     }
 
-    await store.commitScheduleAndDose(
-      medication: MedicationWrite(
-        id: medicationId,
-        name: existingMedication?.name ?? catalog.name,
-        genericName: existingMedication?.genericName ?? catalog.genericName,
-        strength: existingMedication?.strength ?? catalog.strength,
-        form: existingMedication?.form ?? catalog.form,
-        route: existingMedication?.route ?? catalog.route,
-        instructions: existingMedication?.instructions ?? '',
-        prescriber: existingMedication?.prescriber ?? '',
-        pharmacy: existingMedication?.pharmacy ?? '',
-        notes: existingMedication?.notes ?? '',
-        active: existingMedication?.active ?? true,
-        catalogId: catalog.rxcui,
-        catalogSource: 'rxnorm',
-        catalogVersion: catalog.sourceVersion,
-        source: 'scanner',
-      ),
-      schedule: ScheduleWrite(
-        id: scheduleId,
-        medicationId: medicationId,
-        doseAmount: doseAmount,
-        doseUnit: doseUnit,
-        times: [localTime],
-        frequency: frequency,
-        daysOfWeek: frequency == 'weekly'
-            ? [schedule.startDate.weekday]
-            : const <int>[],
-        startDate: localDate,
-        endDate: endDate,
-        timezone: scheduleTimezone,
-        instructions: 'Confirmed from scanned medication label.',
-      ),
-      dose: frequency == 'asNeeded'
-          ? null
-          : DoseWrite(
-              id: doseId,
-              medicationId: medicationId,
-              scheduleId: scheduleId,
-              scheduledFor: scheduledFor,
-              localDate: localDate,
-              localTime: localTime,
-            ),
+    final scheduleKey = _scanScheduleKey(
+      catalogId: catalog.rxcui,
+      doseAmount: doseAmount,
+      doseUnit: doseUnit,
+      localTime: localTime,
     );
+    _pendingScheduleKeys[scheduleKey] = medicationId;
+    if (!store.medications.any((medication) => medication.id == medicationId)) {
+      _awaitingMedicationSnapshotIds.add(medicationId);
+    }
+    try {
+      await store.commitScheduleAndDose(
+        medication: MedicationWrite(
+          id: medicationId,
+          name: existingMedication?.name ?? catalog.name,
+          genericName: existingMedication?.genericName ?? catalog.genericName,
+          strength: existingMedication?.strength ?? catalog.strength,
+          form: existingMedication?.form ?? catalog.form,
+          route: existingMedication?.route ?? catalog.route,
+          instructions: existingMedication?.instructions ?? '',
+          prescriber: existingMedication?.prescriber ?? '',
+          pharmacy: existingMedication?.pharmacy ?? '',
+          notes: existingMedication?.notes ?? '',
+          active: existingMedication?.active ?? true,
+          catalogId: catalog.rxcui,
+          catalogSource: 'rxnorm',
+          catalogVersion: catalog.sourceVersion,
+          source: 'scanner',
+        ),
+        schedule: ScheduleWrite(
+          id: scheduleId,
+          medicationId: medicationId,
+          doseAmount: doseAmount,
+          doseUnit: doseUnit,
+          times: [localTime],
+          frequency: frequency,
+          daysOfWeek: frequency == 'weekly'
+              ? [schedule.startDate.weekday]
+              : const <int>[],
+          startDate: localDate,
+          endDate: endDate,
+          timezone: scheduleTimezone,
+          instructions: 'Confirmed from scanned medication label.',
+        ),
+        dose: frequency == 'asNeeded'
+            ? null
+            : DoseWrite(
+                id: doseId,
+                medicationId: medicationId,
+                scheduleId: scheduleId,
+                scheduledFor: scheduledFor,
+                localDate: localDate,
+                localTime: localTime,
+              ),
+      );
+    } catch (_) {
+      _pendingScheduleKeys.remove(scheduleKey);
+      _awaitingMedicationSnapshotIds.remove(medicationId);
+      rethrow;
+    }
 
     if (frequency != 'asNeeded') {
       _requestMedicationNotificationPermission();
@@ -2412,25 +2429,15 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       ].join(' · '),
       status: 'due',
     );
-    if (mounted && frequency != 'asNeeded') {
+    if (mounted) {
       setState(() {
-        _cancelledDoseIds.remove(doseId);
-        _calendarFocusDate = schedule.startDate;
-        _pendingCalendarDoses.removeWhere((dose) => dose.id == doseId);
-        _pendingCalendarDoses.add(calendarDose);
-        _pendingCalendarDoseMedicationIds[doseId] = medicationId;
-        if (!store.medications.any(
-          (medication) => medication.id == medicationId,
-        )) {
-          _awaitingMedicationSnapshotIds.add(medicationId);
+        if (frequency != 'asNeeded') {
+          _cancelledDoseIds.remove(doseId);
+          _calendarFocusDate = schedule.startDate;
+          _pendingCalendarDoses.removeWhere((dose) => dose.id == doseId);
+          _pendingCalendarDoses.add(calendarDose);
+          _pendingCalendarDoseMedicationIds[doseId] = medicationId;
         }
-        _pendingScheduleKeys[_scanScheduleKey(
-              catalogId: catalog.rxcui,
-              doseAmount: doseAmount,
-              doseUnit: doseUnit,
-              localTime: localTime,
-            )] =
-            medicationId;
       });
     }
     return true;
@@ -2604,6 +2611,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
   ) async {
     final store = widget.dataStore;
     if (store == null) throw StateError('Scheduling is unavailable.');
+    await store.waitForInitialData();
     final time = scheduleDraft.time;
     final selectedDate = scheduleDraft.date;
     final scheduledFor = medicationScheduledDate(
@@ -2616,7 +2624,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
     final addedDoses = <CalendarDoseData>[];
     var added = false;
     for (final catalog in catalogs) {
-      final existingMedication = _existingMedicationFor(store, catalog.rxcui);
+      final existingMedication = _existingMedicationForCatalog(store, catalog);
       final medicationId =
           existingMedication?.id ?? _catalogMedicationId(catalog.rxcui);
       final doseUnit = catalog.form.isNotEmpty
@@ -2645,47 +2653,65 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
         localDate: localDate,
         localTime: localTime,
       );
-      await store.commitScheduleAndDose(
-        medication: MedicationWrite(
-          id: medicationId,
-          name: existingMedication?.name ?? catalog.name,
-          genericName: existingMedication?.genericName ?? catalog.genericName,
-          strength: existingMedication?.strength ?? catalog.strength,
-          form: existingMedication?.form ?? catalog.form,
-          route: existingMedication?.route ?? catalog.route,
-          instructions: existingMedication?.instructions ?? '',
-          prescriber: existingMedication?.prescriber ?? '',
-          pharmacy: existingMedication?.pharmacy ?? '',
-          notes: existingMedication?.notes ?? '',
-          active: existingMedication?.active ?? true,
-          catalogId: catalog.rxcui,
-          catalogSource: 'rxnorm',
-          catalogVersion: catalog.sourceVersion,
-          source: existingMedication?.source ?? 'library',
-        ),
-        schedule: ScheduleWrite(
-          id: scheduleId,
-          medicationId: medicationId,
-          doseAmount: scheduleDraft.doseAmount,
-          doseUnit: doseUnit,
-          times: [localTime],
-          frequency: scheduleDraft.frequency,
-          daysOfWeek: scheduleDraft.daysOfWeek,
-          startDate: localDate,
-          endDate: scheduleDraft.frequency == 'once' ? localDate : null,
-          timezone: scheduleDraft.timezone,
-        ),
-        dose: scheduleDraft.frequency == 'asNeeded'
-            ? null
-            : DoseWrite(
-                id: doseId,
-                medicationId: medicationId,
-                scheduleId: scheduleId,
-                scheduledFor: scheduledFor,
-                localDate: localDate,
-                localTime: localTime,
-              ),
+      final scheduleKey = _scanScheduleKey(
+        catalogId: catalog.rxcui,
+        doseAmount: scheduleDraft.doseAmount,
+        doseUnit: doseUnit,
+        localTime: localTime,
       );
+      _pendingScheduleKeys[scheduleKey] = medicationId;
+      if (!store.medications.any(
+        (medication) => medication.id == medicationId,
+      )) {
+        _awaitingMedicationSnapshotIds.add(medicationId);
+      }
+      try {
+        await store.commitScheduleAndDose(
+          medication: MedicationWrite(
+            id: medicationId,
+            name: existingMedication?.name ?? catalog.name,
+            genericName: existingMedication?.genericName ?? catalog.genericName,
+            strength: existingMedication?.strength ?? catalog.strength,
+            form: existingMedication?.form ?? catalog.form,
+            route: existingMedication?.route ?? catalog.route,
+            instructions: existingMedication?.instructions ?? '',
+            prescriber: existingMedication?.prescriber ?? '',
+            pharmacy: existingMedication?.pharmacy ?? '',
+            notes: existingMedication?.notes ?? '',
+            active: existingMedication?.active ?? true,
+            catalogId: catalog.rxcui,
+            catalogSource: 'rxnorm',
+            catalogVersion: catalog.sourceVersion,
+            source: existingMedication?.source ?? 'library',
+          ),
+          schedule: ScheduleWrite(
+            id: scheduleId,
+            medicationId: medicationId,
+            doseAmount: scheduleDraft.doseAmount,
+            doseUnit: doseUnit,
+            times: [localTime],
+            frequency: scheduleDraft.frequency,
+            daysOfWeek: scheduleDraft.daysOfWeek,
+            startDate: localDate,
+            endDate: scheduleDraft.frequency == 'once' ? localDate : null,
+            timezone: scheduleDraft.timezone,
+          ),
+          dose: scheduleDraft.frequency == 'asNeeded'
+              ? null
+              : DoseWrite(
+                  id: doseId,
+                  medicationId: medicationId,
+                  scheduleId: scheduleId,
+                  scheduledFor: scheduledFor,
+                  localDate: localDate,
+                  localTime: localTime,
+                ),
+        );
+      } catch (_) {
+        _pendingScheduleKeys.remove(scheduleKey);
+        _awaitingMedicationSnapshotIds.remove(medicationId);
+        rethrow;
+      }
       added = true;
       _cancelledDoseIds.remove(doseId);
       _pendingCalendarDoseMedicationIds[doseId] = medicationId;
@@ -2694,13 +2720,6 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       )) {
         _awaitingMedicationSnapshotIds.add(medicationId);
       }
-      _pendingScheduleKeys[_scanScheduleKey(
-            catalogId: catalog.rxcui,
-            doseAmount: scheduleDraft.doseAmount,
-            doseUnit: doseUnit,
-            localTime: localTime,
-          )] =
-          medicationId;
       if (scheduleDraft.frequency != 'asNeeded') {
         addedDoses.add(
           CalendarDoseData(
@@ -2780,14 +2799,140 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
     );
   }
 
-  MedicationRecord? _existingMedicationFor(
+  MedicationRecord? _existingMedicationForCatalog(
     MediaryDataStore store,
-    String catalogId,
+    MedicationCatalogRecord catalog,
   ) {
-    for (final medication in store.medications) {
-      if (medication.catalogId == catalogId) return medication;
+    final matchingCatalogRecords = store.medications
+        .where((medication) => medication.catalogId == catalog.rxcui)
+        .toList(growable: false);
+    if (matchingCatalogRecords.isNotEmpty) {
+      matchingCatalogRecords.sort((a, b) {
+        final canonicalId = _catalogMedicationId(catalog.rxcui);
+        if (a.id == canonicalId) return -1;
+        if (b.id == canonicalId) return 1;
+        return a.id.compareTo(b.id);
+      });
+      return matchingCatalogRecords.first;
     }
-    return null;
+
+    // older library records predate rxnorm ids. reuse only an exact product
+    // identity so a confirmed scan does not create a second medication row.
+    final legacyRecords =
+        store.medications
+            .where(
+              (medication) => _matchesLegacyMedication(medication, catalog),
+            )
+            .toList(growable: false)
+          ..sort((a, b) => a.id.compareTo(b.id));
+    return legacyRecords.isEmpty ? null : legacyRecords.first;
+  }
+
+  bool _matchesLegacyMedication(
+    MedicationRecord medication,
+    MedicationCatalogRecord catalog,
+  ) {
+    if (medication.catalogId != null) return false;
+    String normalized(String value) => value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .trim()
+        .replaceAll(RegExp(r'\s+'), ' ');
+
+    final existingNames = [
+      medication.name,
+      medication.genericName,
+    ].map(normalized).where((value) => value.isNotEmpty).toSet();
+    final catalogNames = [
+      catalog.name,
+      catalog.genericName,
+      catalog.synonym,
+    ].map(normalized).where((value) => value.isNotEmpty).toSet();
+    if (!existingNames.intersection(catalogNames).isNotEmpty) return false;
+
+    final existingStrength = normalized(medication.strength);
+    final catalogStrength = normalized(catalog.strength);
+    if (existingStrength.isEmpty || existingStrength != catalogStrength) {
+      return false;
+    }
+
+    String formIdentity(String value) {
+      final form = normalized(value);
+      for (final candidate in [
+        'extended release',
+        'delayed release',
+        'sustained release',
+        'chewable',
+        'orally disintegrating',
+        'disintegrating',
+        'enteric coated',
+        'sublingual',
+        'buccal',
+        'tablet',
+        'capsule',
+        'solution',
+        'suspension',
+        'syrup',
+        'lozenge',
+        'cream',
+        'ointment',
+        'patch',
+        'inhaler',
+        'injection',
+        'spray',
+        'suppository',
+        'drops',
+      ]) {
+        if (form.contains(candidate)) return candidate;
+      }
+      return form;
+    }
+
+    String releaseIdentity(String value) {
+      final text = normalized(value);
+      for (final marker in [
+        'extended release',
+        'delayed release',
+        'sustained release',
+        'enteric coated',
+        '24 hour',
+        '12 hour',
+        'xr',
+        'xl',
+        'er',
+        'dr',
+        'sr',
+        'cr',
+      ]) {
+        if (RegExp('(?:^| )${RegExp.escape(marker)}(?: |\$)').hasMatch(text)) {
+          return marker;
+        }
+      }
+      return '';
+    }
+
+    final existingForm = formIdentity(
+      '${medication.form} ${medication.name} ${medication.genericName}',
+    );
+    final catalogForm = formIdentity(
+      '${catalog.form} ${catalog.name} ${catalog.genericName} ${catalog.synonym}',
+    );
+    if (existingForm.isEmpty || existingForm != catalogForm) {
+      return false;
+    }
+    final existingRelease = releaseIdentity(
+      '${medication.name} ${medication.genericName} ${medication.form}',
+    );
+    final catalogRelease = releaseIdentity(
+      '${catalog.name} ${catalog.genericName} ${catalog.synonym} ${catalog.form}',
+    );
+    if (existingRelease != catalogRelease) return false;
+    final existingRoute = normalized(medication.route);
+    final catalogRoute = normalized(catalog.route);
+    return existingRoute.isEmpty ||
+        catalogRoute.isEmpty ||
+        existingRoute == catalogRoute;
   }
 
   String _catalogMedicationId(String catalogId) => 'rxnorm_$catalogId';

@@ -44,7 +44,76 @@ class _Repository extends Fake implements MediaryRepository {
   }) async => 0;
 }
 
+class _DelayedRepository extends _Repository {
+  final profileStream = StreamController<UserProfileRecord?>();
+  final medicationStream = StreamController<List<MedicationRecord>>();
+  final scheduleStream = StreamController<List<ScheduleRecord>>();
+  final doseStream = StreamController<List<DoseLogRecord>>();
+  final savedMedicationStream = StreamController<List<SavedMedicationRecord>>();
+  final reportStream = StreamController<List<ReportRecord>>();
+  final scanStream = StreamController<List<ScanRecord>>();
+
+  @override
+  Stream<UserProfileRecord?> watchProfile() => profileStream.stream;
+  @override
+  Stream<List<MedicationRecord>> watchMedications() => medicationStream.stream;
+  @override
+  Stream<List<ScheduleRecord>> watchSchedules() => scheduleStream.stream;
+  @override
+  Stream<List<DoseLogRecord>> watchDoseLogs() => doseStream.stream;
+  @override
+  Stream<List<SavedMedicationRecord>> watchSavedMedications() =>
+      savedMedicationStream.stream;
+  @override
+  Stream<List<ReportRecord>> watchReports() => reportStream.stream;
+  @override
+  Stream<List<ScanRecord>> watchScans() => scanStream.stream;
+  @override
+  Future<void> ensureProfile(User user) async {}
+
+  Future<void> close() async {
+    await Future.wait([
+      profileStream.close(),
+      medicationStream.close(),
+      scheduleStream.close(),
+      doseStream.close(),
+      savedMedicationStream.close(),
+      reportStream.close(),
+      scanStream.close(),
+    ]);
+  }
+
+  void emitInitialData() {
+    profileStream.add(null);
+    medicationStream.add([]);
+    scheduleStream.add([]);
+    doseStream.add([]);
+    savedMedicationStream.add([]);
+    reportStream.add([]);
+    scanStream.add([]);
+  }
+}
+
 void main() {
+  test('waits for initial data before a medication write', () async {
+    final repository = _DelayedRepository();
+    final store = MediaryDataStore(repository: repository);
+    await store.start(_User('hydration-user'));
+    var completed = false;
+    final waiting = store.waitForInitialData().then((_) => completed = true);
+    await Future<void>.delayed(Duration.zero);
+    expect(completed, isFalse);
+
+    repository.emitInitialData();
+    await waiting;
+    expect(completed, isTrue);
+    expect(store.hasInitialData, isTrue);
+
+    await store.stop();
+    await repository.close();
+    store.dispose();
+  });
+
   test(
     'profile failure after disposal cannot notify a disposed store',
     () async {

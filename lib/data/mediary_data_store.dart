@@ -227,6 +227,39 @@ class MediaryDataStore extends ChangeNotifier {
     await repository.updateProfile(value);
   }
 
+  Future<void> waitForInitialData({
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    if (hasInitialData) return;
+    if (_disposed || _user == null) {
+      throw StateError('Medication data is unavailable.');
+    }
+
+    final ready = Completer<void>();
+    void checkReadiness() {
+      if (ready.isCompleted) return;
+      if (hasInitialData) {
+        ready.complete();
+      } else if (error != null) {
+        ready.completeError(error!);
+      }
+    }
+
+    addListener(checkReadiness);
+    checkReadiness();
+    try {
+      await ready.future.timeout(
+        timeout,
+        onTimeout: () => throw TimeoutException(
+          'Timed out waiting for medication data.',
+          timeout,
+        ),
+      );
+    } finally {
+      removeListener(checkReadiness);
+    }
+  }
+
   Future<void> updatePreference(String key, Object value) =>
       repository.updatePreference(key, value);
 
