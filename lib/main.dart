@@ -1655,6 +1655,16 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
   Future<void> _removeMedicationAndClearReminders(String medicationId) async {
     final store = widget.dataStore;
     if (store == null) return;
+    final selected = store.medications.where(
+      (medication) => medication.id == medicationId,
+    );
+    final catalogId = selected.isEmpty ? null : selected.first.catalogId;
+    final medicationIds = <String>{
+      medicationId,
+      if (catalogId != null)
+        for (final medication in store.medications)
+          if (medication.catalogId == catalogId) medication.id,
+    };
     final relatedIds = await store.removeMedicationAndGetRelatedIds(
       medicationId,
     );
@@ -1662,8 +1672,8 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
     _pendingCalendarDoseMedicationIds.removeWhere(
       (doseId, _) => relatedIds.contains(doseId),
     );
-    _pendingScheduleKeys.removeWhere((_, id) => id == medicationId);
-    _awaitingMedicationSnapshotIds.remove(medicationId);
+    _pendingScheduleKeys.removeWhere((_, id) => medicationIds.contains(id));
+    _awaitingMedicationSnapshotIds.removeAll(medicationIds);
     for (final id in relatedIds) {
       try {
         await _notificationService.cancelDose(id);
@@ -2311,6 +2321,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
       throw StateError('A confirmed medication is required before scheduling.');
     }
     await store.waitForInitialData();
+    await _migrateLegacyMedicationAliasesForCatalog(store, catalog);
 
     final existingMedication = _existingMedicationForCatalog(store, catalog);
     final medicationId =
@@ -2342,7 +2353,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
 
     if (_isDuplicateSchedule(
       store,
-      catalogId: catalog.rxcui,
+      catalog: catalog,
       medicationId: medicationId,
       doseAmount: doseAmount,
       doseUnit: doseUnit,
@@ -2475,12 +2486,13 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
 
   bool _isDuplicateSchedule(
     MediaryDataStore store, {
-    required String catalogId,
+    required MedicationCatalogRecord catalog,
     required String medicationId,
     required double doseAmount,
     required String doseUnit,
     required String localTime,
   }) {
+    final catalogId = catalog.rxcui;
     final key = _scanScheduleKey(
       catalogId: catalogId,
       doseAmount: doseAmount,
@@ -2495,7 +2507,11 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
     };
     medicationIds.addAll(
       store.medications
-          .where((medication) => medication.catalogId == catalogId)
+          .where(
+            (medication) =>
+                medication.catalogId == catalogId ||
+                _matchesLegacyMedication(medication, catalog),
+          )
           .map((medication) => medication.id),
     );
     final normalizedUnit = _normalizeDoseUnit(doseUnit);
@@ -2624,6 +2640,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
     final addedDoses = <CalendarDoseData>[];
     var added = false;
     for (final catalog in catalogs) {
+      await _migrateLegacyMedicationAliasesForCatalog(store, catalog);
       final existingMedication = _existingMedicationForCatalog(store, catalog);
       final medicationId =
           existingMedication?.id ?? _catalogMedicationId(catalog.rxcui);
@@ -2632,7 +2649,7 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
           : 'dose';
       if (_isDuplicateSchedule(
         store,
-        catalogId: catalog.rxcui,
+        catalog: catalog,
         medicationId: medicationId,
         doseAmount: scheduleDraft.doseAmount,
         doseUnit: doseUnit,
@@ -2826,6 +2843,22 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
             .toList(growable: false)
           ..sort((a, b) => a.id.compareTo(b.id));
     return legacyRecords.isEmpty ? null : legacyRecords.first;
+  }
+
+  Future<void> _migrateLegacyMedicationAliasesForCatalog(
+    MediaryDataStore store,
+    MedicationCatalogRecord catalog,
+  ) async {
+    final aliases = {
+      for (final medication in store.medications)
+        if (_matchesLegacyMedication(medication, catalog))
+          medication.id: catalog.rxcui,
+    };
+    if (aliases.isEmpty) return;
+    await store.migrateLegacyMedicationAliases(
+      catalogIdsByLegacyId: aliases,
+      catalogVersion: catalog.sourceVersion,
+    );
   }
 
   bool _matchesLegacyMedication(

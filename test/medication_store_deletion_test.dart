@@ -8,6 +8,7 @@ import 'package:mediary/data/mediary_repository.dart';
 
 class _DeletionRepository extends Fake implements MediaryRepository {
   String? removedId;
+  final removedIds = <String>[];
   Object? failure;
   Completer<void>? generating;
   final generatedSchedules = <List<String>>[];
@@ -50,7 +51,10 @@ class _DeletionRepository extends Fake implements MediaryRepository {
   Future<List<String>> removeMedication(String medicationId) async {
     if (failure != null) throw failure!;
     removedId = medicationId;
-    return ['dose-removed', 'legacy-dose'];
+    removedIds.add(medicationId);
+    return medicationId == 'removed'
+        ? ['dose-removed', 'legacy-dose']
+        : ['dose-$medicationId'];
   }
 }
 
@@ -59,20 +63,22 @@ class _TestUser extends Fake implements User {
   String get uid => 'deletion-test-user';
 }
 
-MedicationRecord _medication(String id) => MedicationRecord(
-  id: id,
-  name: 'Same Medication Name',
-  genericName: '',
-  strength: '200 MG',
-  form: 'Tablet',
-  route: '',
-  instructions: '',
-  prescriber: '',
-  pharmacy: '',
-  notes: '',
-  active: true,
-  source: 'manual',
-);
+MedicationRecord _medication(String id, {String? catalogId}) =>
+    MedicationRecord(
+      id: id,
+      name: 'Same Medication Name',
+      genericName: '',
+      strength: '200 MG',
+      form: 'Tablet',
+      route: '',
+      instructions: '',
+      prescriber: '',
+      pharmacy: '',
+      notes: '',
+      active: true,
+      source: 'manual',
+      catalogId: catalogId,
+    );
 
 ScheduleRecord _schedule(String id, String medicationId) => ScheduleRecord(
   id: id,
@@ -142,6 +148,41 @@ void main() {
     expect(store.schedules, hasLength(2));
     expect(store.doseLogs, hasLength(3));
   });
+
+  test(
+    'deleting a catalog medication removes duplicate records together',
+    () async {
+      store.medications = [
+        _medication('catalog-copy-a', catalogId: 'rxnorm-123'),
+        _medication('catalog-copy-b', catalogId: 'rxnorm-123'),
+        _medication('neighbor', catalogId: 'rxnorm-456'),
+      ];
+      store.schedules = [
+        _schedule('schedule-copy-a', 'catalog-copy-a'),
+        _schedule('schedule-copy-b', 'catalog-copy-b'),
+        _schedule('schedule-neighbor', 'neighbor'),
+      ];
+      store.doseLogs = [
+        _dose('dose-copy-a', 'catalog-copy-a', 'schedule-copy-a'),
+        _dose('dose-copy-b', 'catalog-copy-b', 'schedule-copy-b'),
+        _dose('dose-neighbor', 'neighbor', 'schedule-neighbor'),
+      ];
+
+      await store.removeMedicationAndGetRelatedIds('catalog-copy-a');
+
+      expect(
+        repository.removedIds,
+        containsAll(['catalog-copy-a', 'catalog-copy-b']),
+      );
+      expect(store.medications.map((medication) => medication.id), [
+        'neighbor',
+      ]);
+      expect(store.schedules.map((schedule) => schedule.id), [
+        'schedule-neighbor',
+      ]);
+      expect(store.doseLogs.map((dose) => dose.id), ['dose-neighbor']);
+    },
+  );
 
   test(
     'deletion waits for dose generation and never regenerates orphan schedules',

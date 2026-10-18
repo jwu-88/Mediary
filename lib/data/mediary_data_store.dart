@@ -266,6 +266,32 @@ class MediaryDataStore extends ChangeNotifier {
   Future<String> saveMedication(MedicationWrite value) =>
       repository.upsertMedication(value);
 
+  Future<int> migrateLegacyMedicationAliases({
+    required Map<String, String> catalogIdsByLegacyId,
+    required String catalogVersion,
+  }) async {
+    if (catalogIdsByLegacyId.isEmpty) return 0;
+    final generation = _generation;
+    final migrated = await repository.migrateLegacyMedicationAliases(
+      catalogIdsByLegacyId: catalogIdsByLegacyId,
+      catalogVersion: catalogVersion,
+    );
+    if (!_isCurrent(generation) || migrated == 0) return migrated;
+
+    medications = [
+      for (final medication in medications)
+        if (catalogIdsByLegacyId[medication.id] case final catalogId?)
+          medication.copyWithCatalogAlias(
+            catalogId: catalogId,
+            catalogVersion: catalogVersion,
+          )
+        else
+          medication,
+    ];
+    notifyListeners();
+    return migrated;
+  }
+
   Future<String> saveSchedule(ScheduleWrite value) =>
       repository.upsertSchedule(value);
 
@@ -303,7 +329,15 @@ class MediaryDataStore extends ChangeNotifier {
   Future<Set<String>> removeMedicationAndGetRelatedIds(String id) async {
     final generation = _generation;
     if (_disposed) throw StateError('Account is closed.');
-    _removingMedicationIds.add(id);
+    final selected = medications.where((medication) => medication.id == id);
+    final catalogId = selected.isEmpty ? null : selected.first.catalogId;
+    final medicationIds = <String>{
+      id,
+      if (catalogId != null)
+        for (final medication in medications)
+          if (medication.catalogId == catalogId) medication.id,
+    };
+    _removingMedicationIds.addAll(medicationIds);
     try {
       // let an already-running generator finish before querying deletions so
       // it cannot recreate occurrences after their medication was removed.
@@ -311,34 +345,41 @@ class MediaryDataStore extends ChangeNotifier {
       if (!_isCurrent(generation)) {
         throw StateError('Account changed while removing.');
       }
-      return await _removeMedicationAndGetRelatedIds(id, generation);
+      return await _removeMedicationAndGetRelatedIds(medicationIds, generation);
     } finally {
-      if (_isCurrent(generation)) _removingMedicationIds.remove(id);
+      if (_isCurrent(generation)) {
+        _removingMedicationIds.removeAll(medicationIds);
+      }
     }
   }
 
   Future<Set<String>> _removeMedicationAndGetRelatedIds(
-    String id,
+    Set<String> medicationIds,
     int generation,
   ) async {
     final scheduleIds = schedules
-        .where((schedule) => schedule.medicationId == id)
+        .where((schedule) => medicationIds.contains(schedule.medicationId))
         .map((schedule) => schedule.id)
         .toSet();
-    final deletedDoseIds = await repository.removeMedication(id);
-    if (!_isCurrent(generation)) {
-      throw StateError('Account changed while removing.');
+    final deletedDoseIds = <String>{};
+    for (final medicationId in medicationIds) {
+      deletedDoseIds.addAll(await repository.removeMedication(medicationId));
+      if (!_isCurrent(generation)) {
+        throw StateError('Account changed while removing.');
+      }
     }
     final relatedIds = {...scheduleIds, ...deletedDoseIds};
     medications = medications
-        .where((medication) => medication.id != id)
+        .where((medication) => !medicationIds.contains(medication.id))
         .toList(growable: false);
     schedules = schedules
         .where((schedule) => !scheduleIds.contains(schedule.id))
         .toList(growable: false);
     doseLogs = doseLogs
         .where(
-          (dose) => dose.medicationId != id && !relatedIds.contains(dose.id),
+          (dose) =>
+              !medicationIds.contains(dose.medicationId) &&
+              !relatedIds.contains(dose.id),
         )
         .toList(growable: false);
     notifyListeners();

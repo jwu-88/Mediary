@@ -15,7 +15,13 @@ import 'package:mediary/notifications/medication_notification_service.dart';
 
 import 'support/medication_scan_fixture.dart';
 
-class _Repository extends Fake implements MediaryRepository {}
+class _Repository extends Fake implements MediaryRepository {
+  @override
+  Future<int> migrateLegacyMedicationAliases({
+    required Map<String, String> catalogIdsByLegacyId,
+    required String catalogVersion,
+  }) async => catalogIdsByLegacyId.length;
+}
 
 class _Store extends MediaryDataStore {
   _Store() : super(repository: _Repository());

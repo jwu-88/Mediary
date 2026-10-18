@@ -1539,9 +1539,20 @@ class _ActiveMedicationManagementPage extends StatefulWidget {
 
 class _ActiveMedicationManagementPageState
     extends State<_ActiveMedicationManagementPage> {
-  late final List<MedicationRecord> _medications = [...widget.medications];
+  late List<MedicationRecord> _medications = [...widget.medications];
+  final Set<String> _locallyRemovedMedicationIds = <String>{};
   String? _removingId;
   String? _error;
+
+  @override
+  void didUpdateWidget(covariant _ActiveMedicationManagementPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final incomingIds = widget.medications.map((item) => item.id).toSet();
+    _locallyRemovedMedicationIds.removeWhere((id) => !incomingIds.contains(id));
+    _medications = widget.medications
+        .where((item) => !_locallyRemovedMedicationIds.contains(item.id))
+        .toList(growable: true);
+  }
 
   Future<void> _removeMedication(MedicationRecord medication) async {
     final confirmed = await showDialog<bool>(
@@ -1550,7 +1561,7 @@ class _ActiveMedicationManagementPageState
         scrollable: true,
         title: Text('Remove ${titleCaseDisplay(medication.name)}?'),
         content: const Text(
-          'This permanently deletes the medication, its schedules, and its dose history.',
+          'This permanently deletes the medication, duplicate entries for the same RxNorm product, its schedules, and its dose history.',
         ),
         actions: [
           AppButton(
@@ -1576,8 +1587,16 @@ class _ActiveMedicationManagementPageState
     try {
       await widget.onRemove(medication);
       if (!mounted) return;
+      final removedIds = {
+        for (final item in _medications)
+          if (item.id == medication.id ||
+              (medication.catalogId != null &&
+                  item.catalogId == medication.catalogId))
+            item.id,
+      };
       setState(() {
-        _medications.removeWhere((item) => item.id == medication.id);
+        _locallyRemovedMedicationIds.addAll(removedIds);
+        _medications.removeWhere((item) => removedIds.contains(item.id));
         _removingId = null;
       });
     } catch (_) {

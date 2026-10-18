@@ -151,6 +151,30 @@ class MedicationRecord {
   final DateTime? updatedAt;
   final DateTime? archivedAt;
 
+  MedicationRecord copyWithCatalogAlias({
+    required String catalogId,
+    required String catalogVersion,
+  }) => MedicationRecord(
+    id: id,
+    name: name,
+    genericName: genericName,
+    strength: strength,
+    form: form,
+    route: route,
+    instructions: instructions,
+    prescriber: prescriber,
+    pharmacy: pharmacy,
+    notes: notes,
+    active: active,
+    source: source,
+    catalogId: catalogId,
+    catalogSource: 'rxnorm',
+    catalogVersion: catalogVersion,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+    archivedAt: archivedAt,
+  );
+
   factory MedicationRecord.fromSnapshot(
     DocumentSnapshot<Map<String, dynamic>> snapshot,
   ) {
