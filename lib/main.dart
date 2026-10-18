@@ -1655,10 +1655,44 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome>
   Future<void> _removeMedicationAndClearReminders(String medicationId) async {
     final store = widget.dataStore;
     if (store == null) return;
-    final selected = store.medications.where(
+    final selectedRecords = store.medications.where(
       (medication) => medication.id == medicationId,
     );
-    final catalogId = selected.isEmpty ? null : selected.first.catalogId;
+    final selected = selectedRecords.isEmpty ? null : selectedRecords.first;
+    MedicationCatalogRecord? catalog;
+    if (selected?.catalogId != null) {
+      catalog = MedicationCatalogRecord(
+        rxcui: selected!.catalogId!,
+        name: selected.name,
+        genericName: selected.genericName,
+        strength: selected.strength,
+        form: selected.form,
+        route: selected.route,
+        sourceVersion: selected.catalogVersion ?? 'current',
+      );
+    } else if (selected != null) {
+      for (final medication in store.medications) {
+        final catalogId = medication.catalogId;
+        if (catalogId == null) continue;
+        final candidate = MedicationCatalogRecord(
+          rxcui: catalogId,
+          name: medication.name,
+          genericName: medication.genericName,
+          strength: medication.strength,
+          form: medication.form,
+          route: medication.route,
+          sourceVersion: medication.catalogVersion ?? 'current',
+        );
+        if (_matchesLegacyMedication(selected, candidate)) {
+          catalog = candidate;
+          break;
+        }
+      }
+    }
+    if (catalog != null) {
+      await _migrateLegacyMedicationAliasesForCatalog(store, catalog);
+    }
+    final catalogId = catalog?.rxcui;
     final medicationIds = <String>{
       medicationId,
       if (catalogId != null)
